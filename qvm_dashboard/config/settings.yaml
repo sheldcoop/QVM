@@ -39,3 +39,32 @@ PLOT_SETTINGS:
   vector_multiplier_min: 1
   vector_multiplier_max: 200
   vector_multiplier_default: 50
+
+PANEL_VIEW:
+  frame_width: 510.0
+  frame_height: 515.0
+  offset_x: 13.5
+  offset_y: 15.0
+  gap_x: 3.0
+  gap_y: 3.0
+  dynamic_gap_x: 5.0
+  dynamic_gap_y: 3.5
+  corner_radius: 20.0
+  point_margin_factor: 0.20
+
+COLORS:
+  background: "#2C3E50"
+  panel_body: "#C87533"
+  quadrant_fill: "#F4B486"
+  grid_border: "#8B4513"
+  app_background: "#212121"
+  app_text: "#FFFFFF"
+  panel_ui: "#B87333"
+  panel_ui_hover: "#d48c46"
+
+FIGURE_SETTINGS:
+  width: 800
+  height: 800
+  margin: 40
+  point_marker_size: 35
+  point_text_size: 14

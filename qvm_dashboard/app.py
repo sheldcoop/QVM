@@ -7,6 +7,7 @@ from pathlib import Path
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
 from src.calculations import calculate_annular_ring, calculate_cam_compensation
 from src.visuals import plot_bullseye_scatter, plot_quiver, plot_heatmap
+from panel_mapping import create_four_quarters_view
 
 # Enable Pandas Copy-on-Write for performance
 pd.options.mode.copy_on_write = True
@@ -16,17 +17,22 @@ def load_settings():
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_css(file_path: str) -> None:
+def load_css(file_path: str, settings: dict = None) -> None:
     """Loads a CSS file and injects it into the Streamlit app."""
     try:
         css = Path(file_path).read_text()
+        colors = (settings or {}).get('COLORS', {})
+        bg      = colors.get('app_background', '#212121')
+        text    = colors.get('app_text', '#FFFFFF')
+        panel   = colors.get('panel_ui', '#B87333')
+        hover   = colors.get('panel_ui_hover', '#d48c46')
         css_variables = f'''
         <style>
             :root {{
-                --background-color: #212121;
-                --text-color: #FFFFFF;
-                --panel-color: #B87333;
-                --panel-hover-color: #d48c46;
+                --background-color: {bg};
+                --text-color: {text};
+                --panel-color: {panel};
+                --panel-hover-color: {hover};
             }}
             {css}
         </style>
@@ -68,7 +74,7 @@ def main():
     plot_settings = settings.get('PLOT_SETTINGS', {})
 
     st.set_page_config(page_title=ui_strings.get('dashboard_title', 'QVM Dashboard'), layout="wide")
-    load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"))
+    load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"), settings)
 
     st.title(ui_strings.get('dashboard_title', 'QVM Dashboard'))
 
@@ -115,10 +121,16 @@ def main():
     # --- Main UI ---
     # Top Level Navigation
     main_view = _nav_buttons(
-        ["Pad to Via", "Via to Pad", "Alignment"],
+        ["Panel Map", "Pad to Via", "Via to Pad", "Alignment"],
         state_key="main_view",
-        default="Pad to Via",
+        default="Panel Map",
     )
+
+    # Panel Map requires no uploaded data
+    if main_view == "Panel Map":
+        fig = create_four_quarters_view(settings)
+        st.plotly_chart(fig, use_container_width=True)
+        return
 
     if not all_data:
         st.info("Please upload one or more QVM text log files in the sidebar to begin.")
