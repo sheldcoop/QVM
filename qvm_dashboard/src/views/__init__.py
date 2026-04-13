@@ -6,6 +6,7 @@ from src.views.quality_control import QualityControlView
 from src.views.optical_edge_confidence import OpticalEdgeConfidenceView
 from src.views.analytics import AnalyticsView
 from src.views.cam_compensation import CAMCompensationView
+from src.views.polar_drift import PolarDriftView
 
 __all__ = [
     'BaseView',
@@ -13,5 +14,6 @@ __all__ = [
     'QualityControlView',
     'OpticalEdgeConfidenceView',
     'AnalyticsView',
-    'CAMCompensationView'
+    'CAMCompensationView',
+    'PolarDriftView'
 ]
