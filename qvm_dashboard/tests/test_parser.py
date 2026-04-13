@@ -38,8 +38,8 @@ def test_parse_qvm_content_valid(mock_settings):
             'outer_diameter': 'Outer Diameter',
             'inner_diameter': 'Inner Diameter',
             'ptv_distance': 'PtV Distance',
-            'x_distance': 'X Distance',
-            'y_distance': 'Y Distance'
+            'x_distance': 'Shift (DX)',
+            'y_distance': 'Shift (DY)'
         },
         'GRID_MAPPING': {'LL_2': 22}
     }

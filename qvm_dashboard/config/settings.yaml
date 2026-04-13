@@ -7,8 +7,8 @@ UI_STRINGS:
 COLUMN_NAMES:
   outer_diameter: "Outer Diameter"
   inner_diameter: "Inner Diameter"
-  x_distance: "X Distance"
-  y_distance: "Y Distance"
+  x_distance: "Shift (DX)"
+  y_distance: "Shift (DY)"
   ptv_distance: "PtV Distance"
   annular_ring: "Annular Ring"
   location: "Location"

@@ -6,11 +6,11 @@ from typing import Dict
 
 def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
     """
-    Create a Bullseye Scatter plot of x_distance vs y_distance.
+    Create a Bullseye Scatter plot of Shift (DX) vs Shift (DY).
     """
     col_names = settings.get('COLUMN_NAMES', {})
-    x_col = col_names.get('x_distance', 'X Distance')
-    y_col = col_names.get('y_distance', 'Y Distance')
+    x_col = col_names.get('x_distance', 'Shift (DX)')
+    y_col = col_names.get('y_distance', 'Shift (DY)')
     loc_col = col_names.get('location', 'Location')
 
     fig = px.scatter(
@@ -49,8 +49,8 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     Arrows represent the direction and magnitude (exaggerated) of the DX/DY shift.
     """
     col_names = settings.get('COLUMN_NAMES', {})
-    x_col = col_names.get('x_distance', 'X Distance')
-    y_col = col_names.get('y_distance', 'Y Distance')
+    x_col = col_names.get('x_distance', 'Shift (DX)')
+    y_col = col_names.get('y_distance', 'Shift (DY)')
     grid_col = col_names.get('grid_id', 'Grid ID')
     loc_col = col_names.get('location', 'Location')
 
