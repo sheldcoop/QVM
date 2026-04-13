@@ -23,14 +23,14 @@ GRID_MAPPING:
   LL_2: 22
   LL_3: 23
   LL_4: 24
-  UR_1: 31
-  UR_2: 32
-  UR_3: 33
-  UR_4: 34
-  LR_1: 41
-  LR_2: 42
-  LR_3: 43
-  LR_4: 44
+  LR_1: 31
+  LR_2: 32
+  LR_3: 33
+  LR_4: 34
+  UR_1: 41
+  UR_2: 42
+  UR_3: 43
+  UR_4: 44
 
 TOLERANCES:
   annular_ring_min: 0.0  # Breakout limit
