@@ -161,26 +161,29 @@ class SpatialHeatmapView(BaseView):
         # Update layout for true-to-life scaling
         fig.update_layout(
             xaxis=dict(
-                title='X Position (mm)',
+                title=dict(text='X Position (mm)', font=dict(color='#E8E8E8')),
                 showgrid=False,
                 zeroline=False,
                 scaleanchor='y',
                 scaleratio=1,
                 range=[0, 600],
-                dtick=50
+                dtick=50,
+                tickfont=dict(color='#B0B0B0')
             ),
             yaxis=dict(
-                title='Y Position (mm)',
+                title=dict(text='Y Position (mm)', font=dict(color='#E8E8E8')),
                 showgrid=False,
                 zeroline=False,
                 scaleanchor='x',
                 scaleratio=1,
                 range=[0, 600],
-                dtick=50
+                dtick=50,
+                tickfont=dict(color='#B0B0B0')
             ),
-            plot_bgcolor='#000000',
-            paper_bgcolor='#000000',
-            font=dict(color='#FFFFFF'),
+            plot_bgcolor='#1a1a1a',
+            paper_bgcolor='#1a1a1a',
+            font=dict(color='#E8E8E8', size=12),
+            title=dict(font=dict(color='#E8E8E8', size=16)),
             hovermode='closest',
             height=800,
             width=900,
