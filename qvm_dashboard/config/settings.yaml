@@ -89,3 +89,24 @@ OPTICAL_EDGE_THRESHOLDS:
 CHART_MARKERS:
   pad_via_scatter_size: 16            # Size for Pad vs Via scatter plot dots
   pad_via_text_size: 10               # Size for Grid ID text on dots
+
+PROCESS_STABILITY:
+  via_nominal_diameter: 0.020         # Nominal Via diameter in mm (20 µm)
+  via_ucl: 0.0215                     # Upper Control Limit for Vias (21.5 µm)
+  via_lcl: 0.0185                     # Lower Control Limit for Vias (18.5 µm)
+  via_y_min: 0.015                    # Via Y-axis min (15 µm)
+  via_y_max: 0.035                    # Via Y-axis max (35 µm)
+  
+  pad_nominal_diameter: 0.3125        # Nominal Pad diameter in mm (312.5 µm)
+  pad_ucl: 0.3157                     # Upper Control Limit for Pads (315.7 µm)
+  pad_lcl: 0.3093                     # Lower Control Limit for Pads (309.3 µm)
+  pad_y_min: 0.300                    # Pad Y-axis min (300 µm)
+  pad_y_max: 0.325                    # Pad Y-axis max (325 µm)
+  
+  marker_size: 8                      # Scatter plot marker size
+  nominal_color: "#1f77b4"            # Blue for nominal line
+  nominal_width: 2                    # Nominal line width
+  control_limit_color: "#ff7f0e"      # Orange for UCL/LCL lines
+  control_limit_width: 2              # Control limit line width
+  outlier_color: "#d62728"            # Red for out-of-spec points
+  normal_color: "#2ca02c"             # Green for in-spec points
