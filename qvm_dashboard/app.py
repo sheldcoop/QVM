@@ -43,6 +43,23 @@ def highlight_annular_ring(row, col_name, threshold):
         return ['background-color: #ffcccc; color: #990000; font-weight: bold'] * len(row)
     return [''] * len(row)
 
+def _nav_buttons(options, state_key, default=None, cols_gap="small"):
+    """Render a row of primary/secondary buttons for navigation."""
+    if state_key not in st.session_state or st.session_state[state_key] not in options:
+        st.session_state[state_key] = default if default is not None else options[0]
+    cols = st.columns(len(options), gap=cols_gap)
+    for i, label in enumerate(options):
+        is_active = st.session_state[state_key] == label
+        cols[i].button(
+            str(label),
+            type="primary" if is_active else "secondary",
+            width="stretch",
+            key=f"{state_key}_{label}",
+            on_click=lambda l=label: st.session_state.update({state_key: l}),
+        )
+    return st.session_state[state_key]
+
+
 def main():
     settings = load_settings()
     ui_strings = settings.get('UI_STRINGS', {})
@@ -96,12 +113,11 @@ def main():
                 st.sidebar.error(f"Error parsing {file.name}: {e}")
 
     # --- Main UI ---
-    # Top Level Pills
-    main_view = st.pills(
-        "Main Navigation",
-        options=["Pad to Via", "Via to Pad", "Alignment"],
+    # Top Level Navigation
+    main_view = _nav_buttons(
+        ["Pad to Via", "Via to Pad", "Alignment"],
+        state_key="main_view",
         default="Pad to Via",
-        label_visibility="collapsed"
     )
 
     if not all_data:
@@ -116,20 +132,18 @@ def main():
         with st.expander("Analysis Scope", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
-                # Sort available panels
                 panel_list = sorted(list(available_panels))
-                # Add "All" option if multiple
                 if len(panel_list) > 1:
                     panel_list.insert(0, "All")
-
-                selected_panel = st.pills("Select Panel", options=panel_list, default=panel_list[0])
+                st.markdown("**Select Panel**")
+                selected_panel = _nav_buttons(panel_list, state_key="selected_panel", default=panel_list[0])
 
             with col2:
                 side_list = sorted(list(available_sides))
                 if len(side_list) > 1:
                     side_list.insert(0, "Both")
-
-                selected_side = st.pills("Select Side", options=side_list, default=side_list[0])
+                st.markdown("**Select Side**")
+                selected_side = _nav_buttons(side_list, state_key="selected_side", default=side_list[0])
 
         # Filter Data
         filtered_df = master_df.copy()
@@ -145,11 +159,10 @@ def main():
         st.markdown("<br>", unsafe_allow_html=True)
 
         # Sub-level navigation
-        sub_view = st.pills(
-            "Sub Navigation",
-            options=["Quality Control", "Analytics", "CAM Compensation"],
+        sub_view = _nav_buttons(
+            ["Quality Control", "Analytics", "CAM Compensation"],
+            state_key="sub_view",
             default="Quality Control",
-            label_visibility="collapsed"
         )
 
         st.markdown("---")
