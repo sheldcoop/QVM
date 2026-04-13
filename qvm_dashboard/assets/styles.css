@@ -52,28 +52,41 @@ body, h2, h3, .stRadio, .stSelectbox, .stNumberInput {
     transform: scale(0.92);
 }
 
+/* All nav buttons: rectangular shape */
+button[data-testid="stBaseButton-primary"],
+button[data-testid="stBaseButton-secondary"] {
+    border-radius: 6px !important;
+    padding: 8px 20px !important;
+    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+
 /* Primary (active/selected) navigation buttons */
-.stButton button[kind="primary"] {
+button[data-testid="stBaseButton-primary"] {
     background-color: var(--panel-color) !important;
     color: #FFFFFF !important;
     border: 1px solid var(--panel-color) !important;
 }
 
-.stButton button[kind="primary"]:hover {
+button[data-testid="stBaseButton-primary"]:hover {
     background-color: var(--panel-hover-color) !important;
     border-color: var(--panel-hover-color) !important;
 }
 
 /* Secondary (inactive) navigation buttons */
-.stButton button[kind="secondary"] {
+button[data-testid="stBaseButton-secondary"] {
     background-color: transparent !important;
     color: var(--text-color, #FFFFFF) !important;
     border: 1px solid var(--panel-color) !important;
 }
 
-.stButton button[kind="secondary"]:hover {
+button[data-testid="stBaseButton-secondary"]:hover {
     border-color: var(--panel-hover-color) !important;
     color: var(--panel-hover-color) !important;
+}
+
+button[data-testid="stBaseButton-primary"]:active,
+button[data-testid="stBaseButton-secondary"]:active {
+    transform: scale(0.95) !important;
 }
 
 .st-emotion-cache-1g8w9s4 p {
