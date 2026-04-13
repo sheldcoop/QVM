@@ -4,6 +4,12 @@ import plotly.graph_objects as go
 import numpy as np
 from typing import Dict
 
+def get_panel_image_path() -> str:
+    """Return path to the panel background image."""
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_dir, 'assets', 'panel_background.png')
+
 def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
     """
     Create a Bullseye Scatter plot of Shift (DX) vs Shift (DY).
@@ -188,7 +194,26 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         plot_bgcolor='#f8f9fa',
         hovermode='closest'
     )
-
+    
+    # Add panel image as background
+    panel_image_path = get_panel_image_path()
+    try:
+        fig.add_layout_image(
+            source=panel_image_path,
+            xref="x",
+            yref="y",
+            x=0.5,
+            y=4.5,
+            sizex=4,
+            sizey=4,
+            sizing="stretch",
+            opacity=0.35,
+            layer="below"
+        )
+    except Exception as e:
+        # If image loading fails, continue without it
+        print(f"Warning: Could not load panel background image: {e}")
+    
     return fig
 
 
@@ -210,17 +235,18 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
     text_matrix[:] = ''
 
     # Create explicit mapping: Grid ID -> (matrix_row, matrix_col)
-    # Matrix indexing: [0,0]=top-left, [3,3]=bottom-right
+    # Matrix indexing: Plotly displays rows from bottom to top, so reverse row order
+    # Row 0 displays at BOTTOM, Row 3 displays at TOP
     # Pattern within each quadrant: 1=top-left, 2=bottom-left, 3=bottom-right, 4=top-right
     grid_matrix_map = {
-        # Upper Left Quadrant (11-14)
-        '11': (0, 0), '12': (1, 0), '13': (1, 1), '14': (0, 1),
-        # Lower Left Quadrant (21-24)
-        '21': (2, 0), '22': (3, 0), '23': (3, 1), '24': (2, 1),
-        # Lower Right Quadrant (31-34)
-        '31': (2, 2), '32': (3, 2), '33': (3, 3), '34': (2, 3),
-        # Upper Right Quadrant (41-44)
-        '41': (0, 2), '42': (1, 2), '43': (1, 3), '44': (0, 3),
+        # Upper Left Quadrant (11-14) - displayed at TOP-LEFT
+        '11': (3, 0), '12': (2, 0), '13': (2, 1), '14': (3, 1),
+        # Lower Left Quadrant (21-24) - displayed at BOTTOM-LEFT
+        '21': (1, 0), '22': (0, 0), '23': (0, 1), '24': (1, 1),
+        # Lower Right Quadrant (31-34) - displayed at BOTTOM-RIGHT
+        '31': (1, 2), '32': (0, 2), '33': (0, 3), '34': (1, 3),
+        # Upper Right Quadrant (41-44) - displayed at TOP-RIGHT
+        '41': (3, 2), '42': (2, 2), '43': (2, 3), '44': (3, 3),
     }
 
     df_plot = df.dropna(subset=[grid_col]).copy()
@@ -253,17 +279,20 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
             tickmode='array', 
             tickvals=[0.5, 1.5, 2.5, 3.5], 
             ticktext=['', '', '', ''],
-            showticklabels=False
+            showticklabels=False,
+            constrain='domain'
         ),
         yaxis=dict(
             title="Row", 
             tickmode='array', 
             tickvals=[0.5, 1.5, 2.5, 3.5], 
             ticktext=['', '', '', ''],
-            showticklabels=False
+            showticklabels=False,
+            scaleanchor="x",
+            scaleratio=1
         ),
-        width=700,
-        height=700
+        width=800,
+        height=800
     )
 
     return fig
