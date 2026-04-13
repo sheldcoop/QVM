@@ -1,0 +1,69 @@
+/* Define theme variables. Values will be injected by the Streamlit app. */
+:root {
+    --background-color: #212121;
+    --text-color: #FFFFFF;
+    --panel-color: #B87333;
+    --panel-hover-color: #d48c46;
+}
+
+.reportview-container {
+    background-color: var(--background-color);
+}
+
+.sidebar .sidebar-content {
+    background-color: #2E2E2E;
+    border-right: 2px solid #4A4A4A;
+    box-shadow: 5px 0px 15px rgba(0,0,0,0.3);
+}
+
+h1 {
+    text-align: center;
+    padding-bottom: 20px;
+}
+
+body, h2, h3, .stRadio, .stSelectbox, .stNumberInput {
+    color: var(--text-color);
+}
+
+.stDownloadButton > button, div[data-testid="stFormSubmitButton"] button {
+    background-color: var(--panel-color);
+    color: #FFFFFF;
+    border: 1px solid #000000;
+    font-weight: bold;
+    transition: transform 0.1s ease-in-out;
+}
+
+.stDownloadButton > button:hover, div[data-testid="stFormSubmitButton"] button:hover {
+    background-color: var(--panel-hover-color);
+    color: #FFFFFF;
+    border: 1px solid #FFFFFF;
+}
+
+.stDownloadButton > button:active, div[data-testid="stFormSubmitButton"] button:active {
+    transform: scale(0.95);
+}
+
+/* Button Pop Animation for general buttons */
+.stButton button {
+    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.stButton button:active {
+    transform: scale(0.92);
+}
+
+.st-emotion-cache-1g8w9s4 p {
+    color: #A0A0A0;
+    font-size: 16px;
+}
+
+.st-emotion-cache-fplge9 div {
+    font-size: 32px;
+    color: var(--panel-color);
+    font-weight: bold;
+}
+
+/* Reduce top padding for main container */
+.block-container {
+    padding-top: 3rem !important;
+}
