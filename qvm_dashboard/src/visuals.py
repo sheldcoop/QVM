@@ -61,14 +61,20 @@ def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
 def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figure:
     """
-    Create a Quiver/Vector Plot mapping shifts to a 4x4 grid.
-    Arrows represent the direction and magnitude (exaggerated) of the DX/DY shift.
-    Color-coded: Green (small) → Yellow → Red (large).
+    Pattern Hunter: Create a Quiver/Vector Plot with ABF distortion pattern detection.
+    
+    Colors arrows based on dot product to detect failure modes:
+    - RED: Material Expansion/Shrinkage (dot product > threshold)
+    - GOLD: Lamination Twist (dot product ≈ 0, high magnitude)
+    - BLUE: Global Offset (uniform misalignment)
+    
     Grid layout matches panel: 11-14=UL, 21-24=LL, 31-34=LR, 41-44=UR
     """
     col_names = settings.get('COLUMN_NAMES', {})
     x_col = col_names.get('x_distance', 'Shift (DX)')
     y_col = col_names.get('y_distance', 'Shift (DY)')
+    coord_x_col = col_names.get('coord_x', 'Coord. X')
+    coord_y_col = col_names.get('coord_y', 'Coord. Y')
     grid_col = col_names.get('grid_id', 'Grid ID')
     loc_col = col_names.get('location', 'Location')
 
@@ -77,8 +83,6 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     df_plot[grid_col] = df_plot[grid_col].astype(int).astype(str)
 
     # Create explicit mapping: Grid ID -> (plot_x, plot_y)
-    # Pattern within each quadrant: 1=top-left, 2=bottom-left, 3=bottom-right, 4=top-right
-    # Plot coordinates: (1,1)=bottom-left, (4,4)=top-right
     grid_position_map = {
         # Upper Left Quadrant (11-14)
         '11': (1, 4), '12': (1, 3), '13': (2, 3), '14': (2, 4),
@@ -93,47 +97,79 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     df_plot['plot_x'] = df_plot[grid_col].map(lambda gid: grid_position_map.get(gid, (0, 0))[0])
     df_plot['plot_y'] = df_plot[grid_col].map(lambda gid: grid_position_map.get(gid, (0, 0))[1])
     
-    # Calculate magnitude for color mapping (use raw values, not multiplied)
+    # Calculate magnitude for statistics
     df_plot['magnitude'] = np.sqrt(df_plot[x_col]**2 + df_plot[y_col]**2) * 1000  # Convert to microns
+
+    # Panel center (510mm x 515mm panel)
+    panel_center_x = 255.0
+    panel_center_y = 257.5
 
     fig = go.Figure()
     
-    # Define color scale thresholds (in microns)
-    max_mag = df_plot['magnitude'].max()
-    min_mag = df_plot['magnitude'].min()
+    # Pattern detection thresholds
+    expansion_threshold = 0.5      # dot product threshold for expansion
+    twist_dot_threshold = 0.2      # dot product threshold for twist (near zero)
+    twist_mag_threshold = 10.0     # minimum magnitude for twist (microns)
 
-    # Add quiver annotations with color coding
+    # Track pattern counts for legend
+    expansion_count = 0
+    twist_count = 0
+    offset_count = 0
+
+    # Add quiver annotations with pattern-based color coding
     for _, row in df_plot.iterrows():
         x = row['plot_x']
         y = row['plot_y']
 
-        dx = row[x_col] * multiplier
-        dy = row[y_col] * multiplier
+        dx_scaled = row[x_col] * multiplier
+        dy_scaled = row[y_col] * multiplier
         mag = row['magnitude']
         
-        # Color mapping: green → yellow → red based on magnitude
-        if max_mag > min_mag:
-            normalized = (mag - min_mag) / (max_mag - min_mag)
-        else:
-            normalized = 0.5
-            
-        # RGB interpolation: Green(0,255,0) → Yellow(255,255,0) → Red(255,0,0)
-        if normalized < 0.5:
-            # Green to Yellow
-            r = int(255 * (normalized * 2))
-            g = 255
-            b = 0
-        else:
-            # Yellow to Red
-            r = 255
-            g = int(255 * (1 - (normalized - 0.5) * 2))
-            b = 0
+        # Calculate position vector (from panel center to hole)
+        pos_x = row[coord_x_col] - panel_center_x if coord_x_col in row.index else 0
+        pos_y = row[coord_y_col] - panel_center_y if coord_y_col in row.index else 0
         
-        arrow_color = f'rgb({r},{g},{b})'
+        # Normalize position vector
+        pos_mag = np.sqrt(pos_x**2 + pos_y**2)
+        if pos_mag > 0:
+            pos_x_norm = pos_x / pos_mag
+            pos_y_norm = pos_y / pos_mag
+        else:
+            pos_x_norm = 0
+            pos_y_norm = 0
+        
+        # Normalize error vector
+        err_mag = np.sqrt(dx_scaled**2 + dy_scaled**2)
+        if err_mag > 0:
+            err_x_norm = dx_scaled / err_mag
+            err_y_norm = dy_scaled / err_mag
+        else:
+            err_x_norm = 0
+            err_y_norm = 0
+        
+        # Calculate dot product
+        dot_product = err_x_norm * pos_x_norm + err_y_norm * pos_y_norm
+        
+        # Pattern detection logic
+        if dot_product > expansion_threshold:
+            # RED: Material Expansion/Shrinkage
+            arrow_color = 'rgb(255, 50, 50)'  # Bright Red
+            pattern = "Expansion"
+            expansion_count += 1
+        elif abs(dot_product) < twist_dot_threshold and mag > twist_mag_threshold:
+            # GOLD: Lamination Twist
+            arrow_color = 'rgb(255, 215, 0)'  # Gold
+            pattern = "Twist"
+            twist_count += 1
+        else:
+            # BLUE: Global Offset
+            arrow_color = 'rgb(100, 150, 255)'  # Light Blue
+            pattern = "Offset"
+            offset_count += 1
 
         fig.add_annotation(
-            x=x + dx,
-            y=y + dy,
+            x=x + dx_scaled,
+            y=y + dy_scaled,
             ax=x,
             ay=y,
             xref="x",
@@ -146,19 +182,21 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             arrowsize=1.5,
             arrowwidth=2.5,
             arrowcolor=arrow_color,
-            opacity=0.8
+            opacity=0.85
         )
 
         # Add a dot at the origin with grid label
         fig.add_trace(go.Scatter(
             x=[x], y=[y], mode='markers+text',
-            marker=dict(color='darkblue', size=10, line=dict(color='white', width=1)),
+            marker=dict(color='#333333', size=10, line=dict(color='#CCCCCC', width=1)),
             text=[row[grid_col]],
             textposition="middle center",
-            textfont=dict(size=9, color='white', family='Arial Black'),
+            textfont=dict(size=9, color='#FFFFFF', family='Arial Black'),
             hovertemplate=(
                 f"<b>{row[loc_col]}</b><br>" +
                 f"Grid: {row[grid_col]}<br>" +
+                f"Pattern: {pattern}<br>" +
+                f"Dot Product: {dot_product:.3f}<br>" +
                 f"DX: {row[x_col]*1000:.3f} µm<br>" +
                 f"DY: {row[y_col]*1000:.3f} µm<br>" +
                 f"Magnitude: {mag:.3f} µm<br>" +
@@ -167,34 +205,31 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             showlegend=False
         ))
 
-    # Add colorbar legend using a dummy scatter trace
-    colorbar_trace = go.Scatter(
-        x=[None],
-        y=[None],
-        mode='markers',
-        marker=dict(
-            colorscale=[[0, 'green'], [0.5, 'yellow'], [1, 'red']],
-            cmin=min_mag,
-            cmax=max_mag,
-            colorbar=dict(
-                title="Shift<br>Magnitude<br>(µm)",
-                thickness=15,
-                len=0.7,
-                x=1.12
-            ),
-            showscale=True
+    # Add legend annotations
+    fig.add_annotation(
+        x=2.5, y=0.2,
+        text=(
+            f"<b>Pattern Detection Summary</b><br>"
+            f"🔴 <b>Expansion</b>: {expansion_count} holes<br>"
+            f"🟡 <b>Twist</b>: {twist_count} holes<br>"
+            f"🔵 <b>Offset</b>: {offset_count} holes"
         ),
-        hoverinfo='none',
-        showlegend=False
+        showarrow=False,
+        bgcolor='rgba(26, 26, 26, 0.8)',
+        bordercolor='#666666',
+        borderwidth=1,
+        font=dict(color='#E8E8E8', size=11),
+        align='left',
+        xref='x',
+        yref='y'
     )
-    fig.add_trace(colorbar_trace)
 
     # Setup the 4x4 grid layout
     chart_colors = settings.get('CHART_COLORS', {})
     fig.update_xaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='#444444', title=dict(text="Column", font=dict(color='#E8E8E8')))
     fig.update_yaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='#444444', title=dict(text="Row", font=dict(color='#E8E8E8')))
     fig.update_layout(
-        title=dict(text=f"Vector Shift Plot | {multiplier}x Multiplier | Grid: 11-14=UL, 21-24=LL, 31-34=LR, 41-44=UR", font=dict(color='#E8E8E8', size=14)),
+        title=dict(text=f"Pattern Hunter: ABF Distortion Map | {multiplier}x Sensitivity", font=dict(color='#E8E8E8', size=14)),
         width=750,
         height=700,
         plot_bgcolor='#1a1a1a',
@@ -215,7 +250,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             sizex=4,
             sizey=4,
             sizing="stretch",
-            opacity=0.35,
+            opacity=0.25,
             layer="below"
         )
     except Exception as e:
