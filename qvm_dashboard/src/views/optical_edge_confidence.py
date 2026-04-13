@@ -325,7 +325,7 @@ class OpticalEdgeConfidenceView(BaseView):
         self._render_via_health_chart(filtered_df, via_pts_col, col_names, chart_colors, chart_heights, optical_thresholds)
         
         # --- 1a. Pad Health Bar Chart ---
-        st.markdown("### 1️⃣a Pad Health Status (Traffic Light Logic)")
+        st.markdown("### 1️⃣a. Pad Health Status (Traffic Light Logic)")
         self._render_pad_health_chart(filtered_df, pad_pts_col, col_names, chart_colors, chart_heights, optical_thresholds)
         
         # --- 2. Pad vs Via Separation Scatter Plot ---
