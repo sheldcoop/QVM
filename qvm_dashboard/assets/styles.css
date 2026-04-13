@@ -45,11 +45,35 @@ body, h2, h3, .stRadio, .stSelectbox, .stNumberInput {
 
 /* Button Pop Animation for general buttons */
 .stButton button {
-    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .stButton button:active {
     transform: scale(0.92);
+}
+
+/* Primary (active/selected) navigation buttons */
+.stButton button[kind="primary"] {
+    background-color: var(--panel-color) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--panel-color) !important;
+}
+
+.stButton button[kind="primary"]:hover {
+    background-color: var(--panel-hover-color) !important;
+    border-color: var(--panel-hover-color) !important;
+}
+
+/* Secondary (inactive) navigation buttons */
+.stButton button[kind="secondary"] {
+    background-color: transparent !important;
+    color: var(--text-color, #FFFFFF) !important;
+    border: 1px solid var(--panel-color) !important;
+}
+
+.stButton button[kind="secondary"]:hover {
+    border-color: var(--panel-hover-color) !important;
+    color: var(--panel-hover-color) !important;
 }
 
 .st-emotion-cache-1g8w9s4 p {
@@ -68,39 +92,3 @@ body, h2, h3, .stRadio, .stSelectbox, .stNumberInput {
     padding-top: 3rem !important;
 }
 
-/* Style st.pills to look like solid connected buttons */
-div[data-testid="stSegmentedControl"] {
-    gap: 10px;
-}
-
-div[data-testid="stSegmentedControl"] button {
-    background-color: transparent !important;
-    color: var(--text-color, #FFFFFF) !important;
-    border: 1px solid var(--panel-color, #B87333) !important;
-    border-radius: 6px !important;
-    padding: 8px 24px !important;
-    font-size: 16px !important;
-    font-weight: normal !important;
-    transition: all 0.2s ease-in-out !important;
-    box-shadow: none !important;
-}
-
-div[data-testid="stSegmentedControl"] button:hover {
-    border-color: var(--panel-hover-color, #d48c46) !important;
-    color: var(--panel-hover-color, #d48c46) !important;
-}
-
-div[data-testid="stSegmentedControl"] button[data-checked="true"],
-div[data-testid="stSegmentedControl"] button[aria-checked="true"] {
-    background-color: var(--panel-color, #B87333) !important;
-    color: #FFFFFF !important;
-    border-color: var(--panel-color, #B87333) !important;
-    font-weight: 600 !important;
-}
-
-div[data-testid="stSegmentedControl"] [data-baseweb="segmented-control"] {
-    background: transparent !important;
-}
-div[data-testid="stSegmentedControl"] [data-baseweb="segmented-control"] > div {
-    background: transparent !important;
-}
