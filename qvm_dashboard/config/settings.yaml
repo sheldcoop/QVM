@@ -43,8 +43,8 @@ TOLERANCES:
 
 PLOT_SETTINGS:
   vector_multiplier_min: 1
-  vector_multiplier_max: 5000
-  vector_multiplier_default: 2500
+  vector_multiplier_max: 100
+  vector_multiplier_default: 50
 
 PANEL_VIEW:
   frame_width: 510.0

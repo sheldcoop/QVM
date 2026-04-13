@@ -64,7 +64,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     Pattern Hunter: Create a Quiver/Vector Plot with ABF distortion pattern detection.
     
     Colors arrows based on dot product to detect failure modes:
-    - RED: Material Expansion/Shrinkage (dot product > threshold)
+    - RED: Material Expansion (positive dot product) or Shrinkage (negative dot product)
     - GOLD: Lamination Twist (dot product ≈ 0, high magnitude)
     - BLUE: Global Offset (uniform misalignment)
     
@@ -151,18 +151,18 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         dot_product = err_x_norm * pos_x_norm + err_y_norm * pos_y_norm
         
         # Pattern detection logic
-        if dot_product > expansion_threshold:
-            # RED: Material Expansion/Shrinkage
+        if abs(dot_product) > expansion_threshold:
+            # RED: Material Expansion (Positive) or Shrinkage (Negative)
             arrow_color = 'rgb(255, 50, 50)'  # Bright Red
-            pattern = "Expansion"
+            pattern = "Expansion" if dot_product > 0 else "Shrinkage"
             expansion_count += 1
         elif abs(dot_product) < twist_dot_threshold and mag > twist_mag_threshold:
-            # GOLD: Lamination Twist
+            # GOLD: Lamination Twist (Perpendicular)
             arrow_color = 'rgb(255, 215, 0)'  # Gold
             pattern = "Twist"
             twist_count += 1
         else:
-            # BLUE: Global Offset
+            # BLUE: Global Offset (Uniform shift)
             arrow_color = 'rgb(100, 150, 255)'  # Light Blue
             pattern = "Offset"
             offset_count += 1
@@ -188,10 +188,10 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         # Add a dot at the origin with grid label
         fig.add_trace(go.Scatter(
             x=[x], y=[y], mode='markers+text',
-            marker=dict(color='#333333', size=10, line=dict(color='#CCCCCC', width=1)),
+            marker=dict(color='#333333', size=14, line=dict(color='#FFFF00', width=2)),
             text=[row[grid_col]],
-            textposition="middle center",
-            textfont=dict(size=9, color='#FFFFFF', family='Arial Black'),
+            textposition="top center",
+            textfont=dict(size=11, color='#FFFF00', family='Arial Black'),
             hovertemplate=(
                 f"<b>{row[loc_col]}</b><br>" +
                 f"Grid: {row[grid_col]}<br>" +
@@ -210,7 +210,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         x=2.5, y=0.2,
         text=(
             f"<b>Pattern Detection Summary</b><br>"
-            f"🔴 <b>Expansion</b>: {expansion_count} holes<br>"
+            f"🔴 <b>Material (Exp/Shrink)</b>: {expansion_count} holes<br>"
             f"🟡 <b>Twist</b>: {twist_count} holes<br>"
             f"🔵 <b>Offset</b>: {offset_count} holes"
         ),
@@ -230,7 +230,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     fig.update_yaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='#444444', title=dict(text="Row", font=dict(color='#E8E8E8')))
     fig.update_layout(
         title=dict(text=f"Pattern Hunter: ABF Distortion Map | {multiplier}x Sensitivity", font=dict(color='#E8E8E8', size=14)),
-        width=750,
+        width=700,
         height=700,
         plot_bgcolor='#1a1a1a',
         paper_bgcolor='#1a1a1a',
