@@ -100,6 +100,20 @@ OPTICAL_EDGE_THRESHOLDS:
   green_min: 75                       # Healthy threshold
   orange_min: 40                      # Warning threshold (below is red)
 
+OPTICAL_CONFIDENCE_MODEL:
+  pad_pts_target: 180.0               # Expected good Pad edge points
+  via_pts_target: 70.0                # Expected good Via edge points
+  pad_pts_floor: 40.0                 # Floor where Pad confidence collapses
+  via_pts_floor: 25.0                 # Floor where Via confidence collapses
+  pad_via_ratio_tolerance: 0.30       # Allowed deviation from expected Via/Pad ratio
+  ptv_ref_um: 6.0                     # PtV reference scale (µm) for score decay
+  shift_ref_um: 6.0                   # Shift reference scale (µm) for score decay
+  weight_pad: 0.25
+  weight_via: 0.25
+  weight_ratio: 0.15
+  weight_ptv: 0.20
+  weight_shift: 0.15
+
 CHART_MARKERS:
   pad_via_scatter_size: 16            # Size for Pad vs Via scatter plot dots
   pad_via_text_size: 10               # Size for Grid ID text on dots

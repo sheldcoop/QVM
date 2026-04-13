@@ -69,6 +69,7 @@ def main():
     chart_colors = settings.get('CHART_COLORS', {})
     chart_heights = settings.get('CHART_HEIGHTS', {})
     optical_thresholds = settings.get('OPTICAL_EDGE_THRESHOLDS', {})
+    optical_model = settings.get('OPTICAL_CONFIDENCE_MODEL', {})
     chart_markers = settings.get('CHART_MARKERS', {})
     
     # Initialize data processor (single source of truth for data operations)
@@ -199,7 +200,8 @@ def main():
                 chart_colors=chart_colors,
                 chart_heights=chart_heights,
                 chart_markers=chart_markers,
-                optical_thresholds=optical_thresholds
+                optical_thresholds=optical_thresholds,
+                optical_model=optical_model
             )
 
         # --- Process Stability View ---
