@@ -3,6 +3,8 @@ import pandas as pd
 import yaml
 import os
 from pathlib import Path
+import plotly.graph_objects as go
+import numpy as np
 
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
 from src.calculations import calculate_annular_ring, calculate_cam_compensation
@@ -180,7 +182,7 @@ def main():
 
         # Sub-level navigation
         sub_view = _nav_buttons(
-            ["Quality Control", "Analytics", "CAM Compensation"],
+            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence"],
             state_key="sub_view",
             default="Quality Control",
         )
@@ -347,6 +349,273 @@ def main():
                 st.metric("Average X Shift (DX)", f"{avg_x:.6f} mm")
             with col2:
                 st.metric("Average Y Shift (DY)", f"{avg_y:.6f} mm")
+
+        elif sub_view == "Optical Edge Confidence":
+            st.subheader("🔍 Optical Edge Confidence Analysis")
+            st.write("Analyze Point Count (Pts.) metric from optical inspection for hole integrity and plating quality assessment.")
+            
+            # Check if 'Pts.' column exists
+            pts_col = 'Pts.'
+            if pts_col not in filtered_df.columns:
+                st.error(f"Column '{pts_col}' not found in data. Available columns: {list(filtered_df.columns)}")
+                return
+            
+            # --- 1. Via Health Bar Chart ---
+            st.markdown("### 1️⃣ Via Health Status (Traffic Light Logic)")
+            
+            # Filter for Vias only
+            via_df = filtered_df[filtered_df['Type'] == 'Via'].copy() if 'Type' in filtered_df.columns else pd.DataFrame()
+            
+            if not via_df.empty:
+                # Prepare data for bar chart with Grid ID
+                grid_id_col = col_names.get('grid_id', 'Grid ID')
+                via_data = via_df.groupby('Location')[pts_col].mean().reset_index()
+                # Get first Grid ID value for each location
+                grid_ids = via_df.groupby('Location')[grid_id_col].first().reset_index()
+                via_data = via_data.merge(grid_ids, on='Location')
+                via_data.columns = ['Via ID', 'Point Count', 'Grid ID']
+                
+                # Define colors based on traffic light logic
+                def get_health_color(points):
+                    if pd.isna(points):
+                        return '#999999'
+                    if points > 75:
+                        return '#2ecc71'  # Green - Healthy
+                    elif points >= 40:
+                        return '#f39c12'  # Orange/Yellow - Warning
+                    else:
+                        return '#e74c3c'  # Red - Critical
+                
+                via_data['Color'] = via_data['Point Count'].apply(get_health_color)
+                
+                # Create bar chart with Grid ID labels
+                fig_via_health = go.Figure(data=[
+                    go.Bar(
+                        x=via_data['Via ID'],
+                        y=via_data['Point Count'],
+                        marker=dict(color=via_data['Color']),
+                        text=[f"{pts:.1f}<br>({gid})" for pts, gid in zip(via_data['Point Count'], via_data['Grid ID'])],
+                        textposition='outside',
+                        customdata=via_data['Grid ID'],
+                        hovertemplate='<b>%{x}</b><br>Grid ID: %{customdata}<br>Points: %{y:.1f}<extra></extra>'
+                    )
+                ])
+                
+                fig_via_health.update_layout(
+                    title="Via Health Status by Point Count",
+                    xaxis_title="Via ID",
+                    yaxis_title="Point Count (Pts.)",
+                    height=400,
+                    showlegend=False,
+                    plot_bgcolor='rgba(240, 240, 240, 0.5)',
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig_via_health, use_container_width=True)
+            else:
+                st.warning("No Via data found in the dataset.")
+            
+            # --- 1a. Pad Health Bar Chart ---
+            st.markdown("### 1️⃣a Pad Health Status (Traffic Light Logic)")
+            
+            # Filter for Pads only
+            pad_df = filtered_df[filtered_df['Type'] == 'Pad'].copy() if 'Type' in filtered_df.columns else pd.DataFrame()
+            
+            if not pad_df.empty:
+                # Prepare data for bar chart with Grid ID
+                grid_id_col = col_names.get('grid_id', 'Grid ID')
+                pad_data = pad_df.groupby('Location')[pts_col].mean().reset_index()
+                # Get first Grid ID value for each location
+                grid_ids_pad = pad_df.groupby('Location')[grid_id_col].first().reset_index()
+                pad_data = pad_data.merge(grid_ids_pad, on='Location')
+                pad_data.columns = ['Pad ID', 'Point Count', 'Grid ID']
+                
+                # Define colors based on traffic light logic
+                def get_health_color_pad(points):
+                    if pd.isna(points):
+                        return '#999999'
+                    if points > 75:
+                        return '#2ecc71'  # Green - Healthy
+                    elif points >= 40:
+                        return '#f39c12'  # Orange/Yellow - Warning
+                    else:
+                        return '#e74c3c'  # Red - Critical
+                
+                pad_data['Color'] = pad_data['Point Count'].apply(get_health_color_pad)
+                
+                # Create bar chart with Grid ID labels
+                fig_pad_health = go.Figure(data=[
+                    go.Bar(
+                        x=pad_data['Pad ID'],
+                        y=pad_data['Point Count'],
+                        marker=dict(color=pad_data['Color']),
+                        text=[f"{pts:.1f}<br>({gid})" for pts, gid in zip(pad_data['Point Count'], pad_data['Grid ID'])],
+                        textposition='outside',
+                        customdata=pad_data['Grid ID'],
+                        hovertemplate='<b>%{x}</b><br>Grid ID: %{customdata}<br>Points: %{y:.1f}<extra></extra>'
+                    )
+                ])
+                
+                fig_pad_health.update_layout(
+                    title="Pad Health Status by Point Count",
+                    xaxis_title="Pad ID",
+                    yaxis_title="Point Count (Pts.)",
+                    height=400,
+                    showlegend=False,
+                    plot_bgcolor='rgba(240, 240, 240, 0.5)',
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig_pad_health, use_container_width=True)
+            else:
+                st.warning("No Pad data found in the dataset.")
+            
+            # --- 2. Pad vs Via Separation Scatter Plot ---
+            st.markdown("### 2️⃣ Pad vs. Via Edge Detection Verification")
+            
+            if 'Type' in filtered_df.columns:
+                # Prepare data with Location/Grid ID
+                grid_id_col = col_names.get('grid_id', 'Grid ID')
+                scatter_data = []
+                for item_type in ['Pad', 'Via']:
+                    type_data = filtered_df[filtered_df['Type'] == item_type]
+                    for _, row in type_data.iterrows():
+                        if pd.notna(row[pts_col]):
+                            scatter_data.append({
+                                'Type': item_type,
+                                'Point Count': row[pts_col],
+                                'Location': row.get('Location', 'N/A'),
+                                'Grid ID': row.get(grid_id_col, 'N/A')
+                            })
+                
+                scatter_df = pd.DataFrame(scatter_data)
+                
+                if not scatter_df.empty:
+                    # Create box plot with scatter overlay
+                    fig_comparison = go.Figure()
+                    
+                    # Map categories to numeric positions for jitter
+                    category_to_num = {'Pad': 0, 'Via': 1}
+                    
+                    for idx, item_type in enumerate(['Pad', 'Via']):
+                        type_subset = scatter_df[scatter_df['Type'] == item_type]
+                        type_points = type_subset['Point Count']
+                        
+                        if len(type_points) > 0:
+                            # Add box plot
+                            fig_comparison.add_trace(go.Box(
+                                x=[item_type] * len(type_points),
+                                y=type_points,
+                                name=item_type,
+                                boxmean='sd',
+                                marker_opacity=0.3,
+                                boxpoints=False
+                            ))
+                            
+                            # Add scatter with jitter - use numeric x positions
+                            jitter = np.random.normal(0, 0.04, size=len(type_points))
+                            x_numeric = np.array([category_to_num[item_type]] * len(type_points))
+                            x_jittered = x_numeric + jitter
+                            
+                            # Create hover text with Location and Grid ID
+                            hover_text = [f"{loc}<br>Grid: {gid}" for loc, gid in zip(type_subset['Location'], type_subset['Grid ID'])]
+                            
+                            fig_comparison.add_trace(go.Scatter(
+                                x=x_jittered,
+                                y=type_points,
+                                mode='markers+text',
+                                name=f'{item_type} (Individual)',
+                                marker=dict(size=8, opacity=0.7),
+                                text=type_subset['Grid ID'],
+                                textposition='middle center',
+                                textfont=dict(size=8, color='white'),
+                                showlegend=False,
+                                hovertemplate='<b>%{customdata}</b><br>Points: %{y:.0f}<extra></extra>',
+                                customdata=hover_text
+                            ))
+                    
+                    fig_comparison.update_xaxes(tickvals=[0, 1], ticktext=['Pad', 'Via'])
+                    fig_comparison.update_layout(
+                        title="Edge Detection Verification: Pads vs Vias",
+                        yaxis_title="Point Count (Pts.)",
+                        height=400,
+                        plot_bgcolor='rgba(240, 240, 240, 0.5)',
+                        hovermode='closest',
+                        boxmode='group'
+                    )
+                    
+                    st.plotly_chart(fig_comparison, use_container_width=True)
+            
+            # --- 3. Detailed Analysis Tables for Vias and Pads ---
+            st.markdown("### 3️⃣ Optical Edge Detection Details")
+            
+            # --- Via Details Table ---
+            st.markdown("#### 🔴 Via Analysis (All Vias by Lowest Point Count)")
+            
+            via_table_df = filtered_df[filtered_df['Type'] == 'Via'].copy().dropna(subset=[pts_col])
+            via_table_df = via_table_df.sort_values(by=pts_col, ascending=True)
+            
+            if not via_table_df.empty:
+                # Prepare columns
+                grid_id_col = col_names.get('grid_id', 'Grid ID')
+                ptv_col = col_names.get('ptv_distance', 'PtV Distance')
+                dx_col = col_names.get('x_distance', 'Shift (DX)')
+                dy_col = col_names.get('y_distance', 'Shift (DY)')
+                
+                via_display = via_table_df[['Location', grid_id_col, pts_col, ptv_col, dx_col, dy_col]].copy()
+                
+                # Convert to microns (multiply by 1000)
+                if ptv_col in via_display.columns:
+                    via_display[f'{ptv_col} (µm)'] = (via_display[ptv_col] * 1000).round(3)
+                if dx_col in via_display.columns:
+                    via_display[f'{dx_col} (µm)'] = (via_display[dx_col] * 1000).round(3)
+                if dy_col in via_display.columns:
+                    via_display[f'{dy_col} (µm)'] = (via_display[dy_col] * 1000).round(3)
+                
+                # Drop original mm columns and keep only µm versions
+                cols_to_keep = ['Location', grid_id_col, pts_col, f'{ptv_col} (µm)', f'{dx_col} (µm)', f'{dy_col} (µm)']
+                cols_to_keep = [col for col in cols_to_keep if col in via_display.columns]
+                via_display = via_display[cols_to_keep]
+                via_display.columns = ['Location', 'Grid ID', 'Pts.', 'PtV (µm)', 'Shift DX (µm)', 'Shift DY (µm)']
+                
+                st.dataframe(via_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("No Via data available")
+            
+            st.markdown("---")
+            
+            # --- Pad Details Table ---
+            st.markdown("#### 🟠 Pad Analysis (All Pads by Lowest Point Count)")
+            
+            pad_table_df = filtered_df[filtered_df['Type'] == 'Pad'].copy().dropna(subset=[pts_col])
+            pad_table_df = pad_table_df.sort_values(by=pts_col, ascending=True)
+            
+            if not pad_table_df.empty:
+                # Prepare columns
+                grid_id_col = col_names.get('grid_id', 'Grid ID')
+                ptv_col = col_names.get('ptv_distance', 'PtV Distance')
+                dx_col = col_names.get('x_distance', 'Shift (DX)')
+                dy_col = col_names.get('y_distance', 'Shift (DY)')
+                
+                pad_display = pad_table_df[['Location', grid_id_col, pts_col, ptv_col, dx_col, dy_col]].copy()
+                
+                # Convert to microns (multiply by 1000)
+                if ptv_col in pad_display.columns:
+                    pad_display[f'{ptv_col} (µm)'] = (pad_display[ptv_col] * 1000).round(3)
+                if dx_col in pad_display.columns:
+                    pad_display[f'{dx_col} (µm)'] = (pad_display[dx_col] * 1000).round(3)
+                if dy_col in pad_display.columns:
+                    pad_display[f'{dy_col} (µm)'] = (pad_display[dy_col] * 1000).round(3)
+                
+                # Drop original mm columns and keep only µm versions
+                cols_to_keep = ['Location', grid_id_col, pts_col, f'{ptv_col} (µm)', f'{dx_col} (µm)', f'{dy_col} (µm)']
+                cols_to_keep = [col for col in cols_to_keep if col in pad_display.columns]
+                pad_display = pad_display[cols_to_keep]
+                pad_display.columns = ['Location', 'Grid ID', 'Pts.', 'PtV (µm)', 'Shift DX (µm)', 'Shift DY (µm)']
+                
+                st.dataframe(pad_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("No Pad data available")
 
     elif main_view == "Via to Pad":
         st.info("Via to Pad analytics not yet implemented.")
