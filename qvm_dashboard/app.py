@@ -16,6 +16,7 @@ from src.views.optical_edge_confidence import OpticalEdgeConfidenceView
 from src.views.analytics import AnalyticsView
 from src.views.cam_compensation import CAMCompensationView
 from src.views.polar_drift import PolarDriftView
+from src.views.spatial_heatmap import SpatialHeatmapView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from panel_mapping import create_four_quarters_view
 
@@ -171,7 +172,7 @@ def main():
 
         # Sub-level navigation
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence", "Process Stability", "Polar Drift (Machine Health)"],
+            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence", "Process Stability", "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
             state_key="sub_view",
             default="Quality Control",
         )
@@ -219,6 +220,12 @@ def main():
             # Use refactored PolarDriftView (extracted to src/views/polar_drift.py)
             pd_view = PolarDriftView(settings, data_processor)
             pd_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors, chart_heights=chart_heights)
+
+        # --- 2D Spatial Heatmap (Laser Scan Field) View ---
+        elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
+            # Use refactored SpatialHeatmapView (extracted to src/views/spatial_heatmap.py)
+            sh_view = SpatialHeatmapView(settings, data_processor)
+            sh_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors)
 
     elif main_view == "Via to Pad":
         st.info("Via to Pad analytics not yet implemented.")

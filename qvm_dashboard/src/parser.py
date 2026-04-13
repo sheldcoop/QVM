@@ -104,25 +104,33 @@ def parse_qvm_content(content: str) -> pd.DataFrame:
 
     parsed_data = {}
 
-    # Find all Pads and extract point count
+    # Find all Pads and extract point count, coordinates
     for match in pad_pattern.finditer(content):
         loc = match.group(1)
         pts = int(match.group(2))
+        coord_x = float(match.group(3))
+        coord_y = float(match.group(4))
         diameter = float(match.group(5))
         if loc not in parsed_data:
             parsed_data[loc] = {}
         parsed_data[loc]['pad_diameter'] = diameter
         parsed_data[loc]['pad_pts'] = pts
+        parsed_data[loc]['pad_coord_x'] = coord_x
+        parsed_data[loc]['pad_coord_y'] = coord_y
 
-    # Find all Vias and extract point count
+    # Find all Vias and extract point count, coordinates
     for match in via_pattern.finditer(content):
         loc = match.group(1)
         pts = int(match.group(2))
+        coord_x = float(match.group(3))
+        coord_y = float(match.group(4))
         diameter = float(match.group(5))
         if loc not in parsed_data:
             parsed_data[loc] = {}
         parsed_data[loc]['via_diameter'] = diameter
         parsed_data[loc]['via_pts'] = pts
+        parsed_data[loc]['via_coord_x'] = coord_x
+        parsed_data[loc]['via_coord_y'] = coord_y
 
     # Find all Distances
     for match in dist_pattern.finditer(content):
@@ -159,9 +167,12 @@ def parse_qvm_content(content: str) -> pd.DataFrame:
         row = base_row.copy()
         row[col_names.get('outer_diameter', 'Pad Diameter')] = data['pad_diameter']
         row[col_names.get('inner_diameter', 'Via Parameter')] = data['via_diameter']
-        row['Type'] = 'Pad/Via'
-        row['Pad Pts.'] = data.get('pad_pts', None)
-        row['Via Pts.'] = data.get('via_pts', None)
+        row[col_names.get('coord_x', 'Coord. X')] = data.get('via_coord_x', None)  # Use Via coordinates as reference
+        row[col_names.get('coord_y', 'Coord. Y')] = data.get('via_coord_y', None)  # Use Via coordinates as reference
+        row[col_names.get('total_shift', 'SC')] = data['sc']
+        row[col_names.get('item_type', 'Type')] = 'Via'  # Primary measurement type for classification
+        row[col_names.get('pad_pts', 'Pad Pts.')] = data.get('pad_pts', None)
+        row[col_names.get('via_pts', 'Via Pts.')] = data.get('via_pts', None)
         rows.append(row)
 
     if not rows:
