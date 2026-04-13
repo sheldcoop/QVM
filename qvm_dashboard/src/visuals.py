@@ -191,13 +191,15 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
 
     # Setup the 4x4 grid layout
     chart_colors = settings.get('CHART_COLORS', {})
-    fig.update_xaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='lightgray', title="Column")
-    fig.update_yaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='lightgray', title="Row")
+    fig.update_xaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='#444444', title=dict(text="Column", font=dict(color='#E8E8E8')))
+    fig.update_yaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='#444444', title=dict(text="Row", font=dict(color='#E8E8E8')))
     fig.update_layout(
-        title=f"Vector Shift Plot | {multiplier}x Multiplier | Grid: 11-14=UL, 21-24=LL, 31-34=LR, 41-44=UR",
+        title=dict(text=f"Vector Shift Plot | {multiplier}x Multiplier | Grid: 11-14=UL, 21-24=LL, 31-34=LR, 41-44=UR", font=dict(color='#E8E8E8', size=14)),
         width=750,
         height=700,
-        plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
+        plot_bgcolor='#1a1a1a',
+        paper_bgcolor='#1a1a1a',
+        font=dict(color='#B0B0B0', size=11),
         hovermode='closest'
     )
     
