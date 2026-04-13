@@ -114,6 +114,12 @@ OPTICAL_CONFIDENCE_MODEL:
   weight_ptv: 0.20
   weight_shift: 0.15
 
+CAM_COMPENSATION:
+  monitor_ppm: 50.0
+  caution_ppm: 120.0
+  min_valid_points: 12
+  min_valid_ratio: 0.75
+
 CHART_MARKERS:
   pad_via_scatter_size: 16            # Size for Pad vs Via scatter plot dots
   pad_via_text_size: 10               # Size for Grid ID text on dots

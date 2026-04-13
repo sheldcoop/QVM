@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 
 from src.views.base import BaseView
-from src.visuals import plot_quiver, plot_heatmap, diagnose_root_cause_confidence
+from src.visuals import plot_quiver, plot_heatmap, diagnose_root_cause_confidence, calculate_cam_compensation_summary
 
 
 class AnalyticsView(BaseView):
@@ -116,6 +116,9 @@ class AnalyticsView(BaseView):
             st.write("- 🟡 **GOLD**: Lamination twist (errors swirl around center)")
             st.write("- 🔵 **BLUE**: Global offset (uniform machine misalignment)")
 
+            cam_summary = calculate_cam_compensation_summary(filtered_df, settings)
+            self._render_cam_compensation_summary(cam_summary)
+
             diagnosis = diagnose_root_cause_confidence(filtered_df, settings)
             self._render_root_cause_confidence(diagnosis)
             
@@ -132,3 +135,24 @@ class AnalyticsView(BaseView):
         elif plot_type == "Heatmap":
             fig = plot_heatmap(filtered_df, settings)
             st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
+
+    def _render_cam_compensation_summary(self, summary: dict) -> None:
+        """Render CAM expansion/shrinkage summary for compensation guidance."""
+        st.markdown("**CAM Compensation Estimate**")
+
+        if summary.get('status') != 'Monitor' and summary.get('status') != 'Caution' and summary.get('status') != 'Consider Compensation':
+            st.warning(summary.get('message', 'CAM compensation estimate unavailable for current selection.'))
+            return
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Net ppm", f"{summary.get('ppm', 0.0):+.1f} ppm")
+        col2.metric("Direction", summary.get('direction', 'Neutral'))
+        col3.metric("Expansion holes", f"{summary.get('expansion_ratio', 0.0) * 100:.0f}%")
+        col4.metric("Shrinkage holes", f"{summary.get('shrinkage_ratio', 0.0) * 100:.0f}%")
+
+        st.caption(
+            f"Valid holes: {summary.get('valid_points', 0)}/{summary.get('total_points', 0)} | "
+            f"Mean radial shift: {summary.get('mean_radial_shift_um', 0.0):.3f} µm | "
+            f"""Mean radius: {summary.get('mean_radius_um', 0.0):.1f} µm"""
+        )
+        st.info(summary.get('recommendation', 'Review CAM compensation thresholds and data quality.'))

@@ -50,6 +50,7 @@ class QualityControlView(BaseView):
             col_names.get('outer_diameter', 'Outer Diameter'),
             col_names.get('inner_diameter', 'Inner Diameter'),
             col_names.get('ptv_distance', 'PtV Distance'),
+            col_names.get('total_shift', 'SC'),
             col_names.get('x_distance', 'Shift (DX)'),
             col_names.get('y_distance', 'Shift (DY)'),
             col_names.get('annular_ring', 'Annular Ring')

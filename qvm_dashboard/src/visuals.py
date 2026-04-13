@@ -302,6 +302,106 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
         },
     }
 
+def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict[str, Any]:
+    """Calculate net expansion/shrinkage from shifts and coordinates."""
+    col_names = settings.get('COLUMN_NAMES', {})
+    x_col = col_names.get('x_distance', 'Shift (DX)')
+    y_col = col_names.get('y_distance', 'Shift (DY)')
+    coord_x_col = col_names.get('coord_x', 'Coord. X')
+    coord_y_col = col_names.get('coord_y', 'Coord. Y')
+
+    diagnostics = settings.get('DIAGNOSTICS', {})
+    cam_cfg = settings.get('CAM_COMPENSATION', {})
+    panel_center_x = float(diagnostics.get('panel_center_x', 255.0))
+    panel_center_y = float(diagnostics.get('panel_center_y', 257.5))
+
+    required_cols = [x_col, y_col, coord_x_col, coord_y_col]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        return {
+            'status': 'insufficient_data',
+            'message': f"Missing required column(s): {', '.join(missing_cols)}",
+            'ppm': 0.0,
+            'direction': 'N/A',
+            'expansion_ratio': 0.0,
+            'shrinkage_ratio': 0.0,
+            'valid_points': 0,
+            'total_points': len(df),
+            'recommendation': 'Cannot calculate CAM compensation without the required fields.',
+        }
+
+    work_df = df.copy()
+    for col in required_cols:
+        work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
+
+    valid_df = work_df.dropna(subset=required_cols).copy()
+    total_points = len(df)
+    valid_points = len(valid_df)
+
+    if valid_df.empty:
+        return {
+            'status': 'insufficient_data',
+            'message': 'No valid rows available for CAM compensation calculation.',
+            'ppm': 0.0,
+            'direction': 'N/A',
+            'expansion_ratio': 0.0,
+            'shrinkage_ratio': 0.0,
+            'valid_points': 0,
+            'total_points': total_points,
+            'recommendation': 'Insufficient valid CAM data.'
+        }
+
+    shift_x = valid_df[x_col].to_numpy(dtype=float) * 1000.0
+    shift_y = valid_df[y_col].to_numpy(dtype=float) * 1000.0
+    pos_x = valid_df[coord_x_col].to_numpy(dtype=float) - panel_center_x
+    pos_y = valid_df[coord_y_col].to_numpy(dtype=float) - panel_center_y
+    radius = np.sqrt(pos_x**2 + pos_y**2)
+    radius_safe = np.where(radius > 1e-6, radius, 1.0)
+    dir_x = pos_x / radius_safe
+    dir_y = pos_y / radius_safe
+    radial_shift = shift_x * dir_x + shift_y * dir_y
+
+    mean_radial_shift = float(np.mean(radial_shift))
+    mean_radius = float(np.mean(radius))
+    ppm = float(mean_radial_shift / max(mean_radius, 1e-6) * 1e6)
+    expansion_ratio = float(np.count_nonzero(radial_shift > 0) / len(radial_shift))
+    shrinkage_ratio = float(np.count_nonzero(radial_shift < 0) / len(radial_shift))
+
+    abs_ppm = abs(ppm)
+    monitor_ppm = float(cam_cfg.get('monitor_ppm', 50.0))
+    caution_ppm = float(cam_cfg.get('caution_ppm', 120.0))
+    min_valid_points = int(cam_cfg.get('min_valid_points', 12))
+    min_valid_ratio = float(cam_cfg.get('min_valid_ratio', 0.75))
+
+    if valid_points < min_valid_points or valid_points / max(total_points, 1) < min_valid_ratio:
+        status = 'Insufficient data'
+        recommendation = 'Not enough valid holes for CAM-worthy compensation.'
+    elif abs_ppm < monitor_ppm:
+        status = 'Monitor'
+        recommendation = 'Net drift is low; no CAM compensation recommended yet.'
+    elif abs_ppm < caution_ppm:
+        status = 'Caution'
+        recommendation = 'Drift is moderate; review before applying compensation.'
+    else:
+        status = 'Consider Compensation'
+        recommendation = 'Net drift exceeds caution thresholds; CAM compensation may be appropriate with engineering approval.'
+
+    direction = 'Expansion' if ppm > 0 else 'Shrinkage' if ppm < 0 else 'Neutral'
+
+    return {
+        'status': status,
+        'message': 'CAM compensation summary calculated.',
+        'ppm': round(ppm, 1),
+        'direction': direction,
+        'mean_radial_shift_um': round(mean_radial_shift, 3),
+        'mean_radius_um': round(mean_radius, 3),
+        'expansion_ratio': expansion_ratio,
+        'shrinkage_ratio': shrinkage_ratio,
+        'valid_points': valid_points,
+        'total_points': total_points,
+        'recommendation': recommendation,
+    }
+
 def get_panel_image_path() -> str:
     """Return path to the panel background image."""
     import os
