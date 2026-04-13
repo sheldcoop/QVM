@@ -355,14 +355,15 @@ def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict
     shift_y = valid_df[y_col].to_numpy(dtype=float) * 1000.0
     pos_x = valid_df[coord_x_col].to_numpy(dtype=float) - panel_center_x
     pos_y = valid_df[coord_y_col].to_numpy(dtype=float) - panel_center_y
-    radius = np.sqrt(pos_x**2 + pos_y**2)
-    radius_safe = np.where(radius > 1e-6, radius, 1.0)
-    dir_x = pos_x / radius_safe
-    dir_y = pos_y / radius_safe
+    radius_mm = np.sqrt(pos_x**2 + pos_y**2)
+    radius_um = radius_mm * 1000.0
+    radius_safe = np.where(radius_um > 1e-6, radius_um, 1.0)
+    dir_x = pos_x / np.where(radius_mm > 1e-6, radius_mm, 1.0)
+    dir_y = pos_y / np.where(radius_mm > 1e-6, radius_mm, 1.0)
     radial_shift = shift_x * dir_x + shift_y * dir_y
 
     mean_radial_shift = float(np.mean(radial_shift))
-    mean_radius = float(np.mean(radius))
+    mean_radius = float(np.mean(radius_um))
     ppm = float(mean_radial_shift / max(mean_radius, 1e-6) * 1e6)
     expansion_ratio = float(np.count_nonzero(radial_shift > 0) / len(radial_shift))
     shrinkage_ratio = float(np.count_nonzero(radial_shift < 0) / len(radial_shift))
@@ -394,7 +395,7 @@ def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict
         'ppm': round(ppm, 1),
         'direction': direction,
         'mean_radial_shift_um': round(mean_radial_shift, 3),
-        'mean_radius_um': round(mean_radius, 3),
+        'mean_radius_um': round(mean_radius, 1),
         'expansion_ratio': expansion_ratio,
         'shrinkage_ratio': shrinkage_ratio,
         'valid_points': valid_points,
