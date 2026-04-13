@@ -15,6 +15,7 @@ from src.views.quality_control import QualityControlView
 from src.views.optical_edge_confidence import OpticalEdgeConfidenceView
 from src.views.analytics import AnalyticsView
 from src.views.cam_compensation import CAMCompensationView
+from src.views.polar_drift import PolarDriftView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from panel_mapping import create_four_quarters_view
 
@@ -170,7 +171,7 @@ def main():
 
         # Sub-level navigation
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence", "Process Stability"],
+            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence", "Process Stability", "Polar Drift (Machine Health)"],
             state_key="sub_view",
             default="Quality Control",
         )
@@ -212,6 +213,12 @@ def main():
             # Use refactored ProcessStabilityView (extracted to src/views/process_stability.py)
             ps_view = ProcessStabilityView(settings, data_processor)
             ps_view.render(filtered_df, process_limits=process_limits)
+
+        # --- Polar Drift (Machine Health) View ---
+        elif sub_view == "Polar Drift (Machine Health)":
+            # Use refactored PolarDriftView (extracted to src/views/polar_drift.py)
+            pd_view = PolarDriftView(settings, data_processor)
+            pd_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors, chart_heights=chart_heights)
 
     elif main_view == "Via to Pad":
         st.info("Via to Pad analytics not yet implemented.")
