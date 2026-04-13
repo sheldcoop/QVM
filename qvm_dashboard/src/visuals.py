@@ -15,6 +15,7 @@ def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
     Create a Bullseye Scatter plot of Shift (DX) vs Shift (DY).
     """
     col_names = settings.get('COLUMN_NAMES', {})
+    chart_colors = settings.get('CHART_COLORS', {})
     x_col = col_names.get('x_distance', 'Shift (DX)')
     y_col = col_names.get('y_distance', 'Shift (DY)')
     loc_col = col_names.get('location', 'Location')
@@ -47,9 +48,13 @@ def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
     # Add a little padding
     max_val = max_val * 1.2 if max_val > 0 else 0.1
 
-    fig.update_xaxes(range=[-max_val, max_val], zeroline=False)
-    fig.update_yaxes(range=[-max_val, max_val], zeroline=False)
-    fig.update_layout(width=700, height=700)
+    fig.update_xaxes(range=[-max_val, max_val], zeroline=False, showgrid=chart_colors.get('chart_gridlines_visible', False))
+    fig.update_yaxes(range=[-max_val, max_val], zeroline=False, showgrid=chart_colors.get('chart_gridlines_visible', False))
+    fig.update_layout(
+        width=700, 
+        height=700,
+        plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF')
+    )
 
     return fig
 
@@ -185,13 +190,14 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     fig.add_trace(colorbar_trace)
 
     # Setup the 4x4 grid layout
-    fig.update_xaxes(range=[0.5, 4.5], dtick=1, showgrid=True, gridcolor='lightgray', title="Column")
-    fig.update_yaxes(range=[0.5, 4.5], dtick=1, showgrid=True, gridcolor='lightgray', title="Row")
+    chart_colors = settings.get('CHART_COLORS', {})
+    fig.update_xaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='lightgray', title="Column")
+    fig.update_yaxes(range=[0.5, 4.5], dtick=1, showgrid=chart_colors.get('chart_gridlines_visible', False), gridcolor='lightgray', title="Row")
     fig.update_layout(
         title=f"Vector Shift Plot | {multiplier}x Multiplier | Grid: 11-14=UL, 21-24=LL, 31-34=LR, 41-44=UR",
         width=750,
         height=700,
-        plot_bgcolor='#f8f9fa',
+        plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
         hovermode='closest'
     )
     
@@ -270,6 +276,8 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
         colorscale='Viridis',
         colorbar=dict(title="PtV Distance<br>(µm)")
     ))
+    
+    chart_colors = settings.get('CHART_COLORS', {})
 
     # Update axes to show grid labels matching the panel layout
     fig.update_layout(
@@ -280,7 +288,8 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
             tickvals=[0.5, 1.5, 2.5, 3.5], 
             ticktext=['', '', '', ''],
             showticklabels=False,
-            constrain='domain'
+            constrain='domain',
+            showgrid=chart_colors.get('chart_gridlines_visible', False)
         ),
         yaxis=dict(
             title="Row", 
@@ -289,10 +298,12 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
             ticktext=['', '', '', ''],
             showticklabels=False,
             scaleanchor="x",
-            scaleratio=1
+            scaleratio=1,
+            showgrid=chart_colors.get('chart_gridlines_visible', False)
         ),
         width=800,
-        height=800
+        height=800,
+        plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF')
     )
 
     return fig
