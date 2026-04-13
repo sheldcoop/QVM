@@ -24,8 +24,8 @@ def calculate_cam_compensation(df: pd.DataFrame, settings: Dict) -> Tuple[float,
         tuple: (avg_x_shift, avg_y_shift)
     """
     col_names = settings.get('COLUMN_NAMES', {})
-    x_col = col_names.get('x_distance', 'X Distance')
-    y_col = col_names.get('y_distance', 'Y Distance')
+    x_col = col_names.get('x_distance', 'Shift (DX)')
+    y_col = col_names.get('y_distance', 'Shift (DY)')
 
     if x_col in df.columns and y_col in df.columns:
         avg_x = df[x_col].mean()

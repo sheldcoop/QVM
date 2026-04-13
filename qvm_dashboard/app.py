@@ -193,13 +193,59 @@ def main():
             threshold = tolerances.get('annular_ring_min', 0.0)
             st.write(f"Highlighting rows where {annular_col} < {threshold}")
 
-            # Apply styling
-            styled_df = filtered_df.style.apply(
+            # Prepare display dataframe
+            display_df = filtered_df.copy()
+            
+            # Drop Panel and Side columns (not needed in display)
+            cols_to_drop = [col for col in ['Panel', 'Side'] if col in display_df.columns]
+            display_df = display_df.drop(columns=cols_to_drop)
+            
+            # Convert all measurements from mm to microns (multiply by 1000)
+            measurement_cols = [
+                col_names.get('outer_diameter', 'Outer Diameter'),
+                col_names.get('inner_diameter', 'Inner Diameter'),
+                col_names.get('ptv_distance', 'PtV Distance'),
+                col_names.get('x_distance', 'Shift (DX)'),
+                col_names.get('y_distance', 'Shift (DY)'),
+                col_names.get('annular_ring', 'Annular Ring')
+            ]
+            for col in measurement_cols:
+                if col in display_df.columns:
+                    display_df[col] = (display_df[col] * 1000).round(3)
+            
+            # Sort by Grid ID ascending
+            grid_id_col = col_names.get('grid_id', 'Grid ID')
+            if grid_id_col in display_df.columns:
+                display_df = display_df.sort_values(by=grid_id_col, ascending=True)
+            
+            # Add clarification about Grid ID
+            st.info("📍 **Grid ID**: Position on the PCB quadrant (11-14 = Upper Left, 21-24 = Lower Left, 31-34 = Lower Right, 41-44 = Upper Right). First digit = quadrant, second digit = point (1-4). All measurements in **microns (µm)**.")
+
+            # Apply styling with custom formatter for 3 decimals without trailing zeros
+            def format_to_3_decimals(val):
+                if pd.isna(val):
+                    return ''
+                try:
+                    # Format to 3 decimals, then strip trailing zeros and decimal point if needed
+                    formatted = f'{float(val):.3f}'.rstrip('0').rstrip('.')
+                    return formatted
+                except:
+                    return str(val)
+            
+            # Build format dict for all numeric columns at once
+            format_dict = {}
+            for col in display_df.columns:
+                if display_df[col].dtype in ['float64', 'float32', 'int64', 'int32']:
+                    format_dict[col] = format_to_3_decimals
+            
+            styled_df = display_df.style.apply(
                 highlight_annular_ring,
                 col_name=annular_col,
                 threshold=threshold,
                 axis=1
             )
+            if format_dict:
+                styled_df = styled_df.format(format_dict)
             st.dataframe(styled_df, use_container_width=True)
 
         # --- Analytics View ---

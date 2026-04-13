@@ -32,8 +32,8 @@ def test_calculate_cam_compensation():
 
     settings = {
         'COLUMN_NAMES': {
-            'x_distance': 'X Distance',
-            'y_distance': 'Y Distance'
+            'x_distance': 'Shift (DX)',
+            'y_distance': 'Shift (DY)'
         }
     }
 

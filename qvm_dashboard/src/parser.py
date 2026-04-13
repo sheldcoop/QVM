@@ -147,8 +147,8 @@ def parse_qvm_content(content: str) -> pd.DataFrame:
             col_names.get('outer_diameter', 'Outer Diameter'): data['pad_diameter'],
             col_names.get('inner_diameter', 'Inner Diameter'): data['via_diameter'],
             col_names.get('ptv_distance', 'PtV Distance'): data['sc'],
-            col_names.get('x_distance', 'X Distance'): data['dx'],
-            col_names.get('y_distance', 'Y Distance'): data['dy'],
+            col_names.get('x_distance', 'Shift (DX)'): data['dx'],
+            col_names.get('y_distance', 'Shift (DY)'): data['dy'],
         }
         rows.append(row)
 
