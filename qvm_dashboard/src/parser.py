@@ -150,23 +150,23 @@ def parse_qvm_content(content: str) -> pd.DataFrame:
         base_row = {
             col_names.get('location', 'Location'): loc,
             col_names.get('grid_id', 'Grid ID'): grid_mapping.get(loc, None),
-            col_names.get('outer_diameter', 'Outer Diameter'): data['pad_diameter'],
-            col_names.get('inner_diameter', 'Inner Diameter'): data['via_diameter'],
             col_names.get('ptv_distance', 'PtV Distance'): data['sc'],
             col_names.get('x_distance', 'Shift (DX)'): data['dx'],
             col_names.get('y_distance', 'Shift (DY)'): data['dy'],
-            'Type': 'PtV',  # Distance measurement type
-            'Pts.': None   # PtV measurements don't have point count
         }
-        rows.append(base_row)
         
-        # Create separate rows for Pad and Via with point counts
+        # Create row for Pad with Pad diameter
         pad_row = base_row.copy()
+        pad_row[col_names.get('outer_diameter', 'Outer Diameter')] = data['pad_diameter']
+        pad_row[col_names.get('inner_diameter', 'Inner Diameter')] = data['via_diameter']
         pad_row['Type'] = 'Pad'
         pad_row['Pts.'] = data.get('pad_pts', None)
         rows.append(pad_row)
         
+        # Create row for Via with Via diameter
         via_row = base_row.copy()
+        via_row[col_names.get('outer_diameter', 'Outer Diameter')] = data['via_diameter']
+        via_row[col_names.get('inner_diameter', 'Inner Diameter')] = data['pad_diameter']
         via_row['Type'] = 'Via'
         via_row['Pts.'] = data.get('via_pts', None)
         rows.append(via_row)

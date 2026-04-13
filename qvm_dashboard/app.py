@@ -100,6 +100,38 @@ def main():
         st.markdown("---")
         material_build_up = st.text_input("Material Build-up", "")
         batch_id = st.text_input("Batch ID", "")
+        
+        # --- Process Stability Limits Configuration ---
+        st.markdown("---")
+        st.subheader("📊 Process Limits (µm)")
+        
+        with st.expander("🔴 Via Drill Limits", expanded=False):
+            default_via_nom = settings.get('PROCESS_STABILITY', {}).get('via_nominal_diameter', 0.020) * 1000
+            default_via_ucl = settings.get('PROCESS_STABILITY', {}).get('via_ucl', 0.0215) * 1000
+            default_via_lcl = settings.get('PROCESS_STABILITY', {}).get('via_lcl', 0.0185) * 1000
+            
+            via_nom = st.number_input("Via Nominal (µm)", value=default_via_nom, step=0.1, key="via_nom_input")
+            via_ucl = st.number_input("Via UCL (µm)", value=default_via_ucl, step=0.1, key="via_ucl_input")
+            via_lcl = st.number_input("Via LCL (µm)", value=default_via_lcl, step=0.1, key="via_lcl_input")
+            
+            # Store in session state
+            st.session_state['via_nominal'] = via_nom / 1000
+            st.session_state['via_ucl'] = via_ucl / 1000
+            st.session_state['via_lcl'] = via_lcl / 1000
+        
+        with st.expander("🟠 Pad Etch Limits", expanded=False):
+            default_pad_nom = settings.get('PROCESS_STABILITY', {}).get('pad_nominal_diameter', 0.3125) * 1000
+            default_pad_ucl = settings.get('PROCESS_STABILITY', {}).get('pad_ucl', 0.3157) * 1000
+            default_pad_lcl = settings.get('PROCESS_STABILITY', {}).get('pad_lcl', 0.3093) * 1000
+            
+            pad_nom = st.number_input("Pad Nominal (µm)", value=default_pad_nom, step=0.1, key="pad_nom_input")
+            pad_ucl = st.number_input("Pad UCL (µm)", value=default_pad_ucl, step=0.1, key="pad_ucl_input")
+            pad_lcl = st.number_input("Pad LCL (µm)", value=default_pad_lcl, step=0.1, key="pad_lcl_input")
+            
+            # Store in session state
+            st.session_state['pad_nominal'] = pad_nom / 1000
+            st.session_state['pad_ucl'] = pad_ucl / 1000
+            st.session_state['pad_lcl'] = pad_lcl / 1000
 
     # --- Data Ingestion ---
     all_data = []
@@ -186,7 +218,7 @@ def main():
 
         # Sub-level navigation
         sub_view = _nav_buttons(
-            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence"],
+            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence", "Process Stability"],
             state_key="sub_view",
             default="Quality Control",
         )
@@ -629,6 +661,261 @@ def main():
                 st.dataframe(pad_display, use_container_width=True, hide_index=True)
             else:
                 st.info("No Pad data available")
+
+        # --- Process Stability View ---
+        elif sub_view == "Process Stability":
+            st.subheader("🔧 Process Stability: Diameter Consistency Analysis")
+            st.write("Monitor tool wear and etching consistency through diameter variances. Two separate scales prevent Via precision from being masked by Pad dimensions.")
+            
+            # Load process stability settings - use session state if available
+            process_stability = settings.get('PROCESS_STABILITY', {})
+            outer_diam_col = col_names.get('outer_diameter', 'Outer Diameter')
+            location_col = col_names.get('location', 'Location')
+            
+            # Get user-configured limits from session state, or use defaults
+            via_nominal = st.session_state.get('via_nominal', process_stability.get('via_nominal_diameter', 0.020))
+            via_ucl = st.session_state.get('via_ucl', process_stability.get('via_ucl', 0.0215))
+            via_lcl = st.session_state.get('via_lcl', process_stability.get('via_lcl', 0.0185))
+            
+            pad_nominal = st.session_state.get('pad_nominal', process_stability.get('pad_nominal_diameter', 0.3125))
+            pad_ucl = st.session_state.get('pad_ucl', process_stability.get('pad_ucl', 0.3157))
+            pad_lcl = st.session_state.get('pad_lcl', process_stability.get('pad_lcl', 0.3093))
+            
+            # Create two columns for side-by-side charts
+            col1, col2 = st.columns(2)
+            
+            # --- CHART 1: Via Drill Consistency ---
+            with col1:
+                st.markdown("### 🔴 Via Drill Consistency")
+                st.caption("Mechanical/Laser Health - Tight control ±1.5µm")
+                
+                # Filter for Vias - check if 'Type' column exists and has 'Via' values
+                if 'Type' in filtered_df.columns:
+                    via_df = filtered_df[filtered_df['Type'] == 'Via'].copy()
+                else:
+                    # If no Type column, try to identify Vias by Location naming or show all data
+                    via_df = filtered_df.copy()
+                
+                if not via_df.empty and outer_diam_col in via_df.columns:
+                    # Prepare data
+                    via_plot_df = via_df[[location_col, outer_diam_col]].dropna().copy()
+                    
+                    if not via_plot_df.empty:
+                        via_plot_df = via_plot_df.sort_values(by=location_col)
+                        
+                        # Convert diameter to microns for plotting
+                        via_plot_df['diameter_um'] = via_plot_df[outer_diam_col] * 1000
+                        
+                        # Calculate Y-axis range dynamically based on user-configured limits
+                        # Add 2 µm margin around the control limits
+                        via_nominal_um = via_nominal * 1000
+                        via_ucl_um = via_ucl * 1000
+                        via_lcl_um = via_lcl * 1000
+                        margin = 2  # µm margin
+                        
+                        y_min = min(via_lcl_um, via_plot_df['diameter_um'].min()) - margin
+                        y_max = max(via_ucl_um, via_plot_df['diameter_um'].max()) + margin
+                        
+                        # Determine colors: red if outside limits, green if within
+                        via_plot_df['color'] = via_plot_df[outer_diam_col].apply(
+                            lambda x: process_stability.get('outlier_color', '#d62728') 
+                            if (x < via_lcl or x > via_ucl) 
+                            else process_stability.get('normal_color', '#2ca02c')
+                        )
+                        
+                        fig_via = go.Figure()
+                        
+                        # Add scatter plot (Y-axis in µm)
+                        fig_via.add_trace(go.Scatter(
+                            x=via_plot_df[location_col],
+                            y=via_plot_df['diameter_um'],
+                            mode='markers',
+                            marker=dict(
+                                size=process_stability.get('marker_size', 8),
+                                color=via_plot_df['color'],
+                                line=dict(width=1, color='rgba(0,0,0,0.3)')
+                            ),
+                            text=via_plot_df[location_col],
+                            hovertemplate='<b>%{text}</b><br>Diameter: %{y:.1f} µm<extra></extra>',
+                            showlegend=False
+                        ))
+                        
+                        # Add nominal line (convert to µm scale)
+                        fig_via.add_hline(
+                            y=via_nominal * 1000,
+                            line_dash="dash",
+                            line_color=process_stability.get('nominal_color', '#1f77b4'),
+                            line_width=process_stability.get('nominal_width', 2),
+                            annotation_text=f"Nominal: {via_nominal*1000:.1f} µm",
+                            annotation_position="right"
+                        )
+                        
+                        # Add UCL line (convert to µm scale)
+                        fig_via.add_hline(
+                            y=via_ucl * 1000,
+                            line_dash="dot",
+                            line_color=process_stability.get('control_limit_color', '#ff7f0e'),
+                            line_width=process_stability.get('control_limit_width', 2),
+                            annotation_text=f"UCL: {via_ucl*1000:.1f} µm",
+                            annotation_position="right"
+                        )
+                        
+                        # Add LCL line (convert to µm scale)
+                        fig_via.add_hline(
+                            y=via_lcl * 1000,
+                            line_dash="dot",
+                            line_color=process_stability.get('control_limit_color', '#ff7f0e'),
+                            line_width=process_stability.get('control_limit_width', 2),
+                            annotation_text=f"LCL: {via_lcl*1000:.1f} µm",
+                            annotation_position="right"
+                        )
+                        
+                        fig_via.update_layout(
+                            title="Via Outer Diameter Distribution",
+                            xaxis_title="Target ID",
+                            yaxis_title="Diameter (µm)",
+                            height=500,
+                            plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
+                            hovermode='closest',
+                            yaxis=dict(
+                                range=[y_min, y_max],
+                                showgrid=chart_colors.get('chart_gridlines_visible', False)
+                            ),
+                            xaxis=dict(
+                                showgrid=chart_colors.get('chart_gridlines_visible', False)
+                            )
+                        )
+                        
+                        st.plotly_chart(fig_via, use_container_width=True)
+                        
+                        # Summary stats
+                        out_of_spec = (via_plot_df[outer_diam_col] < via_lcl) | (via_plot_df[outer_diam_col] > via_ucl)
+                        n_out = out_of_spec.sum()
+                        pct_out = (n_out / len(via_plot_df) * 100) if len(via_plot_df) > 0 else 0
+                        
+                        st.metric("Out of Spec", f"{n_out} / {len(via_plot_df)} ({pct_out:.1f}%)", 
+                                 delta="⚠️ Review needed" if n_out > 0 else "✓ All Pass", 
+                                 delta_color="inverse" if n_out > 0 else "off")
+                    else:
+                        st.warning("No Via diameter data available after filtering NaN values")
+                else:
+                    st.warning("No Via diameter data available")
+            
+            # --- CHART 2: Pad Etch Consistency ---
+            with col2:
+                st.markdown("### 🟠 Pad Etch Consistency")
+                st.caption("Chemistry Health - Tight control ±3.2µm")
+                
+                # Filter for Pads - check if 'Type' column exists
+                if 'Type' in filtered_df.columns:
+                    pad_df = filtered_df[filtered_df['Type'] == 'Pad'].copy()
+                else:
+                    pad_df = filtered_df.copy()
+                
+                if not pad_df.empty and outer_diam_col in pad_df.columns:
+                    # Prepare data
+                    pad_plot_df = pad_df[[location_col, outer_diam_col]].dropna().copy()
+                    
+                    if not pad_plot_df.empty:
+                        pad_plot_df = pad_plot_df.sort_values(by=location_col)
+                        
+                        # Convert diameter to microns for plotting
+                        pad_plot_df['diameter_um'] = pad_plot_df[outer_diam_col] * 1000
+                        
+                        # Calculate Y-axis range dynamically based on user-configured limits
+                        # Add 2 µm margin around the control limits
+                        pad_nominal_um = pad_nominal * 1000
+                        pad_ucl_um = pad_ucl * 1000
+                        pad_lcl_um = pad_lcl * 1000
+                        margin = 2  # µm margin
+                        
+                        y_min = min(pad_lcl_um, pad_plot_df['diameter_um'].min()) - margin
+                        y_max = max(pad_ucl_um, pad_plot_df['diameter_um'].max()) + margin
+                        
+                        # Determine colors: red if outside limits, green if within
+                        pad_plot_df['color'] = pad_plot_df[outer_diam_col].apply(
+                            lambda x: process_stability.get('outlier_color', '#d62728') 
+                            if (x < pad_lcl or x > pad_ucl) 
+                            else process_stability.get('normal_color', '#2ca02c')
+                        )
+                        
+                        fig_pad = go.Figure()
+                        
+                        # Add scatter plot (Y-axis in µm)
+                        fig_pad.add_trace(go.Scatter(
+                            x=pad_plot_df[location_col],
+                            y=pad_plot_df['diameter_um'],
+                            mode='markers',
+                            marker=dict(
+                                size=process_stability.get('marker_size', 8),
+                                color=pad_plot_df['color'],
+                                line=dict(width=1, color='rgba(0,0,0,0.3)')
+                            ),
+                            text=pad_plot_df[location_col],
+                            hovertemplate='<b>%{text}</b><br>Diameter: %{y:.1f} µm<extra></extra>',
+                            showlegend=False
+                        ))
+                        
+                        # Add nominal line (convert to µm scale)
+                        fig_pad.add_hline(
+                            y=pad_nominal * 1000,
+                            line_dash="dash",
+                            line_color=process_stability.get('nominal_color', '#1f77b4'),
+                            line_width=process_stability.get('nominal_width', 2),
+                            annotation_text=f"Nominal: {pad_nominal*1000:.1f} µm",
+                            annotation_position="right"
+                        )
+                        
+                        # Add UCL line (convert to µm scale)
+                        fig_pad.add_hline(
+                            y=pad_ucl * 1000,
+                            line_dash="dot",
+                            line_color=process_stability.get('control_limit_color', '#ff7f0e'),
+                            line_width=process_stability.get('control_limit_width', 2),
+                            annotation_text=f"UCL: {pad_ucl*1000:.1f} µm",
+                            annotation_position="right"
+                        )
+                        
+                        # Add LCL line (convert to µm scale)
+                        fig_pad.add_hline(
+                            y=pad_lcl * 1000,
+                            line_dash="dot",
+                            line_color=process_stability.get('control_limit_color', '#ff7f0e'),
+                            line_width=process_stability.get('control_limit_width', 2),
+                            annotation_text=f"LCL: {pad_lcl*1000:.1f} µm",
+                            annotation_position="right"
+                        )
+                        
+                        fig_pad.update_layout(
+                            title="Pad Outer Diameter Distribution",
+                            xaxis_title="Target ID",
+                            yaxis_title="Diameter (µm)",
+                            height=500,
+                            plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
+                            hovermode='closest',
+                            yaxis=dict(
+                                range=[y_min, y_max],
+                                showgrid=chart_colors.get('chart_gridlines_visible', False)
+                            ),
+                            xaxis=dict(
+                                showgrid=chart_colors.get('chart_gridlines_visible', False)
+                            )
+                        )
+                        
+                        st.plotly_chart(fig_pad, use_container_width=True)
+                        
+                        # Summary stats
+                        out_of_spec = (pad_plot_df[outer_diam_col] < pad_lcl) | (pad_plot_df[outer_diam_col] > pad_ucl)
+                        n_out = out_of_spec.sum()
+                        pct_out = (n_out / len(pad_plot_df) * 100) if len(pad_plot_df) > 0 else 0
+                        
+                        st.metric("Out of Spec", f"{n_out} / {len(pad_plot_df)} ({pct_out:.1f}%)", 
+                                 delta="⚠️ Review needed" if n_out > 0 else "✓ All Pass", 
+                                 delta_color="inverse" if n_out > 0 else "off")
+                    else:
+                        st.warning("No Pad diameter data available after filtering NaN values")
+                else:
+                    st.warning("No Pad diameter data available")
 
     elif main_view == "Via to Pad":
         st.info("Via to Pad analytics not yet implemented.")
