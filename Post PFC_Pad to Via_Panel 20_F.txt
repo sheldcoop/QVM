@@ -1,0 +1,245 @@
+
+         Element          Actual         Nominal         Deviat.         Up Tol.        Low Tol.       Pass/Fail
+                                                        (TP Dev)        (TP Tol)                                
+Circle: Pad_LL_2(ID:1, From 180 Pts.) 
+     Coord. X =        63.857203                                                                                
+     Coord. Y =       104.634501                                                                                
+     Diameter =         0.308911                                                                                
+
+Circle: Via_LL_2(ID:2, From 70 Pts.) 
+     Coord. X =        63.856611                                                                                
+     Coord. Y =       104.630820                                                                                
+     Diameter =         0.016742                                                                                
+
+Distance: PtV_LL_2(ID:3) between Via_LL_2(ID:2) and Pad_LL_2(ID:1)
+           SC =         0.003728                                                                                
+           DX =         0.000592                                                                                
+           DY =         0.003681                                                                                
+
+Circle: Pad_LL_1(ID:4, From 178 Pts.) 
+     Coord. X =        63.569201                                                                                
+     Coord. Y =       298.565898                                                                                
+     Diameter =         0.304367                                                                                
+
+Circle: Via_LL_1(ID:5, From 17 Pts.) 
+     Coord. X =        63.569366                                                                                
+     Coord. Y =       298.566674                                                                                
+     Diameter =         0.019998                                                                                
+
+Distance: PtV_LL_1(ID:6) between Via_LL_1(ID:5) and Pad_LL_1(ID:4)
+           SC =         0.000793                                                                                
+           DX =        -0.000165                                                                                
+           DY =        -0.000776                                                                                
+
+Circle: Pad_LL_4(ID:7, From 180 Pts.) 
+     Coord. X =       296.079810                                                                                
+     Coord. Y =       298.907296                                                                                
+     Diameter =         0.306233                                                                                
+
+Circle: Via_LL_4(ID:8, From 80 Pts.) 
+     Coord. X =       296.080238                                                                                
+     Coord. Y =       298.909334                                                                                
+     Diameter =         0.028804                                                                                
+
+Distance: PtV_LL_4(ID:9) between Via_LL_4(ID:8) and Pad_LL_4(ID:7)
+           SC =         0.002082                                                                                
+           DX =        -0.000428                                                                                
+           DY =        -0.002037                                                                                
+
+Circle: Pad_LL_3(ID:10, From 168 Pts.) 
+     Coord. X =       296.367145                                                                                
+     Coord. Y =       104.973610                                                                                
+     Diameter =         0.304526                                                                                
+
+Circle: Via_LL_3(ID:11, From 58 Pts.) 
+     Coord. X =       296.368685                                                                                
+     Coord. Y =       104.973980                                                                                
+     Diameter =         0.017343                                                                                
+
+Distance: PtV_LL_3(ID:12) between Via_LL_3(ID:11) and Pad_LL_3(ID:10)
+           SC =         0.001583                                                                                
+           DX =        -0.001539                                                                                
+           DY =        -0.000370                                                                                
+
+Circle: Pad_LR_2(ID:13, From 176 Pts.) 
+     Coord. X =       306.855549                                                                                
+     Coord. Y =       104.988541                                                                                
+     Diameter =         0.301661                                                                                
+
+Circle: Via_LR_2(ID:14, From 57 Pts.) 
+     Coord. X =       306.856540                                                                                
+     Coord. Y =       104.989239                                                                                
+     Diameter =         0.017654                                                                                
+
+Distance: PtV_LR_2(ID:15) between Via_LR_2(ID:14) and Pad_LR_2(ID:13)
+           SC =         0.001213                                                                                
+           DX =        -0.000992                                                                                
+           DY =        -0.000698                                                                                
+
+Circle: Pad_LR_1(ID:16, From 180 Pts.) 
+     Coord. X =       306.560603                                                                                
+     Coord. Y =       298.924129                                                                                
+     Diameter =         0.306023                                                                                
+
+Circle: Via_LR_1(ID:17, From 103 Pts.) 
+     Coord. X =       306.560497                                                                                
+     Coord. Y =       298.925417                                                                                
+     Diameter =         0.028860                                                                                
+
+Distance: PtV_LR_1(ID:18) between Via_LR_1(ID:17) and Pad_LR_1(ID:16)
+           SC =         0.001292                                                                                
+           DX =         0.000106                                                                                
+           DY =        -0.001288                                                                                
+
+Circle: Pad_LR_4(ID:19, From 180 Pts.) 
+     Coord. X =       539.082959                                                                                
+     Coord. Y =       299.279086                                                                                
+     Diameter =         0.305645                                                                                
+
+Circle: Via_LR_4(ID:20, From 67 Pts.) 
+     Coord. X =       539.082369                                                                                
+     Coord. Y =       299.279854                                                                                
+     Diameter =         0.028655                                                                                
+
+Distance: PtV_LR_4(ID:21) between Via_LR_4(ID:20) and Pad_LR_4(ID:19)
+           SC =         0.000969                                                                                
+           DX =         0.000590                                                                                
+           DY =        -0.000769                                                                                
+
+Circle: Pad_LR_3(ID:22, From 149 Pts.) 
+     Coord. X =       539.378622                                                                                
+     Coord. Y =       105.344346                                                                                
+     Diameter =         0.304835                                                                                
+
+Circle: Via_LR_3(ID:23, From 63 Pts.) 
+     Coord. X =       539.383961                                                                                
+     Coord. Y =       105.340627                                                                                
+     Diameter =         0.018210                                                                                
+
+Distance: PtV_LR_3(ID:24) between Via_LR_3(ID:23) and Pad_LR_3(ID:22)
+           SC =         0.006507                                                                                
+           DX =        -0.005339                                                                                
+           DY =         0.003719                                                                                
+
+Circle: Pad_UL_2(ID:25, From 175 Pts.) 
+     Coord. X =        63.486876                                                                                
+     Coord. Y =       348.671544                                                                                
+     Diameter =         0.305189                                                                                
+
+Circle: Via_UL_2(ID:26, From 62 Pts.) 
+     Coord. X =        63.488572                                                                                
+     Coord. Y =       348.666894                                                                                
+     Diameter =         0.016836                                                                                
+
+Distance: PtV_UL_2(ID:27) between Via_UL_2(ID:26) and Pad_UL_2(ID:25)
+           SC =         0.004949                                                                                
+           DX =        -0.001695                                                                                
+           DY =         0.004649                                                                                
+
+Circle: Pad_UL_1(ID:28, From 180 Pts.) 
+     Coord. X =        63.202732                                                                                
+     Coord. Y =       542.605459                                                                                
+     Diameter =         0.306657                                                                                
+
+Circle: Via_UL_1(ID:29, From 96 Pts.) 
+     Coord. X =        63.202225                                                                                
+     Coord. Y =       542.607959                                                                                
+     Diameter =         0.016715                                                                                
+
+Distance: PtV_UL_1(ID:30) between Via_UL_1(ID:29) and Pad_UL_1(ID:28)
+           SC =         0.002551                                                                                
+           DX =         0.000507                                                                                
+           DY =        -0.002501                                                                                
+
+Circle: Pad_UL_4(ID:31, From 180 Pts.) 
+     Coord. X =       295.714880                                                                                
+     Coord. Y =       542.948218                                                                                
+     Diameter =         0.302172                                                                                
+
+Circle: Via_UL_4(ID:32, From 59 Pts.) 
+     Coord. X =       295.716359                                                                                
+     Coord. Y =       542.944876                                                                                
+     Diameter =         0.016925                                                                                
+
+Distance: PtV_UL_4(ID:33) between Via_UL_4(ID:32) and Pad_UL_4(ID:31)
+           SC =         0.003655                                                                                
+           DX =        -0.001479                                                                                
+           DY =         0.003342                                                                                
+
+Circle: Pad_UL_3(ID:34, From 177 Pts.) 
+     Coord. X =       296.001095                                                                                
+     Coord. Y =       349.009907                                                                                
+     Diameter =         0.304400                                                                                
+
+Circle: Via_UL_3(ID:35, From 89 Pts.) 
+     Coord. X =       296.001992                                                                                
+     Coord. Y =       349.009508                                                                                
+     Diameter =         0.016997                                                                                
+
+Distance: PtV_UL_3(ID:36) between Via_UL_3(ID:35) and Pad_UL_3(ID:34)
+           SC =         0.000981                                                                                
+           DX =        -0.000896                                                                                
+           DY =         0.000398                                                                                
+
+Circle: Pad_UR_2(ID:37, From 176 Pts.) 
+     Coord. X =       306.495696                                                                                
+     Coord. Y =       349.019484                                                                                
+     Diameter =         0.303797                                                                                
+
+Circle: Via_UR_2(ID:38, From 104 Pts.) 
+     Coord. X =       306.495820                                                                                
+     Coord. Y =       349.018349                                                                                
+     Diameter =         0.015952    
+
+Distance: PtV_UR_2(ID:42) between Pad_UR_2(ID:37) and Via_UR_2(ID:38)
+           SC =         0.001142                                                                                
+           DX =         0.000123                                                                                
+           DY =        -0.001136                                                                           
+
+Circle: Pad_UR_1(ID:39, From 169 Pts.) 
+     Coord. X =       306.206312                                                                                
+     Coord. Y =       542.957666                                                                                
+     Diameter =         0.304379                                                                                
+
+Circle: Via_UR_1(ID:40, From 99 Pts.) 
+     Coord. X =       306.209292                                                                                
+     Coord. Y =       542.955117                                                                                
+     Diameter =         0.017366                                                                                
+
+Distance: PtV_UR_1(ID:41) between Via_UR_1(ID:40) and Pad_UR_1(ID:39)
+           SC =         0.003922                                                                                
+           DX =        -0.002980                                                                                
+           DY =         0.002549                                                                                
+
+                                                                               
+
+Circle: Pad_UR_4(ID:43, From 161 Pts.) 
+     Coord. X =       538.724142                                                                                
+     Coord. Y =       543.304495                                                                                
+     Diameter =         0.303173                                                                                
+
+Circle: Via_UR_4(ID:44, From 55 Pts.) 
+     Coord. X =       538.731481                                                                                
+     Coord. Y =       543.308615                                                                                
+     Diameter =         0.017671                                                                                
+
+Distance: PtV_UR_4(ID:45) between Via_UR_4(ID:44) and Pad_UR_4(ID:43)
+           SC =         0.008416                                                                                
+           DX =        -0.007339                                                                                
+           DY =        -0.004120                                                                                
+
+Circle: Pad_UR_3(ID:46, From 159 Pts.) 
+     Coord. X =       539.015838                                                                                
+     Coord. Y =       349.370651                                                                                
+     Diameter =         0.306134                                                                                
+
+Circle: Via_UR_3(ID:47, From 56 Pts.) 
+     Coord. X =       539.016632                                                                                
+     Coord. Y =       349.365465                                                                                
+     Diameter =         0.028678                                                                                
+
+Distance: PtV_UR_3(ID:48) between Via_UR_3(ID:47) and Pad_UR_3(ID:46)
+           SC =         0.005247                                                                                
+           DX =        -0.000794                                                                                
+           DY =         0.005186                                                                                
+
