@@ -37,11 +37,18 @@ class AnalyticsView(BaseView):
         )
         
         if plot_type == "Quiver/Vector Plot":
+            st.markdown("**Pattern Hunter: ABF Distortion Diagnostic**")
+            st.write("Use the sensitivity slider to amplify error vectors. Look for color patterns:")
+            st.write("- 🔴 **RED**: Material expansion/shrinkage (errors point away from/toward center)")
+            st.write("- 🟡 **GOLD**: Lamination twist (errors swirl around center)")
+            st.write("- 🔵 **BLUE**: Global offset (uniform machine misalignment)")
+            
             multiplier = st.slider(
-                "Vector Exaggeration Multiplier",
+                "Vector Exaggeration Multiplier (Sensitivity)",
                 min_value=plot_settings.get('vector_multiplier_min', 1),
-                max_value=plot_settings.get('vector_multiplier_max', 200),
-                value=plot_settings.get('vector_multiplier_default', 50)
+                max_value=plot_settings.get('vector_multiplier_max', 5000),
+                value=plot_settings.get('vector_multiplier_default', 2500),
+                help="Higher values amplify error vectors to reveal spatial distortion patterns"
             )
             fig = plot_quiver(filtered_df, settings, multiplier)
             st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
