@@ -13,6 +13,12 @@ COLUMN_NAMES:
   annular_ring: "Annular Ring"
   location: "Location"
   grid_id: "Grid ID"
+  coord_x: "Coord. X"
+  coord_y: "Coord. Y"
+  total_shift: "SC"
+  item_type: "Type"
+  via_pts: "Via Pts."
+  pad_pts: "Pad Pts."
 
 GRID_MAPPING:
   UL_1: 11
