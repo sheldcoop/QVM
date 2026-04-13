@@ -191,8 +191,7 @@ def main():
         if sub_view == "Quality Control":
             annular_col = col_names.get('annular_ring', 'Annular Ring')
             threshold = tolerances.get('annular_ring_min', 0.0)
-            st.write(f"Highlighting rows where {annular_col} < {threshold}")
-
+            
             # Prepare display dataframe
             display_df = filtered_df.copy()
             
@@ -217,6 +216,73 @@ def main():
             grid_id_col = col_names.get('grid_id', 'Grid ID')
             if grid_id_col in display_df.columns:
                 display_df = display_df.sort_values(by=grid_id_col, ascending=True)
+            
+            # Statistical Summary Panel
+            st.subheader("📊 Statistical Summary")
+            summary_cols = st.columns(5)
+            
+            # Calculate stats for annular ring
+            if annular_col in display_df.columns:
+                ar_min = display_df[annular_col].min()
+                ar_max = display_df[annular_col].max()
+                ar_mean = display_df[annular_col].mean()
+                ar_std = display_df[annular_col].std()
+                fail_count = (display_df[annular_col] < threshold).sum()
+                fail_pct = (fail_count / len(display_df) * 100) if len(display_df) > 0 else 0
+                
+                with summary_cols[0]:
+                    st.metric("Min Annular Ring", f"{ar_min:.3f} µm", delta=f"{ar_min - threshold:.3f}" if ar_min < threshold else None, delta_color="inverse")
+                with summary_cols[1]:
+                    st.metric("Max Annular Ring", f"{ar_max:.3f} µm")
+                with summary_cols[2]:
+                    st.metric("Mean ± StdDev", f"{ar_mean:.3f} ± {ar_std:.3f} µm")
+                with summary_cols[3]:
+                    worst_idx = display_df[annular_col].idxmin()
+                    worst_grid = display_df.loc[worst_idx, grid_id_col] if grid_id_col in display_df.columns else 'N/A'
+                    st.metric("Worst Point", f"Grid {worst_grid}", f"{ar_min:.3f} µm")
+                with summary_cols[4]:
+                    st.metric("Failures", f"{fail_count} ({fail_pct:.1f}%)", 
+                             delta=f"{fail_count} points" if fail_count > 0 else "✓ All Pass",
+                             delta_color="inverse" if fail_count > 0 else "off")
+            
+            st.markdown("---")
+            
+            # Export to Excel button
+            col_left, col_right = st.columns([3, 1])
+            with col_left:
+                st.write(f"Highlighting rows where {annular_col} < {threshold}")
+            with col_right:
+                # Create Excel file in memory
+                from io import BytesIO
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    # Write data with highlighting
+                    display_df_export = display_df.copy()
+                    display_df_export.to_excel(writer, sheet_name='QVM Data', index=False)
+                    
+                    # Get workbook and worksheet
+                    workbook = writer.book
+                    worksheet = writer.sheets['QVM Data']
+                    
+                    # Apply conditional formatting for failed points
+                    from openpyxl.styles import PatternFill
+                    red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
+                    
+                    if annular_col in display_df_export.columns:
+                        ar_col_idx = list(display_df_export.columns).index(annular_col) + 1  # Excel is 1-indexed
+                        for row_idx, value in enumerate(display_df_export[annular_col], start=2):  # start=2 to skip header
+                            if value < threshold:
+                                for col_idx in range(1, len(display_df_export.columns) + 1):
+                                    worksheet.cell(row=row_idx, column=col_idx).fill = red_fill
+                
+                buffer.seek(0)
+                st.download_button(
+                    label="📥 Export to Excel",
+                    data=buffer,
+                    file_name=f"QVM_Quality_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
             
             # Add clarification about Grid ID
             st.info("📍 **Grid ID**: Position on the PCB quadrant (11-14 = Upper Left, 21-24 = Lower Left, 31-34 = Lower Right, 41-44 = Upper Right). First digit = quadrant, second digit = point (1-4). All measurements in **microns (µm)**.")
