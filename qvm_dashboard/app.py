@@ -74,6 +74,10 @@ def main():
     col_names = settings.get('COLUMN_NAMES', {})
     tolerances = settings.get('TOLERANCES', {})
     plot_settings = settings.get('PLOT_SETTINGS', {})
+    chart_colors = settings.get('CHART_COLORS', {})
+    chart_heights = settings.get('CHART_HEIGHTS', {})
+    optical_thresholds = settings.get('OPTICAL_EDGE_THRESHOLDS', {})
+    chart_markers = settings.get('CHART_MARKERS', {})
 
     st.set_page_config(page_title=ui_strings.get('dashboard_title', 'QVM Dashboard'), layout="wide")
     load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"), settings)
@@ -325,7 +329,7 @@ def main():
 
             if plot_type == "Bullseye Scatter":
                 fig = plot_bullseye_scatter(filtered_df, settings)
-                st.plotly_chart(fig, use_container_width=True, height=600)
+                st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
 
             elif plot_type == "Quiver/Vector Plot":
                 multiplier = st.slider(
@@ -335,11 +339,11 @@ def main():
                     value=plot_settings.get('vector_multiplier_default', 50)
                 )
                 fig = plot_quiver(filtered_df, settings, multiplier)
-                st.plotly_chart(fig, use_container_width=True, height=600)
+                st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
 
             elif plot_type == "Heatmap":
                 fig = plot_heatmap(filtered_df, settings)
-                st.plotly_chart(fig, use_container_width=True, height=600)
+                st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
 
         # --- CAM Compensation View ---
         elif sub_view == "CAM Compensation":
@@ -378,13 +382,15 @@ def main():
                 # Define colors based on traffic light logic
                 def get_health_color(points):
                     if pd.isna(points):
-                        return '#999999'
-                    if points > 75:
-                        return '#2ecc71'  # Green - Healthy
-                    elif points >= 40:
-                        return '#f39c12'  # Orange/Yellow - Warning
+                        return chart_colors.get('traffic_light_gray', '#999999')
+                    green_threshold = optical_thresholds.get('green_min', 75)
+                    orange_threshold = optical_thresholds.get('orange_min', 40)
+                    if points > green_threshold:
+                        return chart_colors.get('traffic_light_green', '#2ecc71')
+                    elif points >= orange_threshold:
+                        return chart_colors.get('traffic_light_orange', '#f39c12')
                     else:
-                        return '#e74c3c'  # Red - Critical
+                        return chart_colors.get('traffic_light_red', '#e74c3c')
                 
                 via_data['Color'] = via_data['Point Count'].apply(get_health_color)
                 
@@ -405,10 +411,12 @@ def main():
                     title="Via Health Status by Point Count",
                     xaxis_title="Via ID",
                     yaxis_title="Point Count (Pts.)",
-                    height=550,
+                    height=chart_heights.get('health_status', 550),
                     showlegend=False,
-                    plot_bgcolor='rgba(240, 240, 240, 0.5)',
-                    hovermode='x unified'
+                    plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
+                    hovermode='x unified',
+                    xaxis=dict(showgrid=chart_colors.get('chart_gridlines_visible', False)),
+                    yaxis=dict(showgrid=chart_colors.get('chart_gridlines_visible', False))
                 )
                 
                 st.plotly_chart(fig_via_health, use_container_width=True)
@@ -433,13 +441,15 @@ def main():
                 # Define colors based on traffic light logic
                 def get_health_color_pad(points):
                     if pd.isna(points):
-                        return '#999999'
-                    if points > 75:
-                        return '#2ecc71'  # Green - Healthy
-                    elif points >= 40:
-                        return '#f39c12'  # Orange/Yellow - Warning
+                        return chart_colors.get('traffic_light_gray', '#999999')
+                    green_threshold = optical_thresholds.get('green_min', 75)
+                    orange_threshold = optical_thresholds.get('orange_min', 40)
+                    if points > green_threshold:
+                        return chart_colors.get('traffic_light_green', '#2ecc71')
+                    elif points >= orange_threshold:
+                        return chart_colors.get('traffic_light_orange', '#f39c12')
                     else:
-                        return '#e74c3c'  # Red - Critical
+                        return chart_colors.get('traffic_light_red', '#e74c3c')
                 
                 pad_data['Color'] = pad_data['Point Count'].apply(get_health_color_pad)
                 
@@ -460,10 +470,12 @@ def main():
                     title="Pad Health Status by Point Count",
                     xaxis_title="Pad ID",
                     yaxis_title="Point Count (Pts.)",
-                    height=550,
+                    height=chart_heights.get('health_status', 550),
                     showlegend=False,
-                    plot_bgcolor='rgba(240, 240, 240, 0.5)',
-                    hovermode='x unified'
+                    plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
+                    hovermode='x unified',
+                    xaxis=dict(showgrid=chart_colors.get('chart_gridlines_visible', False)),
+                    yaxis=dict(showgrid=chart_colors.get('chart_gridlines_visible', False))
                 )
                 
                 st.plotly_chart(fig_pad_health, use_container_width=True)
@@ -525,23 +537,24 @@ def main():
                                 y=type_points,
                                 mode='markers+text',
                                 name=f'{item_type} (Individual)',
-                                marker=dict(size=8, opacity=0.7),
+                                marker=dict(size=chart_markers.get('pad_via_scatter_size', 16), opacity=0.7),
                                 text=type_subset['Grid ID'],
                                 textposition='middle center',
-                                textfont=dict(size=8, color='white'),
+                                textfont=dict(size=chart_markers.get('pad_via_text_size', 10), color='white'),
                                 showlegend=False,
                                 hovertemplate='<b>%{customdata}</b><br>Points: %{y:.0f}<extra></extra>',
                                 customdata=hover_text
                             ))
                     
-                    fig_comparison.update_xaxes(tickvals=[0, 1], ticktext=['Pad', 'Via'])
+                    fig_comparison.update_xaxes(tickvals=[0, 1], ticktext=['Pad', 'Via'], showgrid=chart_colors.get('chart_gridlines_visible', False))
                     fig_comparison.update_layout(
                         title="Edge Detection Verification: Pads vs Vias",
                         yaxis_title="Point Count (Pts.)",
-                        height=400,
-                        plot_bgcolor='rgba(240, 240, 240, 0.5)',
+                        height=chart_heights.get('comparison_plot', 400),
+                        plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
                         hovermode='closest',
-                        boxmode='group'
+                        boxmode='group',
+                        yaxis=dict(showgrid=chart_colors.get('chart_gridlines_visible', False))
                     )
                     
                     st.plotly_chart(fig_comparison, use_container_width=True)

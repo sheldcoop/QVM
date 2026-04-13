@@ -68,3 +68,24 @@ FIGURE_SETTINGS:
   margin: 40
   point_marker_size: 35
   point_text_size: 14
+
+CHART_COLORS:
+  traffic_light_green: "#2ecc71"      # Healthy (>75 points)
+  traffic_light_orange: "#f39c12"     # Warning (40-75 points)
+  traffic_light_red: "#e74c3c"        # Critical (<40 points)
+  traffic_light_gray: "#999999"       # Unknown/Missing
+  chart_background: "#FFFFFF"         # Pure white
+  chart_gridlines_visible: false
+
+CHART_HEIGHTS:
+  health_status: 550                  # Via/Pad health bar charts
+  comparison_plot: 400                # Pad vs Via comparison
+  analytics_plot: 600                 # Bullseye, Quiver, Heatmap
+
+OPTICAL_EDGE_THRESHOLDS:
+  green_min: 75                       # Healthy threshold
+  orange_min: 40                      # Warning threshold (below is red)
+
+CHART_MARKERS:
+  pad_via_scatter_size: 16            # Size for Pad vs Via scatter plot dots
+  pad_via_text_size: 10               # Size for Grid ID text on dots
