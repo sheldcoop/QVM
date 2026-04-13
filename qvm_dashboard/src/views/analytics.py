@@ -1,5 +1,5 @@
 """
-Analytics View - Bullseye, Quiver, and Heatmap plot selector
+Analytics View - Quiver and Heatmap plot selector
 Extracted from app.py for modularity and reusability.
 """
 
@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 
 from src.views.base import BaseView
-from src.visuals import plot_bullseye_scatter, plot_quiver, plot_heatmap
+from src.visuals import plot_quiver, plot_heatmap
 
 
 class AnalyticsView(BaseView):
@@ -15,7 +15,6 @@ class AnalyticsView(BaseView):
     AnalyticsView: Provides interactive plot type selection and rendering.
     
     Supported plot types:
-    - Bullseye Scatter: Positional variance visualization
     - Quiver/Vector Plot: Directional shift with configurable exaggeration
     - Heatmap: Measurement distribution across quadrants
     """
@@ -34,14 +33,10 @@ class AnalyticsView(BaseView):
         
         plot_type = st.selectbox(
             "Select Plot Type",
-            ["Bullseye Scatter", "Quiver/Vector Plot", "Heatmap"]
+            ["Quiver/Vector Plot", "Heatmap"]
         )
         
-        if plot_type == "Bullseye Scatter":
-            fig = plot_bullseye_scatter(filtered_df, settings)
-            st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
-        
-        elif plot_type == "Quiver/Vector Plot":
+        if plot_type == "Quiver/Vector Plot":
             multiplier = st.slider(
                 "Vector Exaggeration Multiplier",
                 min_value=plot_settings.get('vector_multiplier_min', 1),

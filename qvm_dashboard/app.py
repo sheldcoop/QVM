@@ -14,7 +14,6 @@ from src.views.process_stability import ProcessStabilityView
 from src.views.quality_control import QualityControlView
 from src.views.optical_edge_confidence import OpticalEdgeConfidenceView
 from src.views.analytics import AnalyticsView
-from src.views.cam_compensation import CAMCompensationView
 from src.views.polar_drift import PolarDriftView
 from src.views.spatial_heatmap import SpatialHeatmapView
 from ui.sidebar import render_sidebar, render_nav_buttons
@@ -172,7 +171,7 @@ def main():
 
         # Sub-level navigation
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics", "CAM Compensation", "Optical Edge Confidence", "Process Stability", "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
+            ["Quality Control", "Analytics", "Optical Edge Confidence", "Process Stability", "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
             state_key="sub_view",
             default="Quality Control",
         )
@@ -190,12 +189,6 @@ def main():
             # Use refactored AnalyticsView (extracted to src/views/analytics.py)
             analytics_view = AnalyticsView(settings, data_processor)
             analytics_view.render(filtered_df, settings=settings)
-
-        # --- CAM Compensation View ---
-        elif sub_view == "CAM Compensation":
-            # Use refactored CAMCompensationView (extracted to src/views/cam_compensation.py)
-            cam_view = CAMCompensationView(settings, data_processor)
-            cam_view.render(filtered_df, settings=settings)
 
         elif sub_view == "Optical Edge Confidence":
             # Use refactored OpticalEdgeConfidenceView (extracted to src/views/optical_edge_confidence.py)
