@@ -405,7 +405,7 @@ def main():
                     title="Via Health Status by Point Count",
                     xaxis_title="Via ID",
                     yaxis_title="Point Count (Pts.)",
-                    height=400,
+                    height=550,
                     showlegend=False,
                     plot_bgcolor='rgba(240, 240, 240, 0.5)',
                     hovermode='x unified'
@@ -460,7 +460,7 @@ def main():
                     title="Pad Health Status by Point Count",
                     xaxis_title="Pad ID",
                     yaxis_title="Point Count (Pts.)",
-                    height=400,
+                    height=550,
                     showlegend=False,
                     plot_bgcolor='rgba(240, 240, 240, 0.5)',
                     hovermode='x unified'
