@@ -63,8 +63,8 @@ COLORS:
   panel_ui_hover: "#d48c46"
 
 FIGURE_SETTINGS:
-  width: 800
-  height: 800
+  width: null
+  height: null
   margin: 40
   point_marker_size: 35
   point_text_size: 14

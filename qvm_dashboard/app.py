@@ -87,6 +87,10 @@ def main():
             accept_multiple_files=True
         )
 
+        if uploaded_files:
+            if st.button("🔄 Run Analysis", type="primary", use_container_width=True):
+                st.session_state['run_analysis'] = True
+
         st.markdown("---")
         material_build_up = st.text_input("Material Build-up", "")
         batch_id = st.text_input("Batch ID", "")
@@ -147,8 +151,12 @@ def main():
                 panel_list = sorted(list(available_panels))
                 if len(panel_list) > 1:
                     panel_list.insert(0, "All")
+                # Create display names with "Panel-" prefix
+                panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
                 st.markdown("**Select Panel**")
-                selected_panel = _nav_buttons(panel_list, state_key="selected_panel", default=panel_list[0])
+                selected_panel_display = _nav_buttons(panel_display, state_key="selected_panel", default=panel_display[0])
+                # Map display back to actual panel ID
+                selected_panel = "All" if selected_panel_display == "All" else selected_panel_display.replace("Panel-", "")
 
             with col2:
                 side_list = sorted(list(available_sides))
@@ -203,7 +211,7 @@ def main():
 
             if plot_type == "Bullseye Scatter":
                 fig = plot_bullseye_scatter(filtered_df, settings)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, height=600)
 
             elif plot_type == "Quiver/Vector Plot":
                 multiplier = st.slider(
@@ -213,11 +221,11 @@ def main():
                     value=plot_settings.get('vector_multiplier_default', 50)
                 )
                 fig = plot_quiver(filtered_df, settings, multiplier)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, height=600)
 
             elif plot_type == "Heatmap":
                 fig = plot_heatmap(filtered_df, settings)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, height=600)
 
         # --- CAM Compensation View ---
         elif sub_view == "CAM Compensation":

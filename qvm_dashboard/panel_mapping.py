@@ -47,8 +47,8 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
     BG_COLOR        = colors.get('background', '#2C3E50')
 
     # --- Figure settings ---
-    FIG_WIDTH       = fig_cfg.get('width', 800)
-    FIG_HEIGHT      = fig_cfg.get('height', 800)
+    FIG_WIDTH       = fig_cfg.get('width') or 800
+    FIG_HEIGHT      = fig_cfg.get('height') or 800
     FIG_MARGIN      = fig_cfg.get('margin', 40)
     MARKER_SIZE     = fig_cfg.get('point_marker_size', 35)
     TEXT_SIZE       = fig_cfg.get('point_text_size', 14)
