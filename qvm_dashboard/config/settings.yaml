@@ -1,0 +1,41 @@
+UI_STRINGS:
+  dashboard_title: "QVM Manufacturing Dashboard"
+  tab_1_name: "Quality Control"
+  tab_2_name: "Analytics"
+  tab_3_name: "CAM Compensation"
+
+COLUMN_NAMES:
+  outer_diameter: "Outer Diameter"
+  inner_diameter: "Inner Diameter"
+  x_distance: "X Distance"
+  y_distance: "Y Distance"
+  ptv_distance: "PtV Distance"
+  annular_ring: "Annular Ring"
+  location: "Location"
+  grid_id: "Grid ID"
+
+GRID_MAPPING:
+  UL_1: 11
+  UL_2: 12
+  UL_3: 13
+  UL_4: 14
+  LL_1: 21
+  LL_2: 22
+  LL_3: 23
+  LL_4: 24
+  UR_1: 31
+  UR_2: 32
+  UR_3: 33
+  UR_4: 34
+  LR_1: 41
+  LR_2: 42
+  LR_3: 43
+  LR_4: 44
+
+TOLERANCES:
+  annular_ring_min: 0.0  # Breakout limit
+
+PLOT_SETTINGS:
+  vector_multiplier_min: 1
+  vector_multiplier_max: 200
+  vector_multiplier_default: 50
