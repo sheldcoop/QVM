@@ -182,18 +182,21 @@ class OpticalEdgeConfidenceView(BaseView):
 
         if panel_score >= 80 and panel_worst10 >= 65 and panel_uncertainty <= 0.25:
             panel_tier = 'Tier A'
-            action = 'Monitor only. Continue current recipe and routine checks.'
+            action = 'Monitor only. Continue current recipe and verify routine optics and registration checks.'
         elif panel_score >= 65 and panel_worst10 >= 50:
             panel_tier = 'Tier B'
-            action = 'Machine check recommended: verify focus, calibration, and optics cleanliness.'
+            action = 'Machine check recommended: inspect optics, lighting, focus, and X/Y calibration.'
         elif panel_score >= 45:
             panel_tier = 'Tier C'
-            action = 'Material/lamination review advised: inspect stack-up behavior and warp/twist factors.'
+            action = 'Material/lamination review advised: inspect stack-up stability, layer bow/warp, and board handling conditions.'
         else:
             panel_tier = 'Tier D'
             action = 'Hold lot and trigger CAM + machine + material joint review before release.'
 
         flagged_count = int((valid_df['Optical Score'] < 65).sum())
+        panel_primary_driver = str(valid_df['Primary Driver'].mode().iloc[0]) if not valid_df['Primary Driver'].mode().empty else 'Unknown'
+        panel_primary_owner, panel_primary_action = OpticalEdgeConfidenceView._driver_to_owner_action(panel_primary_driver)
+        recommended_action = f"{action} Most common driver: {panel_primary_driver}. Suggested owner: {panel_primary_owner}."
 
         # Cleanup helper columns
         valid_df = valid_df.drop(columns=['_pad_norm', '_via_norm', '_ratio_score', '_ptv_score', '_shift_score'])
@@ -207,14 +210,18 @@ class OpticalEdgeConfidenceView(BaseView):
             'quadrant_consistency': quadrant_consistency,
             'panel_confidence': panel_confidence,
             'risk_tier': panel_tier,
-            'recommended_action': action,
+            'recommended_action': recommended_action,
+            'panel_primary_driver': panel_primary_driver,
+            'panel_primary_owner': panel_primary_owner,
+            'panel_primary_action': panel_primary_action,
             'flagged_count': flagged_count,
             'valid_rows': int(len(valid_df)),
             'total_rows': int(total_rows),
             'operator_checklist': [
-                'Verify flagged holes first (lowest score to highest score).',
-                'Confirm optics cleanliness and focus before rerun.',
-                'Escalate to CAM/Material only if machine checks pass.',
+                f'Start by verifying the most frequent driver: {panel_primary_driver}.',
+                'Verify flagged holes first from lowest to highest score.',
+                'Confirm optics cleanliness, focus, and lighting before rerun.',
+                'Escalate to CAM or material review only after machine checks complete.',
             ],
         }
         return valid_df, summary
@@ -230,7 +237,7 @@ class OpticalEdgeConfidenceView(BaseView):
 
         status_label, status_level = OpticalEdgeConfidenceView._tier_to_operator_status(summary.get('risk_tier', 'Tier D'))
         status_text = (
-            f"Shift status: {status_label}. "
+            f"Optical health: {status_label}. "
             f"Confidence {summary.get('panel_confidence', 0.0) * 100:.1f}%. "
             f"Flagged holes: {summary.get('flagged_count', 0)}."
         )
@@ -250,9 +257,11 @@ class OpticalEdgeConfidenceView(BaseView):
         st.caption(
             f"Uncertainty: {summary.get('panel_uncertainty', 1.0) * 100:.1f}% | "
             f"Zone consistency: {summary.get('quadrant_consistency', 0.0) * 100:.1f}% | "
-            f"Flagged holes: {summary.get('flagged_count', 0)}"
+            f"Flagged holes: {summary.get('flagged_count', 0)} | "
+            f"Primary driver: {summary.get('panel_primary_driver', 'Unknown')} | "
+            f"Owner: {summary.get('panel_primary_owner', 'Review')}"
         )
-        st.info(f"Recommended action: {summary.get('recommended_action', 'Review process settings.')}" )
+        st.info(f"Recommended action: {summary.get('recommended_action', 'Review process settings.')}")
 
         checklist = summary.get('operator_checklist', [])
         if checklist:

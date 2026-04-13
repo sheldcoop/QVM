@@ -223,10 +223,12 @@ def main():
             sh_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors)
 
     elif main_view == "Via to Pad":
-        st.info("Via to Pad analytics not yet implemented.")
+        st.markdown("### 🚧 Via to Pad — Coming Soon")
+        st.info("Via-to-pad analytics are being developed. This section will include pad/via matching, edge registration diagnostics, and alignment health metrics in an upcoming release.")
 
     elif main_view == "Alignment":
-        st.info("Alignment analytics not yet implemented.")
+        st.markdown("### 🔧 Alignment — Coming Soon")
+        st.info("Alignment analytics are being developed. This section will include registration skew, machine alignment diagnostics, and system calibration checks soon.")
 
 if __name__ == "__main__":
     main()
