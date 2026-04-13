@@ -75,7 +75,7 @@ button[data-testid="stBaseButton-primary"]:hover {
 /* Secondary (inactive) navigation buttons */
 button[data-testid="stBaseButton-secondary"] {
     background-color: transparent !important;
-    color: var(--text-color, #FFFFFF) !important;
+    color: var(--panel-color) !important;
     border: 1px solid var(--panel-color) !important;
 }
 
