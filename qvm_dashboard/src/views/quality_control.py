@@ -162,6 +162,34 @@ class QualityControlView(BaseView):
             styled_df = styled_df.format(format_dict)
         
         st.dataframe(styled_df, use_container_width=True)
+
+        with st.expander("🔎 What these signals mean", expanded=False):
+            st.markdown(
+                "### 1. PtV Distance\n"
+                "- This is the distance between the pad center and the via center.\n"
+                "- Lower is better: 3 µm means the hole is very close to the pad. 10 µm is already a significant offset.\n"
+                "- Example: if PtV = 8 µm, the via is 8 µm away from the pad center, which is a sign of registration or placement error.\n\n"
+                "### 2. Via Pts. / Pad Pts.\n"
+                "- These are optical edge counts from the inspection system. They are quality indicators, not physical distances.\n"
+                "- Higher is better: more points means the edge is clean and the camera saw a good circle. Low values mean the edge is fuzzy, damaged, or hard to detect.\n"
+                "- Example: Via Pts = 20 and Pad Pts = 25 is okay; Via Pts = 5 with Pad Pts = 22 means the via edge is suspect while the pad edge is still okay.\n"
+                "- If both Via Pts and Pad Pts are low, the hole/image is likely bad overall, and the measured shifts may not be trustworthy.\n\n"
+                "### 3. Annular Ring\n"
+                "- This is calculated in the app as: (Pad diameter / 2) - (Via diameter / 2) - PtV.\n"
+                "- It tells you how much copper remains around the hole after the via is placed.\n"
+                "- Example: if Pad dia = 312 µm, Via dia = 16 µm and PtV = 4 µm, then Annular Ring = 146 µm, which is good.\n"
+                "- If Annular Ring drops below your tolerance, the hole may fail electrically or mechanically, even if the shift numbers look okay.\n\n"
+                "### 4. What each signal can tell you\n"
+                "- High PtV + low annular ring: the hole is displaced and the pad ring is shrinking because of offset. This is often a registration/alignment issue.\n"
+                "- Low PtV + low annular ring: the problem is pad or via geometry (too small pad or too large via), not necessarily placement.\n"
+                "- Low Via Pts + high Pad Pts: the inspection may be failing on the via edge, or the via surface is contaminated. The shift value may be less reliable.\n"
+                "- High SC in one panel quadrant: the distortion is likely field-related, not a single bad hole. This points to the optics, panel mounting, or scanner field rather than only the hole itself.\n\n"
+                "### 5. Example interpretation\n"
+                "- PtV = 5 µm, Via Pts = 22, Pad Pts = 28, Annular Ring = 130 µm: likely good alignment, good edge quality, healthy ring.\n"
+                "- PtV = 12 µm, Via Pts = 24, Pad Pts = 30, Annular Ring = 119 µm: alignment problem is starting; ring is still acceptable but moving toward warning.\n"
+                "- PtV = 3 µm, Via Pts = 7, Pad Pts = 20, Annular Ring = 140 µm: alignment is good, but the via edge quality is bad; the hole may be defective or inspection is unreliable.\n"
+                "- PtV = 9 µm, Via Pts = 16, Pad Pts = 18, Annular Ring = 80 µm: this is a mixed failure. There is both offset and ring loss, so it is a higher-risk hole."
+            )
     
     @staticmethod
     def _highlight_annular_ring(row, col_name, threshold):
