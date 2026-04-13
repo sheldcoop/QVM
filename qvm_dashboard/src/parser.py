@@ -155,21 +155,14 @@ def parse_qvm_content(content: str) -> pd.DataFrame:
             col_names.get('y_distance', 'Shift (DY)'): data['dy'],
         }
         
-        # Create row for Pad with Pad diameter
-        pad_row = base_row.copy()
-        pad_row[col_names.get('outer_diameter', 'Outer Diameter')] = data['pad_diameter']
-        pad_row[col_names.get('inner_diameter', 'Inner Diameter')] = data['via_diameter']
-        pad_row['Type'] = 'Pad'
-        pad_row['Pts.'] = data.get('pad_pts', None)
-        rows.append(pad_row)
-        
-        # Create row for Via with Via diameter
-        via_row = base_row.copy()
-        via_row[col_names.get('outer_diameter', 'Outer Diameter')] = data['via_diameter']
-        via_row[col_names.get('inner_diameter', 'Inner Diameter')] = data['pad_diameter']
-        via_row['Type'] = 'Via'
-        via_row['Pts.'] = data.get('via_pts', None)
-        rows.append(via_row)
+        # Create SINGLE row per location with BOTH Pad and Via measurements
+        row = base_row.copy()
+        row[col_names.get('outer_diameter', 'Pad Diameter')] = data['pad_diameter']
+        row[col_names.get('inner_diameter', 'Via Parameter')] = data['via_diameter']
+        row['Type'] = 'Pad/Via'
+        row['Pad Pts.'] = data.get('pad_pts', None)
+        row['Via Pts.'] = data.get('via_pts', None)
+        rows.append(row)
 
     if not rows:
         raise QVMParseError("Failed to parse complete records from the file.")

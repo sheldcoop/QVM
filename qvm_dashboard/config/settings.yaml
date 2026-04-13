@@ -5,8 +5,8 @@ UI_STRINGS:
   tab_3_name: "CAM Compensation"
 
 COLUMN_NAMES:
-  outer_diameter: "Outer Diameter"
-  inner_diameter: "Inner Diameter"
+  outer_diameter: "Pad Diameter"
+  inner_diameter: "Via Parameter"
   x_distance: "Shift (DX)"
   y_distance: "Shift (DY)"
   ptv_distance: "PtV Distance"
