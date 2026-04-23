@@ -56,6 +56,69 @@ def highlight_annular_ring(row, col_name, threshold):
     return [''] * len(row)
 
 
+def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
+    """Render panel/side scope filters and return filtered DataFrame."""
+    with st.expander("Analysis Scope", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            panel_list = sorted(df['Panel'].unique().tolist())
+            if len(panel_list) > 1:
+                panel_list.insert(0, "All")
+            panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
+            st.markdown("**Select Panel**")
+            sel_display = render_nav_buttons(panel_display, state_key=panel_key, default=panel_display[0])
+            selected_panel = "All" if sel_display == "All" else sel_display.replace("Panel-", "")
+        with col2:
+            side_list = sorted(df['Side'].unique().tolist())
+            if len(side_list) > 1:
+                side_list.insert(0, "Both")
+            st.markdown("**Select Side**")
+            selected_side = render_nav_buttons(side_list, state_key=side_key, default=side_list[0])
+
+    filtered = df.copy()
+    if selected_panel and selected_panel != "All":
+        filtered = filtered[filtered['Panel'] == selected_panel]
+    if selected_side and selected_side != "Both":
+        filtered = filtered[filtered['Side'] == selected_side]
+    return filtered
+
+
+def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
+                      data_processor, col_names: dict, tolerances: dict,
+                      chart_colors: dict, chart_heights: dict, chart_markers: dict,
+                      optical_thresholds: dict, optical_model: dict, process_limits: dict):
+    """Render whichever sub-view is active."""
+    if sub_view == "Quality Control":
+        QualityControlView(settings, data_processor).render(
+            filtered_df, col_names=col_names, tolerances=tolerances)
+
+    elif sub_view == "Analytics":
+        AnalyticsView(settings, data_processor).render(filtered_df, settings=settings)
+
+    elif sub_view == "Optical Edge Confidence":
+        OpticalEdgeConfidenceView(settings, data_processor).render(
+            filtered_df,
+            col_names=col_names,
+            chart_colors=chart_colors,
+            chart_heights=chart_heights,
+            chart_markers=chart_markers,
+            optical_thresholds=optical_thresholds,
+            optical_model=optical_model,
+        )
+
+    elif sub_view == "Process Stability":
+        ProcessStabilityView(settings, data_processor).render(
+            filtered_df, process_limits=process_limits)
+
+    elif sub_view == "Polar Drift (Machine Health)":
+        PolarDriftView(settings, data_processor).render(
+            filtered_df, col_names=col_names, chart_colors=chart_colors, chart_heights=chart_heights)
+
+    elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
+        SpatialHeatmapView(settings, data_processor).render(
+            filtered_df, col_names=col_names, chart_colors=chart_colors)
+
+
 def main():
     settings = load_settings()
     ui_strings = settings.get('UI_STRINGS', {})
@@ -97,7 +160,7 @@ def main():
 
     # --- Top-Level Navigation ---
     main_view = render_nav_buttons(
-        ["Panel Map", "Analysis", "Alignment"],
+        ["Panel Map", "Pad to Via", "Via to Pad", "Alignment"],
         state_key="main_view",
         default="Panel Map",
     )
@@ -113,41 +176,17 @@ def main():
 
     master_df = pd.concat(all_data, ignore_index=True)
 
-    if main_view == "Analysis":
-        # --- Process type selector (only shown when multiple types are uploaded) ---
-        process_types = sorted(master_df['Process'].unique().tolist())
-        if len(process_types) > 1:
-            st.markdown("**Measurement Type**")
-            selected_process = render_nav_buttons(process_types, state_key="selected_process", default=process_types[0])
-        else:
-            selected_process = process_types[0]
+    # ------------------------------------------------------------------ #
+    #  PAD TO VIA — all 6 sub-views (has absolute coordinates)            #
+    # ------------------------------------------------------------------ #
+    if main_view == "Pad to Via":
+        ptv_df = master_df[~master_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
 
-        analysis_df = master_df[master_df['Process'] == selected_process].copy()
-        st.markdown(f"### {selected_process}")
+        if ptv_df.empty:
+            st.info("Please upload a Pad-to-Via file (e.g. 'Post PFC_Pad to Via_Panel 20_F.txt').")
+            return
 
-        # --- Scope filters ---
-        with st.expander("Analysis Scope", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                panel_list = sorted(analysis_df['Panel'].unique().tolist())
-                if len(panel_list) > 1:
-                    panel_list.insert(0, "All")
-                panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
-                st.markdown("**Select Panel**")
-                selected_panel_display = render_nav_buttons(panel_display, state_key="selected_panel", default=panel_display[0])
-                selected_panel = "All" if selected_panel_display == "All" else selected_panel_display.replace("Panel-", "")
-            with col2:
-                side_list = sorted(analysis_df['Side'].unique().tolist())
-                if len(side_list) > 1:
-                    side_list.insert(0, "Both")
-                st.markdown("**Select Side**")
-                selected_side = render_nav_buttons(side_list, state_key="selected_side", default=side_list[0])
-
-        filtered_df = analysis_df.copy()
-        if selected_panel and selected_panel != "All":
-            filtered_df = filtered_df[filtered_df['Panel'] == selected_panel]
-        if selected_side and selected_side != "Both":
-            filtered_df = filtered_df[filtered_df['Side'] == selected_side]
+        filtered_df = _scope_filters(ptv_df, panel_key="ptv_panel", side_key="ptv_side")
 
         if filtered_df.empty:
             st.warning("No data matches the selected filters.")
@@ -155,59 +194,53 @@ def main():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- Sub-view navigation (all 6 for every file type) ---
         sub_view = render_nav_buttons(
             ["Quality Control", "Analytics", "Optical Edge Confidence",
              "Process Stability", "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
-            state_key="sub_view",
+            state_key="ptv_sub_view",
             default="Quality Control",
         )
-
         st.markdown("---")
 
-        coord_x_col = col_names.get('coord_x', 'Coord. X')
-        has_coordinates = filtered_df[coord_x_col].notna().any()
+        _render_sub_views(
+            filtered_df, sub_view, settings, data_processor,
+            col_names, tolerances, chart_colors, chart_heights,
+            chart_markers, optical_thresholds, optical_model, process_limits,
+        )
 
-        if sub_view == "Quality Control":
-            qc_view = QualityControlView(settings, data_processor)
-            qc_view.render(filtered_df, col_names=col_names, tolerances=tolerances)
+    # ------------------------------------------------------------------ #
+    #  VIA TO PAD — 3 sub-views only (no absolute coordinates)            #
+    # ------------------------------------------------------------------ #
+    elif main_view == "Via to Pad":
+        vtp_df = master_df[master_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
 
-        elif sub_view == "Analytics":
-            if not has_coordinates:
-                st.info("Coordinate data (Coord. X / Coord. Y) is not available for this file type. Analytics requires coordinate measurements.")
-            else:
-                analytics_view = AnalyticsView(settings, data_processor)
-                analytics_view.render(filtered_df, settings=settings)
+        if vtp_df.empty:
+            st.info("Please upload a Via-to-Pad file (e.g. 'Via to Pad_Panel 25_F.txt').")
+            return
 
-        elif sub_view == "Optical Edge Confidence":
-            oec_view = OpticalEdgeConfidenceView(settings, data_processor)
-            oec_view.render(
-                filtered_df,
-                col_names=col_names,
-                chart_colors=chart_colors,
-                chart_heights=chart_heights,
-                chart_markers=chart_markers,
-                optical_thresholds=optical_thresholds,
-                optical_model=optical_model,
-            )
+        filtered_vtp = _scope_filters(vtp_df, panel_key="vtp_panel", side_key="vtp_side")
 
-        elif sub_view == "Process Stability":
-            ps_view = ProcessStabilityView(settings, data_processor)
-            ps_view.render(filtered_df, process_limits=process_limits)
+        if filtered_vtp.empty:
+            st.warning("No data matches the selected filters.")
+            return
 
-        elif sub_view == "Polar Drift (Machine Health)":
-            if not has_coordinates:
-                st.info("Coordinate data (Coord. X / Coord. Y) is not available for this file type. Polar Drift requires coordinate measurements.")
-            else:
-                pd_view = PolarDriftView(settings, data_processor)
-                pd_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors, chart_heights=chart_heights)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
-            if not has_coordinates:
-                st.info("Coordinate data (Coord. X / Coord. Y) is not available for this file type. Spatial Heatmap requires coordinate measurements.")
-            else:
-                sh_view = SpatialHeatmapView(settings, data_processor)
-                sh_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors)
+        # Analytics / Polar Drift / Spatial Heatmap require absolute coordinates
+        # which Via-to-Pad files do not contain — those views are intentionally
+        # excluded here as they would produce meaningless results without position data.
+        sub_view = render_nav_buttons(
+            ["Quality Control", "Process Stability", "Optical Edge Confidence"],
+            state_key="vtp_sub_view",
+            default="Quality Control",
+        )
+        st.markdown("---")
+
+        _render_sub_views(
+            filtered_vtp, sub_view, settings, data_processor,
+            col_names, tolerances, chart_colors, chart_heights,
+            chart_markers, optical_thresholds, optical_model, process_limits,
+        )
 
     elif main_view == "Alignment":
         st.markdown("### Alignment — Coming Soon")
