@@ -1,0 +1,179 @@
+
+         Element          Actual         Nominal         Deviat.         Up Tol.        Low Tol.       Pass/Fail
+                                                        (TP Dev)        (TP Tol)                                
+Circle: Via[1,1][1,1](ID:7, From 107 Pts.) 
+     Diameter =         0.019730                                                                                
+
+Circle: Pad[1,1][1,1](ID:8, From 25 Pts.) 
+     Diameter =         0.361984                                                                                
+
+Distance: VtP[1,1][1,1](ID:9) between Pad[1,1][1,1](ID:8) and Via[1,1][1,1](ID:7)
+           SC =         0.004525                                                                                
+           DX =        -0.001962                                                                                
+           DY =         0.004077                                                                                
+
+Circle: Via[1,1][1,2](ID:11, From 102 Pts.) 
+     Diameter =         0.019913                                                                                
+
+Circle: Pad[1,1][1,2](ID:12, From 29 Pts.) 
+     Diameter =         0.364799                                                                                
+
+Distance: VtP[1,1][1,2](ID:13) between Pad[1,1][1,2](ID:12) and Via[1,1][1,2](ID:11)
+           SC =         0.002404                                                                                
+           DX =        -0.001563                                                                                
+           DY =         0.001827                                                                                
+
+Circle: Via[1,1][2,1](ID:15, From 48 Pts.) 
+     Diameter =         0.018553                                                                                
+
+Circle: Pad[1,1][2,1](ID:16, From 29 Pts.) 
+     Diameter =         0.365465                                                                                
+
+Distance: VtP[1,1][2,1](ID:17) between Pad[1,1][2,1](ID:16) and Via[1,1][2,1](ID:15)
+           SC =         0.006027                                                                                
+           DX =        -0.002285                                                                                
+           DY =         0.005577                                                                                
+
+Circle: Via[1,1][2,2](ID:19, From 67 Pts.) 
+     Diameter =         0.019664                                                                                
+
+Circle: Pad[1,1][2,2](ID:20, From 30 Pts.) 
+     Diameter =         0.363192                                                                                
+
+Distance: VtP[1,1][2,2](ID:21) between Pad[1,1][2,2](ID:20) and Via[1,1][2,2](ID:19)
+           SC =         0.004073                                                                                
+           DX =         0.000597                                                                                
+           DY =         0.004030                                                                                
+
+Circle: Via[1,2][1,1](ID:23, From 77 Pts.) 
+     Diameter =         0.019420                                                                                
+
+Circle: Pad[1,2][1,1](ID:24, From 37 Pts.) 
+     Diameter =         0.364346                                                                                
+
+Distance: VtP[1,2][1,1](ID:25) between Pad[1,2][1,1](ID:24) and Via[1,2][1,1](ID:23)
+           SC =         0.005788                                                                                
+           DX =        -0.003850                                                                                
+           DY =         0.004322                                                                                
+
+Circle: Via[1,2][1,2](ID:27, From 52 Pts.) 
+     Diameter =         0.018677                                                                                
+
+Circle: Pad[1,2][1,2](ID:28, From 31 Pts.) 
+     Diameter =         0.366327                                                                                
+
+Distance: VtP[1,2][1,2](ID:29) between Pad[1,2][1,2](ID:28) and Via[1,2][1,2](ID:27)
+           SC =         0.006332                                                                                
+           DX =        -0.003196                                                                                
+           DY =         0.005466                                                                                
+
+Circle: Via[1,2][2,1](ID:31, From 57 Pts.) 
+     Diameter =         0.020031                                                                                
+
+Circle: Pad[1,2][2,1](ID:32, From 31 Pts.) 
+     Diameter =         0.364497                                                                                
+
+Distance: VtP[1,2][2,1](ID:33) between Pad[1,2][2,1](ID:32) and Via[1,2][2,1](ID:31)
+           SC =         0.005457                                                                                
+           DX =        -0.003190                                                                                
+           DY =         0.004427                                                                                
+
+Circle: Via[1,2][2,2](ID:35, From 95 Pts.) 
+     Diameter =         0.019540                                                                                
+
+Circle: Pad[1,2][2,2](ID:36, From 28 Pts.) 
+     Diameter =         0.368462                                                                                
+
+Distance: VtP[1,2][2,2](ID:37) between Pad[1,2][2,2](ID:36) and Via[1,2][2,2](ID:35)
+           SC =         0.003430                                                                                
+           DX =        -0.001922                                                                                
+           DY =         0.002840                                                                                
+
+Circle: Via[2,1][1,1](ID:39, From 60 Pts.) 
+     Diameter =         0.019289                                                                                
+
+Circle: Pad[2,1][1,1](ID:40, From 27 Pts.) 
+     Diameter =         0.363794                                                                                
+
+Distance: VtP[2,1][1,1](ID:41) between Pad[2,1][1,1](ID:40) and Via[2,1][1,1](ID:39)
+           SC =         0.004233                                                                                
+           DX =        -0.001652                                                                                
+           DY =         0.003897                                                                                
+
+Circle: Via[2,1][1,2](ID:43, From 54 Pts.) 
+     Diameter =         0.019616                                                                                
+
+Circle: Pad[2,1][1,2](ID:44, From 28 Pts.) 
+     Diameter =         0.364342                                                                                
+
+Distance: VtP[2,1][1,2](ID:45) between Pad[2,1][1,2](ID:44) and Via[2,1][1,2](ID:43)
+           SC =         0.002898                                                                                
+           DX =         0.000124                                                                                
+           DY =         0.002895                                                                                
+
+Circle: Via[2,1][2,1](ID:47, From 74 Pts.) 
+     Diameter =         0.019547                                                                                
+
+Circle: Pad[2,1][2,1](ID:48, From 26 Pts.) 
+     Diameter =         0.361722                                                                                
+
+Distance: VtP[2,1][2,1](ID:49) between Pad[2,1][2,1](ID:48) and Via[2,1][2,1](ID:47)
+           SC =         0.003272                                                                                
+           DX =         0.001761                                                                                
+           DY =         0.002758                                                                                
+
+Circle: Via[2,1][2,2](ID:51, From 118 Pts.) 
+     Diameter =         0.019375                                                                                
+
+Circle: Pad[2,1][2,2](ID:52, From 33 Pts.) 
+     Diameter =         0.363200                                                                                
+
+Distance: VtP[2,1][2,2](ID:53) between Pad[2,1][2,2](ID:52) and Via[2,1][2,2](ID:51)
+           SC =         0.003453                                                                                
+           DX =         0.001350                                                                                
+           DY =         0.003177                                                                                
+
+Circle: Via[2,2][1,1](ID:55, From 116 Pts.) 
+     Diameter =         0.018318                                                                                
+
+Circle: Pad[2,2][1,1](ID:56, From 31 Pts.) 
+     Diameter =         0.365774                                                                                
+
+Distance: VtP[2,2][1,1](ID:57) between Pad[2,2][1,1](ID:56) and Via[2,2][1,1](ID:55)
+           SC =         0.004299                                                                                
+           DX =        -0.003117                                                                                
+           DY =         0.002961                                                                                
+
+Circle: Via[2,2][1,2](ID:59, From 96 Pts.) 
+     Diameter =         0.020185                                                                                
+
+Circle: Pad[2,2][1,2](ID:60, From 30 Pts.) 
+     Diameter =         0.367984                                                                                
+
+Distance: VtP[2,2][1,2](ID:61) between Pad[2,2][1,2](ID:60) and Via[2,2][1,2](ID:59)
+           SC =         0.002525                                                                                
+           DX =         0.002400                                                                                
+           DY =         0.000785                                                                                
+
+Circle: Via[2,2][2,1](ID:63, From 56 Pts.) 
+     Diameter =         0.018687                                                                                
+
+Circle: Pad[2,2][2,1](ID:64, From 25 Pts.) 
+     Diameter =         0.364458                                                                                
+
+Distance: VtP[2,2][2,1](ID:65) between Pad[2,2][2,1](ID:64) and Via[2,2][2,1](ID:63)
+           SC =         0.002357                                                                                
+           DX =        -0.000658                                                                                
+           DY =         0.002263                                                                                
+
+Circle: Via[2,2][2,2](ID:67, From 60 Pts.) 
+     Diameter =         0.019753                                                                                
+
+Circle: Pad[2,2][2,2](ID:68, From 29 Pts.) 
+     Diameter =         0.366944                                                                                
+
+Distance: VtP[2,2][2,2](ID:69) between Pad[2,2][2,2](ID:68) and Via[2,2][2,2](ID:67)
+           SC =         0.000677                                                                                
+           DX =         0.000616                                                                                
+           DY =        -0.000281                                                                                
+
