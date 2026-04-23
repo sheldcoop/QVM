@@ -137,29 +137,33 @@ def main():
     master_df = pd.concat(all_data, ignore_index=True)
 
     if main_view == "Pad to Via":
+        ptv_df = master_df[~master_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
+
+        if ptv_df.empty:
+            st.info("Please upload a Pad-to-Via QVM text file to view this analysis.")
+            return
+
         # Expander for Scope
         with st.expander("Analysis Scope", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
-                panel_list = sorted(list(available_panels))
+                panel_list = sorted(ptv_df['Panel'].unique().tolist())
                 if len(panel_list) > 1:
                     panel_list.insert(0, "All")
-                # Create display names with "Panel-" prefix
                 panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
                 st.markdown("**Select Panel**")
                 selected_panel_display = render_nav_buttons(panel_display, state_key="selected_panel", default=panel_display[0])
-                # Map display back to actual panel ID
                 selected_panel = "All" if selected_panel_display == "All" else selected_panel_display.replace("Panel-", "")
 
             with col2:
-                side_list = sorted(list(available_sides))
+                side_list = sorted(ptv_df['Side'].unique().tolist())
                 if len(side_list) > 1:
                     side_list.insert(0, "Both")
                 st.markdown("**Select Side**")
                 selected_side = render_nav_buttons(side_list, state_key="selected_side", default=side_list[0])
 
         # Filter Data
-        filtered_df = master_df.copy()
+        filtered_df = ptv_df.copy()
         if selected_panel and selected_panel != "All":
             filtered_df = filtered_df[filtered_df['Panel'] == selected_panel]
         if selected_side and selected_side != "Both":
