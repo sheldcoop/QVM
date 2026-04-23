@@ -23,6 +23,17 @@ def get_rounded_rect_path(x0: float, y0: float, x1: float, y1: float, r: float) 
     )
 
 
+def _build_vtp_key(block_index: int) -> str:
+    """Convert a 0-15 block index back to its Via-to-Pad array notation [r,c][x,y]."""
+    quadrant = block_index // 4        # 0=LL, 1=UL, 2=LR, 3=UR → maps to [1,1],[1,2],[2,1],[2,2]
+    position = block_index % 4         # 0-3 within quadrant
+    quad_map = {0: (1, 1), 1: (1, 2), 2: (2, 1), 3: (2, 2)}
+    pos_map  = {0: (1, 1), 1: (1, 2), 2: (2, 1), 3: (2, 2)}
+    qr, qc = quad_map[quadrant]
+    pr, pc = pos_map[position]
+    return f"[{qr},{qc}][{pr},{pc}]"
+
+
 def create_four_quarters_view(settings: dict) -> go.Figure:
     pv = settings.get('PANEL_VIEW', {})
     colors = settings.get('COLORS', {})
@@ -96,22 +107,34 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
             layer='below',
         ))
 
+    # --- Hover lookup: grid_id → (named_location, vtp_array_key) ---
+    grid_mapping = settings.get('GRID_MAPPING', {})
+    positional_mapping = settings.get('POSITIONAL_MAPPING', [])
+    # Reverse GRID_MAPPING: int(grid_id) → "LL_2"
+    id_to_name = {int(v): k for k, v in grid_mapping.items()}
+    # Reverse POSITIONAL_MAPPING: int(grid_id) → "[1,1][1,1]"
+    id_to_vtp = {int(gid): _build_vtp_key(idx) for idx, gid in enumerate(positional_mapping)}
+
     # --- Grid Points ---
-    point_x, point_y, point_text = [], [], []
+    point_x, point_y, point_text, point_hover = [], [], [], []
     margin_x = quad_width  * POINT_MARGIN
     margin_y = quad_height * POINT_MARGIN
 
     def add_points(prefix, x_start, y_start):
         coords = [
-            (x_start + margin_x,             y_start + quad_height - margin_y),  # 1: Top-Left
-            (x_start + margin_x,             y_start + margin_y),                 # 2: Bottom-Left
+            (x_start + margin_x,              y_start + quad_height - margin_y),  # 1: Top-Left
+            (x_start + margin_x,              y_start + margin_y),                 # 2: Bottom-Left
             (x_start + quad_width - margin_x, y_start + margin_y),                # 3: Bottom-Right
             (x_start + quad_width - margin_x, y_start + quad_height - margin_y),  # 4: Top-Right
         ]
         for i, (px, py) in enumerate(coords, start=1):
+            gid = int(f"{prefix}{i}")
             point_x.append(px)
             point_y.append(py)
-            point_text.append(f"{prefix}{i}")
+            point_text.append(str(gid))
+            named = id_to_name.get(gid, "")
+            vtp = id_to_vtp.get(gid, "")
+            point_hover.append(f"<b>Grid ID:</b> {gid}<br><b>Location:</b> {named}<br><b>VtP Index:</b> {vtp}")
 
     # Counter-Clockwise factory mapping: 1=UL, 2=LL, 3=LR, 4=UR
     add_points('1', origins['UL'][0], origins['UL'][1])
@@ -129,7 +152,8 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
         textposition='middle center',
         marker=dict(size=MARKER_SIZE, color='white', line=dict(color=GRID_COLOR, width=2)),
         textfont=dict(size=TEXT_SIZE, color='black', family='Arial Black'),
-        hoverinfo='none',
+        hovertemplate="%{customdata}<extra></extra>",
+        customdata=point_hover,
     ))
 
     fig.update_layout(
