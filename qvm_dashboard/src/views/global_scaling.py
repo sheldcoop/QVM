@@ -37,8 +37,8 @@ class GlobalScalingView(BaseView):
     def render(self, filtered_df: pd.DataFrame, **kwargs) -> None:
         gs_cfg      = self.settings.get('GLOBAL_SCALING', {})
         corners_cfg = gs_cfg.get('corners', {})
-        rng         = float(gs_cfg.get('slider_range_mm', 0.05))
-        step        = float(gs_cfg.get('slider_step_mm', 0.0001))
+        rng_um      = float(gs_cfg.get('slider_range_mm', 0.05)) * 1000   # ±50 µm
+        step_um     = float(gs_cfg.get('slider_step_mm', 0.0001)) * 1000  # 0.1 µm
         exag_def    = int(gs_cfg.get('exaggeration_default', 2000))
         exag_min    = int(gs_cfg.get('exaggeration_min', 100))
         exag_max    = int(gs_cfg.get('exaggeration_max', 10000))
@@ -64,32 +64,33 @@ class GlobalScalingView(BaseView):
             nom_x = float(cfg.get('x', 0.0))
             nom_y = float(cfg.get('y', 0.0))
 
-            # Auto-populate from file
+            # Auto-populate from file (file values are in mm → convert to µm for display)
             match = filtered_df[pd.to_numeric(filtered_df[grid_col], errors='coerce') == gid]
             if not match.empty:
-                file_dx = float(match[dx_col].iloc[0])
-                file_dy = float(match[dy_col].iloc[0])
+                file_dx_um = float(match[dx_col].iloc[0]) * 1000
+                file_dy_um = float(match[dy_col].iloc[0]) * 1000
                 note = f"Grid {gid} · from file"
             else:
-                file_dx, file_dy = 0.0, 0.0
+                file_dx_um, file_dy_um = 0.0, 0.0
                 note = f"Grid {gid} · **not found in upload**"
 
             with col_ui:
                 st.markdown(f"**{label}** — {note}")
-                dx_val = st.number_input(
-                    f"DX {label} (mm)",
-                    min_value=-rng, max_value=rng,
-                    value=file_dx, step=step, format="%.4f",
+                dx_um = st.number_input(
+                    f"DX {label} (µm)",
+                    min_value=-rng_um, max_value=rng_um,
+                    value=file_dx_um, step=step_um, format="%.1f",
                     key=f"gs_dx_{label}",
                 )
-                dy_val = st.number_input(
-                    f"DY {label} (mm)",
-                    min_value=-rng, max_value=rng,
-                    value=file_dy, step=step, format="%.4f",
+                dy_um = st.number_input(
+                    f"DY {label} (µm)",
+                    min_value=-rng_um, max_value=rng_um,
+                    value=file_dy_um, step=step_um, format="%.1f",
                     key=f"gs_dy_{label}",
                 )
 
-            inputs[label] = {'nom_x': nom_x, 'nom_y': nom_y, 'dx': dx_val, 'dy': dy_val}
+            # Math engine works in mm
+            inputs[label] = {'nom_x': nom_x, 'nom_y': nom_y, 'dx': dx_um / 1000, 'dy': dy_um / 1000}
 
         st.markdown("---")
 
