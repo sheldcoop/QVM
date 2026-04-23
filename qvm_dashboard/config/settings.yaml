@@ -56,6 +56,20 @@ GRID_MAPPING:
   UR_3: 43
   UR_4: 44
 
+GLOBAL_SCALING:
+  # Nominal design coordinates (mm) for the 4 outermost corner fiducials.
+  # These are exact inset targets — NOT the panel edge coordinates.
+  corners:
+    UL: { grid_id: 14, x: 63.2,  y: 542.9 }
+    UR: { grid_id: 44, x: 538.8, y: 543.1 }
+    LL: { grid_id: 24, x: 63.4,  y: 105.0 }
+    LR: { grid_id: 34, x: 538.9, y: 105.1 }
+  slider_range_mm: 0.0500   # ± range for DX/DY number inputs
+  slider_step_mm:  0.0001   # Step resolution (0.1 µm)
+  exaggeration_default: 2000
+  exaggeration_min:      100
+  exaggeration_max:    10000
+
 TOLERANCES:
   annular_ring_min: 0.0  # Breakout limit
 
