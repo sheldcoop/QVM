@@ -409,6 +409,156 @@ def get_panel_image_path() -> str:
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_dir, 'assets', 'panel_background.png')
 
+def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
+    """
+    Clean DX/DY scatter for Via-to-Pad registration.
+    Each point is one fiducial site labeled with its location name.
+    """
+    col_names = settings.get('COLUMN_NAMES', {})
+    chart_colors = settings.get('CHART_COLORS', {})
+
+    dx_col = col_names.get('x_distance', 'Shift (DX)')
+    dy_col = col_names.get('y_distance', 'Shift (DY)')
+    sc_col = col_names.get('ptv_distance', 'PtV Distance')
+    loc_col = col_names.get('location', 'Location')
+    grid_col = col_names.get('grid_id', 'Grid ID')
+
+    work = df[[dx_col, dy_col, sc_col, loc_col, grid_col]].dropna().copy()
+    work['dx_um'] = work[dx_col] * 1000
+    work['dy_um'] = work[dy_col] * 1000
+    work['sc_um'] = work[sc_col] * 1000
+
+    bg = chart_colors.get('chart_background', '#FFFFFF')
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=work['dx_um'],
+        y=work['dy_um'],
+        mode='markers+text',
+        marker=dict(
+            size=14,
+            color=work['sc_um'],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title='SC (µm)', thickness=14),
+            line=dict(width=1, color='rgba(0,0,0,0.35)'),
+        ),
+        text=work[loc_col],
+        textposition='top center',
+        textfont=dict(size=9),
+        customdata=work[[grid_col, 'sc_um', 'dx_um', 'dy_um']].values,
+        hovertemplate=(
+            '<b>%{text}</b><br>'
+            'Grid ID: %{customdata[0]}<br>'
+            'SC: %{customdata[1]:.2f} µm<br>'
+            'DX: %{customdata[2]:.2f} µm<br>'
+            'DY: %{customdata[3]:.2f} µm<br>'
+            '<extra></extra>'
+        ),
+        showlegend=False,
+    ))
+
+    # Light crosshairs at origin
+    fig.add_hline(y=0, line=dict(color='rgba(150,150,150,0.4)', width=1))
+    fig.add_vline(x=0, line=dict(color='rgba(150,150,150,0.4)', width=1))
+
+    pad = max(work[['dx_um', 'dy_um']].abs().max().max() * 0.25, 1.0)
+    spread = max(work[['dx_um', 'dy_um']].abs().max().max() + pad, 5.0)
+
+    fig.update_layout(
+        title='DX vs DY Registration Scatter — Via-to-Pad',
+        xaxis=dict(title='DX Shift (µm)', zeroline=False, showgrid=True,
+                   scaleanchor='y', scaleratio=1,
+                   range=[-spread, spread]),
+        yaxis=dict(title='DY Shift (µm)', zeroline=False, showgrid=True,
+                   range=[-spread, spread]),
+        plot_bgcolor=bg,
+        hovermode='closest',
+        height=550,
+    )
+    return fig
+
+
+def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
+    """
+    Per-fiducial-site SC bar chart for Via-to-Pad registration.
+
+    Bars are ordered by Grid ID (UL → LL → LR → UR) and colored by the same
+    traffic-light thresholds as the bullseye, making it easy to identify which
+    specific sites are worst.
+    """
+    col_names = settings.get('COLUMN_NAMES', {})
+    chart_colors = settings.get('CHART_COLORS', {})
+    vtp_cfg = settings.get('VTP_REGISTRATION', {})
+
+    sc_col = col_names.get('ptv_distance', 'PtV Distance')
+    loc_col = col_names.get('location', 'Location')
+    grid_col = col_names.get('grid_id', 'Grid ID')
+
+    ring_green = float(vtp_cfg.get('ring_green_um', 50.0))
+    ring_orange = float(vtp_cfg.get('ring_orange_um', 96.0))
+    bar_y_max = float(vtp_cfg.get('bar_y_max_um', 50.0))
+    bar_y_dtick = float(vtp_cfg.get('bar_y_dtick_um', 5.0))
+
+    work = df[[sc_col, loc_col, grid_col]].dropna().copy()
+    work['sc_um'] = work[sc_col] * 1000
+    work[grid_col] = pd.to_numeric(work[grid_col], errors='coerce')
+    work = work.dropna(subset=[grid_col]).sort_values(grid_col)
+    work[grid_col] = work[grid_col].astype(int).astype(str)
+
+    def _bar_color(sc: float) -> str:
+        if sc <= ring_green:
+            return chart_colors.get('traffic_light_green', '#2ecc71')
+        if sc <= ring_orange:
+            return chart_colors.get('traffic_light_orange', '#f39c12')
+        return chart_colors.get('traffic_light_red', '#e74c3c')
+
+    work['color'] = work['sc_um'].apply(_bar_color)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=work[loc_col],
+        y=work['sc_um'],
+        marker_color=work['color'],
+        marker_line=dict(width=1, color='rgba(0,0,0,0.3)'),
+        customdata=work[[grid_col, 'sc_um']].values,
+        hovertemplate=(
+            '<b>%{x}</b><br>'
+            'Grid ID: %{customdata[0]}<br>'
+            'SC: %{customdata[1]:.2f} µm<br>'
+            '<extra></extra>'
+        ),
+        showlegend=False,
+    ))
+
+    # Threshold lines
+    fig.add_hline(
+        y=ring_green,
+        line=dict(color=chart_colors.get('traffic_light_green', '#2ecc71'), width=1.5, dash='dash'),
+        annotation_text=f'Pass limit {ring_green:.0f} µm',
+        annotation_position='right',
+        annotation_font_size=10,
+    )
+    fig.add_hline(
+        y=ring_orange,
+        line=dict(color=chart_colors.get('traffic_light_orange', '#f39c12'), width=1.5, dash='dot'),
+        annotation_text=f'Warn limit {ring_orange:.0f} µm',
+        annotation_position='right',
+        annotation_font_size=10,
+    )
+
+    bg = chart_colors.get('chart_background', '#FFFFFF')
+    fig.update_layout(
+        title='Registration SC per Fiducial Site (ordered by Grid ID: UL → LL → LR → UR)',
+        xaxis=dict(title='Fiducial Site', showgrid=False),
+        yaxis=dict(title='SC Distance (µm)', range=[0, bar_y_max], dtick=bar_y_dtick, showgrid=True),
+        plot_bgcolor=bg,
+        hovermode='x unified',
+        height=450,
+    )
+    return fig
+
+
 def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
     """
     Create a Bullseye Scatter plot of Shift (DX) vs Shift (DY).

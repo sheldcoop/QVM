@@ -10,6 +10,7 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 from src.views.base import BaseView
+from src.utils import convert_to_microns
 
 
 class QualityControlView(BaseView):
@@ -45,7 +46,7 @@ class QualityControlView(BaseView):
         cols_to_drop = [col for col in ['Panel', 'Side'] if col in display_df.columns]
         display_df = display_df.drop(columns=cols_to_drop)
         
-        # Convert all measurements from mm to microns (multiply by 1000)
+        # Convert all measurements from mm to microns
         measurement_cols = [
             col_names.get('outer_diameter', 'Outer Diameter'),
             col_names.get('inner_diameter', 'Inner Diameter'),
@@ -53,11 +54,9 @@ class QualityControlView(BaseView):
             col_names.get('total_shift', 'SC'),
             col_names.get('x_distance', 'Shift (DX)'),
             col_names.get('y_distance', 'Shift (DY)'),
-            col_names.get('annular_ring', 'Annular Ring')
+            col_names.get('annular_ring', 'Annular Ring'),
         ]
-        for col in measurement_cols:
-            if col in display_df.columns:
-                display_df[col] = (display_df[col] * 1000).round(3)
+        display_df = convert_to_microns(display_df, measurement_cols)
         
         # Sort by Grid ID ascending
         if grid_id_col in display_df.columns:
@@ -110,7 +109,7 @@ class QualityControlView(BaseView):
             buffer = BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 # Write data with highlighting
-                display_df_export = display_df.copy()
+                display_df_export = display_df.dropna(axis=1, how='all').copy()
                 display_df_export.to_excel(writer, sheet_name='QVM Data', index=False)
                 
                 # Get workbook and worksheet

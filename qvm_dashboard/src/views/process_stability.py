@@ -62,10 +62,10 @@ class ProcessStabilityView(BaseView):
             ucl: Upper Control Limit in mm
             lcl: Lower Control Limit in mm
         """
+        via_half_band = round((ucl - nominal) * 1000, 2)
         st.markdown("### 🔴 Via Drill Consistency")
-        st.caption("Mechanical/Laser Health - Tight control ±1.5µm")
-        
-        outer_diam_col = self.col_names.get('outer_diameter', 'Outer Diameter')
+        st.caption(f"Mechanical/Laser Health - Tight control ±{via_half_band:.1f} µm")
+
         location_col = self.col_names.get('location', 'Location')
         
         # Filter and prepare data
@@ -139,10 +139,10 @@ class ProcessStabilityView(BaseView):
             ucl: Upper Control Limit in mm
             lcl: Lower Control Limit in mm
         """
+        pad_half_band = round((ucl - nominal) * 1000, 2)
         st.markdown("### 🟠 Pad Etch Consistency")
-        st.caption("Chemistry Health - Tight control ±3.2µm")
-        
-        outer_diam_col = self.col_names.get('outer_diameter', 'Outer Diameter')
+        st.caption(f"Chemistry Health - Tight control ±{pad_half_band:.1f} µm")
+
         location_col = self.col_names.get('location', 'Location')
         
         # Filter and prepare data

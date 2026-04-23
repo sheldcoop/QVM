@@ -12,6 +12,17 @@ import hashlib
 from src.views.base import BaseView
 
 
+def _traffic_light_color(points, chart_colors: dict, optical_thresholds: dict) -> str:
+    """Return a traffic-light hex color for a given optical edge point count."""
+    if pd.isna(points):
+        return chart_colors.get('traffic_light_gray', '#999999')
+    if points > optical_thresholds.get('green_min', 75):
+        return chart_colors.get('traffic_light_green', '#2ecc71')
+    if points >= optical_thresholds.get('orange_min', 40):
+        return chart_colors.get('traffic_light_orange', '#f39c12')
+    return chart_colors.get('traffic_light_red', '#e74c3c')
+
+
 class OpticalEdgeConfidenceView(BaseView):
     """
     OpticalEdgeConfidenceView: Analyzes Point Count (Pts.) metric for optical inspection.
@@ -353,21 +364,9 @@ class OpticalEdgeConfidenceView(BaseView):
         
         if not via_data.empty:
             via_data.columns = ['Via ID', 'Grid ID', 'Point Count']
-            
-            # Define colors based on traffic light logic
-            def get_health_color(points):
-                if pd.isna(points):
-                    return chart_colors.get('traffic_light_gray', '#999999')
-                green_threshold = optical_thresholds.get('green_min', 75)
-                orange_threshold = optical_thresholds.get('orange_min', 40)
-                if points > green_threshold:
-                    return chart_colors.get('traffic_light_green', '#2ecc71')
-                elif points >= orange_threshold:
-                    return chart_colors.get('traffic_light_orange', '#f39c12')
-                else:
-                    return chart_colors.get('traffic_light_red', '#e74c3c')
-            
-            via_data['Color'] = via_data['Point Count'].apply(get_health_color)
+            via_data['Color'] = via_data['Point Count'].apply(
+                lambda pts: _traffic_light_color(pts, chart_colors, optical_thresholds)
+            )
             
             # Create bar chart with Grid ID labels
             fig_via_health = go.Figure(data=[
@@ -406,21 +405,9 @@ class OpticalEdgeConfidenceView(BaseView):
         
         if not pad_data.empty:
             pad_data.columns = ['Pad ID', 'Grid ID', 'Point Count']
-            
-            # Define colors based on traffic light logic
-            def get_health_color_pad(points):
-                if pd.isna(points):
-                    return chart_colors.get('traffic_light_gray', '#999999')
-                green_threshold = optical_thresholds.get('green_min', 75)
-                orange_threshold = optical_thresholds.get('orange_min', 40)
-                if points > green_threshold:
-                    return chart_colors.get('traffic_light_green', '#2ecc71')
-                elif points >= orange_threshold:
-                    return chart_colors.get('traffic_light_orange', '#f39c12')
-                else:
-                    return chart_colors.get('traffic_light_red', '#e74c3c')
-            
-            pad_data['Color'] = pad_data['Point Count'].apply(get_health_color_pad)
+            pad_data['Color'] = pad_data['Point Count'].apply(
+                lambda pts: _traffic_light_color(pts, chart_colors, optical_thresholds)
+            )
             
             # Create bar chart with Grid ID labels
             fig_pad_health = go.Figure(data=[

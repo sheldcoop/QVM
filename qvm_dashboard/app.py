@@ -3,9 +3,6 @@ import pandas as pd
 import yaml
 import os
 from pathlib import Path
-import plotly.graph_objects as go
-import numpy as np
-
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
 from src.calculations import calculate_annular_ring, calculate_cam_compensation
 from src.visuals import plot_bullseye_scatter, plot_quiver, plot_heatmap
@@ -16,6 +13,7 @@ from src.views.optical_edge_confidence import OpticalEdgeConfidenceView
 from src.views.analytics import AnalyticsView
 from src.views.polar_drift import PolarDriftView
 from src.views.spatial_heatmap import SpatialHeatmapView
+from src.views.registration_scatter import RegistrationScatterView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from panel_mapping import create_four_quarters_view
 
@@ -47,14 +45,6 @@ def load_css(file_path: str, settings: dict = None) -> None:
         ''', unsafe_allow_html=True)
     except FileNotFoundError:
         pass
-
-def highlight_annular_ring(row, col_name, threshold):
-    if pd.isna(row[col_name]):
-        return [''] * len(row)
-    if row[col_name] < threshold:
-        return ['background-color: #ffcccc; color: #990000; font-weight: bold'] * len(row)
-    return [''] * len(row)
-
 
 def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
     """Render panel/side scope filters and return filtered DataFrame."""
@@ -117,6 +107,9 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
         SpatialHeatmapView(settings, data_processor).render(
             filtered_df, col_names=col_names, chart_colors=chart_colors)
+
+    elif sub_view == "Registration Scatter":
+        RegistrationScatterView(settings, data_processor).render(filtered_df)
 
 
 def main():
@@ -230,7 +223,7 @@ def main():
         # which Via-to-Pad files do not contain — those views are intentionally
         # excluded here as they would produce meaningless results without position data.
         sub_view = render_nav_buttons(
-            ["Quality Control", "Process Stability", "Optical Edge Confidence"],
+            ["Quality Control", "Registration Scatter", "Process Stability", "Optical Edge Confidence"],
             state_key="vtp_sub_view",
             default="Quality Control",
         )

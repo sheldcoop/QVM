@@ -10,6 +10,8 @@ import numpy as np
 from typing import Dict, Tuple, Optional
 import logging
 
+from src.utils import convert_to_microns
+
 logger = logging.getLogger(__name__)
 
 
@@ -137,9 +139,7 @@ class DataProcessor:
             self.col_names.get('annular_ring', 'Annular Ring')
         ]
         
-        for col in measurement_cols:
-            if col in display_df.columns:
-                display_df[col] = (display_df[col] * 1000).round(3)
+        display_df = convert_to_microns(display_df, measurement_cols)
         
         # Sort by Grid ID
         grid_id_col = self.col_names.get('grid_id', 'Grid ID')
