@@ -14,6 +14,7 @@ from src.views.analytics import AnalyticsView
 from src.views.polar_drift import PolarDriftView
 from src.views.spatial_heatmap import SpatialHeatmapView
 from src.views.registration_scatter import RegistrationScatterView
+from src.views.global_scaling import GlobalScalingView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from panel_mapping import create_four_quarters_view
 
@@ -111,6 +112,9 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
     elif sub_view == "Registration Scatter":
         RegistrationScatterView(settings, data_processor).render(filtered_df)
 
+    elif sub_view == "Global Scaling Calculator":
+        GlobalScalingView(settings, data_processor).render(filtered_df)
+
 
 def main():
     settings = load_settings()
@@ -188,8 +192,9 @@ def main():
         st.markdown("<br>", unsafe_allow_html=True)
 
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics", "Optical Edge Confidence",
-             "Process Stability", "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
+            ["Quality Control", "Analytics", "Global Scaling Calculator",
+             "Optical Edge Confidence", "Process Stability",
+             "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
             state_key="ptv_sub_view",
             default="Quality Control",
         )

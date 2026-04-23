@@ -559,6 +559,108 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     return fig
 
 
+def plot_scaling_panel(inputs: Dict, settings: Dict, exaggeration: int) -> go.Figure:
+    """
+    Panel map for the Global Scaling Calculator.
+
+    Draws the panel outline, nominal corner positions (hollow circles), actual
+    positions (solid dots), and exaggerated error arrows.  The exaggeration is
+    applied ONLY to the rendered arrow length — the math engine uses raw values.
+
+    Args:
+        inputs: dict keyed by corner label ('UL','UR','LL','LR'), each with
+                keys 'nom_x', 'nom_y', 'dx', 'dy', 'scale_status'
+        settings: full application settings dict
+        exaggeration: integer multiplier applied to arrow rendering
+    """
+    chart_colors = settings.get('CHART_COLORS', {})
+    bg = chart_colors.get('chart_background', '#FFFFFF')
+
+    status_colors = {
+        'SHRUNK':    chart_colors.get('traffic_light_orange', '#f39c12'),
+        'STRETCHED': chart_colors.get('traffic_light_red',    '#e74c3c'),
+        'NOMINAL':   chart_colors.get('traffic_light_green',  '#2ecc71'),
+    }
+
+    # Derive panel rectangle bounds from the nominal corner positions so all
+    # points are always inside the rectangle regardless of coordinate origin.
+    nom_xs = [c['nom_x'] for c in inputs.values()]
+    nom_ys = [c['nom_y'] for c in inputs.values()]
+    margin = 55.0
+    rect_x0 = min(nom_xs) - margin
+    rect_y0 = min(nom_ys) - margin
+    rect_x1 = max(nom_xs) + margin
+    rect_y1 = max(nom_ys) + margin
+
+    fig = go.Figure()
+
+    # Panel outline
+    fig.add_shape(
+        type='rect', x0=rect_x0, y0=rect_y0, x1=rect_x1, y1=rect_y1,
+        line=dict(color='#555555', width=2),
+        fillcolor='rgba(200,200,200,0.08)',
+    )
+
+    for label, corner in inputs.items():
+        nom_x = corner['nom_x']
+        nom_y = corner['nom_y']
+        dx    = corner['dx']
+        dy    = corner['dy']
+        act_x = nom_x + dx
+        act_y = nom_y + dy
+        color = status_colors.get(corner['scale_status'], '#999999')
+
+        # Nominal position — hollow circle
+        fig.add_trace(go.Scatter(
+            x=[nom_x], y=[nom_y],
+            mode='markers',
+            marker=dict(symbol='circle-open', size=14, color='#555555', line=dict(width=2)),
+            name=f'{label} nominal',
+            hovertemplate=f'<b>{label} Nominal</b><br>X: {nom_x:.3f}<br>Y: {nom_y:.3f}<extra></extra>',
+            showlegend=False,
+        ))
+
+        # Exaggerated arrow: tail at nominal, head at exaggerated actual
+        arr_tip_x = nom_x + dx * exaggeration
+        arr_tip_y = nom_y + dy * exaggeration
+        fig.add_annotation(
+            x=arr_tip_x, y=arr_tip_y,
+            ax=nom_x,    ay=nom_y,
+            xref='x', yref='y', axref='x', ayref='y',
+            text='', showarrow=True,
+            arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
+            arrowcolor=color,
+        )
+
+        # Actual position — solid dot
+        fig.add_trace(go.Scatter(
+            x=[act_x], y=[act_y],
+            mode='markers+text',
+            marker=dict(size=10, color=color),
+            text=[label],
+            textposition='top center',
+            textfont=dict(size=10, color=color),
+            hovertemplate=(
+                f'<b>{label} Actual</b><br>'
+                f'X: {act_x:.4f} mm<br>Y: {act_y:.4f} mm<br>'
+                f'DX: {dx*1000:.2f} µm  DY: {dy*1000:.2f} µm<extra></extra>'
+            ),
+            showlegend=False,
+        ))
+
+    fig.update_layout(
+        title=f'Corner Displacement Map  ({exaggeration}× exaggeration)',
+        xaxis=dict(title='X (mm)', range=[rect_x0 - 10, rect_x1 + 10], showgrid=False, zeroline=False),
+        yaxis=dict(title='Y (mm)', range=[rect_y0 - 10, rect_y1 + 10], showgrid=False, zeroline=False,
+                   scaleanchor='x', scaleratio=1),
+        plot_bgcolor=bg,
+        hovermode='closest',
+        height=540,
+        margin=dict(l=40, r=40, t=50, b=40),
+    )
+    return fig
+
+
 def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
     """
     Create a Bullseye Scatter plot of Shift (DX) vs Shift (DY).
