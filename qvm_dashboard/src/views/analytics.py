@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 
 from src.views.base import BaseView
-from src.visuals import plot_quiver, plot_heatmap, diagnose_root_cause_confidence, calculate_cam_compensation_summary
+from src.visuals import plot_quiver, plot_heatmap, diagnose_root_cause_confidence, calculate_cam_compensation_summary, _get_valid_grid_ids
 
 
 class AnalyticsView(BaseView):
@@ -67,13 +67,7 @@ class AnalyticsView(BaseView):
             st.warning(f"Grid ID warning: Column '{grid_col}' is missing from data.")
             return
 
-        configured_grid_ids = {str(v) for v in settings.get('GRID_MAPPING', {}).values()}
-        valid_grid_ids = configured_grid_ids or {
-            '11', '12', '13', '14',
-            '21', '22', '23', '24',
-            '31', '32', '33', '34',
-            '41', '42', '43', '44',
-        }
+        valid_grid_ids = _get_valid_grid_ids(settings)
 
         grid_series = filtered_df[grid_col]
         missing_count = int(grid_series.isna().sum())

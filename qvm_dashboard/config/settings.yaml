@@ -142,6 +142,30 @@ CHART_MARKERS:
   pad_via_scatter_size: 16            # Size for Pad vs Via scatter plot dots
   pad_via_text_size: 10               # Size for Grid ID text on dots
 
+VTP_REGISTRATION:
+  # Tolerance ring radii in µm for the bullseye scatter.
+  # Derived from: pad_radius(156.25) - via_radius(10) - IPC_Class2_AR_min(50) = 96µm hard limit.
+  ring_green_um: 50.0      # Inner zone — process healthy, no action needed
+  ring_orange_um: 96.0     # Outer zone — approaching annular ring limit, monitor closely
+  # Anything beyond ring_orange_um is red — annular ring at risk
+  point_size: 12           # Scatter point size
+  bar_y_max_um: 20.0         # Site bar chart Y-axis ceiling
+  bar_y_dtick_um: 5.0        # Site bar chart Y-axis tick interval
+  bullseye_axis_half_um: 20.0  # Half-width of bullseye X/Y axes (rings outside this range are clipped but still drawn)
+  pad_nominal_um: 312.5    # Nominal pad diameter for caption / ring derivation
+  via_nominal_um: 20.0     # Nominal via diameter for caption / ring derivation
+  annular_ring_min_um: 50.0  # IPC minimum annular ring used to derive ring_orange_um
+  ipc_standard: "IPC-6012 Class 2"
+
+POLAR_DRIFT:
+  center_score_ref_um: 10.0      # Median reference for centre health score (lower = tighter)
+  tail_score_ref_um: 16.0        # P90 reference for tail health score
+  spread_ref_um: 12.0            # Spread reference for confidence calculation
+  outlier_ratio_threshold: 0.20  # Fraction of outliers that triggers spike-dominant classification
+  concentration_high: 0.70       # Rayleigh concentration above which directional drift is flagged
+  concentration_low: 0.20        # Rayleigh concentration below which broad-ring pattern is flagged
+  drift_p90_threshold_um: 8.0    # P90 threshold paired with low concentration for broad-ring detection
+
 PROCESS_STABILITY:
   via_nominal_diameter: 0.020         # Nominal Via diameter in mm (20 µm)
   via_ucl: 0.0215                     # Upper Control Limit for Vias (21.5 µm)

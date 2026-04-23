@@ -26,7 +26,7 @@ class PolarDriftView(BaseView):
     """
 
     @staticmethod
-    def _compute_polar_health(plot_df: pd.DataFrame) -> dict:
+    def _compute_polar_health(plot_df: pd.DataFrame, settings: dict = None) -> dict:
         """Compute operator-facing polar health metrics and status."""
         if plot_df.empty:
             return {
@@ -55,6 +55,15 @@ class PolarDriftView(BaseView):
         median_um = float(np.median(mags))
         p90_um = float(np.percentile(mags, 90))
 
+        pd_cfg = (settings or {}).get('POLAR_DRIFT', {})
+        center_ref = float(pd_cfg.get('center_score_ref_um', 10.0))
+        tail_ref = float(pd_cfg.get('tail_score_ref_um', 16.0))
+        spread_ref = float(pd_cfg.get('spread_ref_um', 12.0))
+        outlier_ratio_threshold = float(pd_cfg.get('outlier_ratio_threshold', 0.20))
+        concentration_high = float(pd_cfg.get('concentration_high', 0.70))
+        concentration_low = float(pd_cfg.get('concentration_low', 0.20))
+        drift_p90_threshold = float(pd_cfg.get('drift_p90_threshold_um', 8.0))
+
         # Robust outlier detection using IQR.
         q1, q3 = np.percentile(mags, [25, 75])
         iqr = float(q3 - q1)
@@ -62,8 +71,8 @@ class PolarDriftView(BaseView):
         outlier_mask = mags > outlier_threshold
         outlier_ratio = float(np.mean(outlier_mask)) if len(mags) else 0.0
 
-        center_score = float(np.clip(1.0 - (median_um / 10.0), 0.0, 1.0))
-        tail_score = float(np.clip(1.0 - (p90_um / 16.0), 0.0, 1.0))
+        center_score = float(np.clip(1.0 - (median_um / center_ref), 0.0, 1.0))
+        tail_score = float(np.clip(1.0 - (p90_um / tail_ref), 0.0, 1.0))
         stability_score = float(np.clip(1.0 - outlier_ratio, 0.0, 1.0))
         # Prefer moderate concentration; both random and ultra-aligned can be suspicious.
         direction_balance = float(np.clip(1.0 - abs(concentration - 0.45) / 0.45, 0.0, 1.0))
@@ -78,7 +87,7 @@ class PolarDriftView(BaseView):
         confidence = 100.0 * (
             0.45 * stability_score +
             0.30 * float(np.clip(len(mags) / 16.0, 0.0, 1.0)) +
-            0.25 * float(np.clip(1.0 - (p90_um - median_um) / 12.0, 0.0, 1.0))
+            0.25 * float(np.clip(1.0 - (p90_um - median_um) / spread_ref, 0.0, 1.0))
         )
 
         if health_score >= 80:
@@ -98,11 +107,11 @@ class PolarDriftView(BaseView):
             status_level = 'error'
             action = 'Hold run and escalate to machine + process engineering team.'
 
-        if outlier_ratio >= 0.20:
-            summary = 'Spike-dominant behavior detected (possible contamination or sporadic vision miss).' 
-        elif concentration >= 0.70:
+        if outlier_ratio >= outlier_ratio_threshold:
+            summary = 'Spike-dominant behavior detected (possible contamination or sporadic vision miss).'
+        elif concentration >= concentration_high:
             summary = f'Directional drift bias detected near {dominant_angle:.0f}° (possible alignment skew).'
-        elif concentration <= 0.20 and p90_um > 8.0:
+        elif concentration <= concentration_low and p90_um > drift_p90_threshold:
             summary = 'Broad ring-like spread detected (possible circularity/beam profile issue).'
         else:
             summary = 'Drift cloud appears balanced with no dominant failure signature.'
@@ -187,7 +196,7 @@ class PolarDriftView(BaseView):
             st.warning("No shift data available for polar analysis")
             return
 
-        metrics = self._compute_polar_health(plot_df)
+        metrics = self._compute_polar_health(plot_df, self.settings)
         self._render_operator_summary(metrics, plot_df)
 
         # Mark outliers for visual separation.

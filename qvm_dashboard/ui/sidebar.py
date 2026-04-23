@@ -29,11 +29,6 @@ def render_sidebar(settings: Dict) -> Dict:
             accept_multiple_files=True
         )
         
-        # Run analysis button
-        if uploaded_files:
-            if st.button("🔄 Run Analysis", type="primary", use_container_width=True):
-                st.session_state['run_analysis'] = True
-        
         st.markdown("---")
         
         # Meta data inputs
