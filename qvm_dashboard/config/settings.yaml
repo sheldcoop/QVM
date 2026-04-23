@@ -20,6 +20,24 @@ COLUMN_NAMES:
   via_pts: "Via Pts."
   pad_pts: "Pad Pts."
 
+POSITIONAL_MAPPING:
+  - "22"   # block 0  → LL_2
+  - "21"   # block 1  → LL_1
+  - "23"   # block 2  → LL_3
+  - "24"   # block 3  → LL_4
+  - "12"   # block 4  → UL_2
+  - "11"   # block 5  → UL_1
+  - "13"   # block 6  → UL_3
+  - "14"   # block 7  → UL_4
+  - "32"   # block 8  → LR_2
+  - "31"   # block 9  → LR_1
+  - "33"   # block 10 → LR_3
+  - "34"   # block 11 → LR_4
+  - "42"   # block 12 → UR_2
+  - "41"   # block 13 → UR_1
+  - "43"   # block 14 → UR_3
+  - "44"   # block 15 → UR_4
+
 GRID_MAPPING:
   UL_1: 11
   UL_2: 12

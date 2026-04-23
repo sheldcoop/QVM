@@ -107,6 +107,7 @@ def main():
                 # Tag dataframe with meta
                 df['Panel'] = panel_id
                 df['Side'] = side_id
+                df['Process'] = filename_info.get('Process', 'Unknown')
 
                 available_panels.add(panel_id)
                 available_sides.add(side_id)
@@ -223,8 +224,69 @@ def main():
             sh_view.render(filtered_df, col_names=col_names, chart_colors=chart_colors)
 
     elif main_view == "Via to Pad":
-        st.markdown("### 🚧 Via to Pad — Coming Soon")
-        st.info("Via-to-pad analytics are being developed. This section will include pad/via matching, edge registration diagnostics, and alignment health metrics in an upcoming release.")
+        coord_x_col = col_names.get('coord_x', 'Coord. X')
+
+        # Filter to Via-to-Pad files only (no coordinates)
+        vtp_df = master_df[master_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
+
+        if vtp_df.empty:
+            st.info("Please upload a Via-to-Pad QVM text file (e.g. 'Via to Pad_Panel 25_F.txt') to view this analysis.")
+            return
+
+        with st.expander("Analysis Scope", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                panel_list = sorted(vtp_df['Panel'].unique().tolist())
+                if len(panel_list) > 1:
+                    panel_list.insert(0, "All")
+                panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
+                st.markdown("**Select Panel**")
+                selected_panel_display = render_nav_buttons(panel_display, state_key="vtp_selected_panel", default=panel_display[0])
+                selected_panel = "All" if selected_panel_display == "All" else selected_panel_display.replace("Panel-", "")
+            with col2:
+                side_list = sorted(vtp_df['Side'].unique().tolist())
+                if len(side_list) > 1:
+                    side_list.insert(0, "Both")
+                st.markdown("**Select Side**")
+                selected_side = render_nav_buttons(side_list, state_key="vtp_selected_side", default=side_list[0])
+
+        filtered_vtp = vtp_df.copy()
+        if selected_panel and selected_panel != "All":
+            filtered_vtp = filtered_vtp[filtered_vtp['Panel'] == selected_panel]
+        if selected_side and selected_side != "Both":
+            filtered_vtp = filtered_vtp[filtered_vtp['Side'] == selected_side]
+
+        if filtered_vtp.empty:
+            st.warning("No data matches the selected filters.")
+            return
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        sub_view = render_nav_buttons(
+            ["Quality Control", "Process Stability", "Optical Edge Confidence"],
+            state_key="vtp_sub_view",
+            default="Quality Control",
+        )
+
+        st.markdown("---")
+
+        if sub_view == "Quality Control":
+            qc_view = QualityControlView(settings, data_processor)
+            qc_view.render(filtered_vtp, col_names=col_names, tolerances=tolerances)
+        elif sub_view == "Process Stability":
+            ps_view = ProcessStabilityView(settings, data_processor)
+            ps_view.render(filtered_vtp, process_limits=process_limits)
+        elif sub_view == "Optical Edge Confidence":
+            oec_view = OpticalEdgeConfidenceView(settings, data_processor)
+            oec_view.render(
+                filtered_vtp,
+                col_names=col_names,
+                chart_colors=chart_colors,
+                chart_heights=chart_heights,
+                chart_markers=chart_markers,
+                optical_thresholds=optical_thresholds,
+                optical_model=optical_model,
+            )
 
     elif main_view == "Alignment":
         st.markdown("### 🔧 Alignment — Coming Soon")
