@@ -95,7 +95,7 @@ def test_bullseye_point_colors_match_traffic_light_bands():
     colors = list(trace.marker.color)
     sc_um = df['PtV Distance'].values * 1000
 
-    expected = [_traffic_light_color(sc, 5.0, 7.5, 10.0, 10.0, _SETTINGS['CHART_COLORS']) for sc in sc_um]
+    expected = [_traffic_light_color(sc, 2.5, 5.0, 7.5, 10.0, _SETTINGS['CHART_COLORS']) for sc in sc_um]
     assert colors == expected
 
 

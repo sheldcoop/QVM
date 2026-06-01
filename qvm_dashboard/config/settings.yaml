@@ -122,16 +122,16 @@ CAM_COMPENSATION:
   min_valid_ratio: 0.75
 
 VTP_REGISTRATION:
-  # Bullseye uses five zones defined by three concentric rings:
+  # Bullseye uses five zones defined by four concentric rings:
   #   inside ring_exceptional ..... BLUE — exceptional
   #   ring_exceptional..ring_excellent — DARK GREEN — excellent
-  #   ring_excellent..ring_good ... GREEN — acceptable
-  #   ring_good..ring_warning .... ORANGE — warning
-  #   outside ring_warning ........ RED — fail
-  ring_exceptional_um: 5.0    # Exceptional boundary (blue ring)
-  ring_excellent_um: 7.5      # Excellent boundary (dark green ring)
-  ring_good_um: 10.0          # Acceptable boundary (green ring)
-  ring_warning_um: 10.0       # Warning boundary; > this is fail (red)
+  #   ring_excellent..ring_good .. GREEN — good
+  #   ring_good..ring_acceptable . ORANGE — acceptable
+  #   outside ring_acceptable .... RED — fail
+  ring_exceptional_um: 2.5      # Exceptional boundary (blue ring)
+  ring_excellent_um: 5.0        # Excellent boundary (dark green ring)
+  ring_good_um: 7.5             # Good boundary (green ring)
+  ring_acceptable_um: 10.0      # Acceptable boundary; > this is fail (red)
   point_size: 12           # Scatter point size
   bullseye_axis_half_um: 15.0  # Half-width of bullseye X/Y axes (fixed; outliers report in summary annotation)
   pad_nominal_um: 312.5    # Nominal pad diameter for caption
