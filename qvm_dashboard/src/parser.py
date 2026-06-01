@@ -87,10 +87,10 @@ def _parse_blocks(content: str, settings: dict, file_type: str) -> pd.DataFrame:
                     'pad_pts': int(pts_m.group(1)) if pts_m else None,
                 }
                 state = "PAD_X"
-            elif not is_ptv and s.startswith("Circle: Via["):
+            elif not is_ptv and s.startswith("Circle: Via_"):
                 pts_m = pts_re.search(s)
                 current = {
-                    'location': s.split('(')[0].replace('Circle: Via', '').strip(),
+                    'location': s.split('(')[0].replace('Circle: Via_', '').strip(),
                     'via_pts': int(pts_m.group(1)) if pts_m else None,
                 }
                 state = "VIA_DIAM"
@@ -139,7 +139,7 @@ def _parse_blocks(content: str, settings: dict, file_type: str) -> pd.DataFrame:
                 state = "PAD_HEADER" if not is_ptv else state
 
         elif state == "PAD_HEADER":
-            if s.startswith("Circle: Pad["):
+            if s.startswith("Circle: Pad_"):
                 pts_m = pts_re.search(s)
                 current['pad_pts'] = int(pts_m.group(1)) if pts_m else None
                 state = "PAD_DIAM"
@@ -197,7 +197,11 @@ def parse_qvm_content(content: str) -> pd.DataFrame:
         QVMParseError: If the file format is invalid or expected data is missing.
     """
     settings = load_settings()
-    file_type = 'ViaToVia' if 'VtP[' in content else 'PadToVia'
+    # Via-to-Pad files: Via circle always appears before Pad circle in each block
+    first_via = content.find('Circle: Via_')
+    first_pad = content.find('Circle: Pad_')
+    via_first = first_via != -1 and (first_pad == -1 or first_via < first_pad)
+    file_type = 'ViaToVia' if (via_first or 'VtP[' in content) else 'PadToVia'
     return _parse_blocks(content, settings, file_type)
 
 
