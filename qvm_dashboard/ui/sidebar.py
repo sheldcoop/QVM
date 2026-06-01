@@ -31,9 +31,15 @@ def render_sidebar(settings: Dict) -> Dict:
         
         st.markdown("---")
         
-        # Meta data inputs
-        material_build_up = st.text_input("Material Build-up", "")
-        batch_id = st.text_input("Batch ID", "")
+        # Meta data inputs inside expander
+        with st.expander("📋 Job Information", expanded=False):
+            project_name = st.text_input("Project Name", "")
+            part_number  = st.text_input("Part Number", "")
+            lot_number   = st.text_input("Lot Number", "")
+            lot_name     = st.text_input("Lot Name", "")
+            build_up     = st.text_input("Build Up", "")
+            process      = st.text_input("Process", "")
+            panel        = st.text_input("Panel", "")
         
         # Process Stability Limits Configuration
         st.markdown("---")
@@ -44,8 +50,13 @@ def render_sidebar(settings: Dict) -> Dict:
         # Store all sidebar data
         sidebar_config = {
             'uploaded_files': uploaded_files,
-            'material_build_up': material_build_up,
-            'batch_id': batch_id,
+            'project_name':  project_name,
+            'part_number':   part_number,
+            'lot_number':    lot_number,
+            'lot_name':      lot_name,
+            'build_up':      build_up,
+            'process':       process,
+            'panel':         panel,
             'process_limits': process_config
         }
         

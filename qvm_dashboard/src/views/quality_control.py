@@ -35,6 +35,7 @@ class QualityControlView(BaseView):
         col_names = kwargs.get('col_names', {})
         tolerances = kwargs.get('tolerances', {})
         is_via_to_pad = kwargs.get('is_via_to_pad', False)
+        meta = kwargs.get('meta', {})
         
         annular_col = col_names.get('annular_ring', 'Annular Ring')
         threshold = tolerances.get('annular_ring_min', 0.0)
@@ -52,14 +53,18 @@ class QualityControlView(BaseView):
 
         # Prepare display dataframe
         if is_via_to_pad:
-            # Keep ONLY the 6 required columns for Via-to-Pad
+            # Keep ONLY the 6 required columns for Via-to-Pad display
+            # Also carry Side for Excel export (dropped from display later)
             vtp_keep = [c for c in [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, sc_col]
                         if c in filtered_df.columns]
             display_df = filtered_df[vtp_keep].copy()
+            # Keep Side separately for Excel (not shown in UI table)
+            _side_series = filtered_df['Side'].values if 'Side' in filtered_df.columns else None
         else:
             display_df = filtered_df.copy()
             cols_to_drop = [col for col in ['Panel', 'Side'] if col in display_df.columns]
             display_df = display_df.drop(columns=cols_to_drop)
+            _side_series = None
 
         # Convert measurements from mm to microns (applies to whichever columns exist)
         measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
@@ -120,9 +125,28 @@ class QualityControlView(BaseView):
             buffer = BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 if is_via_to_pad:
-                    # display_df already has only the 6 required columns — just rename Grid ID
-                    display_df_export = display_df.rename(columns={grid_id_col: 'Location Grid ID'}).copy()
-                    display_df_export.to_excel(writer, sheet_name='Via to Pad', index=False)
+                    _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
+
+                    # --- Sheet 1: "Via to Pad" — Grid ID + measurements only ---
+                    sheet1 = display_df.copy()
+                    sheet1 = sheet1.rename(columns={grid_id_col: 'Grid ID'})
+                    sheet1.to_excel(writer, sheet_name='Via to Pad', index=False)
+
+                    # --- Sheet 2: "Report" — metadata + Fiducial + measurements ---
+                    sheet2 = display_df.copy()
+                    grid_str2 = sheet2[grid_id_col].astype(str).str.zfill(2)
+                    sheet2.insert(0, 'Fiducial_Number', grid_str2.str[1].astype(int))
+                    sheet2.insert(0, 'Fiducial',        grid_str2.str[0].map(_region_map))
+                    sheet2.insert(0, 'Side',        _side_series if _side_series is not None else '')
+                    sheet2.insert(0, 'Panel',       meta.get('panel', ''))
+                    sheet2.insert(0, 'Process',     meta.get('process', ''))
+                    sheet2.insert(0, 'Buildup',     meta.get('build_up', ''))
+                    sheet2.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
+                    sheet2.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
+                    sheet2.insert(0, 'Part_Number', meta.get('part_number', ''))
+                    sheet2.insert(0, 'Project_Name', meta.get('project_name', ''))
+                    sheet2 = sheet2.drop(columns=[grid_id_col])
+                    sheet2.to_excel(writer, sheet_name='Report', index=False)
                 else:
                     # Pad-to-Via: full export with conditional red highlighting
                     display_df_export = display_df.dropna(axis=1, how='all').copy()
