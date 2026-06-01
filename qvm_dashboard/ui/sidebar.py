@@ -40,7 +40,6 @@ def render_sidebar(settings: Dict) -> Dict:
             process      = st.text_input("Process", "")
             panel        = st.text_input("Panel", "")
         
-        # Store all sidebar data
         sidebar_config = {
             'uploaded_files': uploaded_files,
             'project_name':  project_name,
@@ -50,9 +49,8 @@ def render_sidebar(settings: Dict) -> Dict:
             'build_up':      build_up,
             'process':       process,
             'panel':         panel,
-            'process_limits': {}
         }
-        
+
         return sidebar_config
 
 

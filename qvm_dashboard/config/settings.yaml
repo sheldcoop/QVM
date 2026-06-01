@@ -56,20 +56,6 @@ GRID_MAPPING:
   UR_3: 43
   UR_4: 44
 
-GLOBAL_SCALING:
-  # Nominal design coordinates (mm) for the 4 outermost corner fiducials.
-  # These are exact inset targets — NOT the panel edge coordinates.
-  corners:
-    UL: { grid_id: 14, x: 63.2,  y: 542.9 }
-    UR: { grid_id: 44, x: 538.8, y: 543.1 }
-    LL: { grid_id: 24, x: 63.4,  y: 105.0 }
-    LR: { grid_id: 34, x: 538.9, y: 105.1 }
-  slider_range_mm: 0.0500   # ± range for DX/DY number inputs
-  slider_step_mm:  0.0001   # Step resolution (0.1 µm)
-  exaggeration_default: 2000
-  exaggeration_min:      100
-  exaggeration_max:    10000
-
 TOLERANCES:
   annular_ring_min: 0.0  # Breakout limit
 
@@ -128,33 +114,11 @@ CHART_HEIGHTS:
   comparison_plot: 400                # Pad vs Via comparison
   analytics_plot: 600                 # Bullseye, Quiver, Heatmap
 
-OPTICAL_EDGE_THRESHOLDS:
-  green_min: 75                       # Healthy threshold
-  orange_min: 40                      # Warning threshold (below is red)
-
-OPTICAL_CONFIDENCE_MODEL:
-  pad_pts_target: 180.0               # Expected good Pad edge points
-  via_pts_target: 70.0                # Expected good Via edge points
-  pad_pts_floor: 40.0                 # Floor where Pad confidence collapses
-  via_pts_floor: 25.0                 # Floor where Via confidence collapses
-  pad_via_ratio_tolerance: 0.30       # Allowed deviation from expected Via/Pad ratio
-  ptv_ref_um: 6.0                     # PtV reference scale (µm) for score decay
-  shift_ref_um: 6.0                   # Shift reference scale (µm) for score decay
-  weight_pad: 0.25
-  weight_via: 0.25
-  weight_ratio: 0.15
-  weight_ptv: 0.20
-  weight_shift: 0.15
-
 CAM_COMPENSATION:
   monitor_ppm: 50.0
   caution_ppm: 120.0
   min_valid_points: 12
   min_valid_ratio: 0.75
-
-CHART_MARKERS:
-  pad_via_scatter_size: 16            # Size for Pad vs Via scatter plot dots
-  pad_via_text_size: 10               # Size for Grid ID text on dots
 
 VTP_REGISTRATION:
   # Tolerance ring radii in µm for the bullseye scatter.
@@ -171,32 +135,4 @@ VTP_REGISTRATION:
   annular_ring_min_um: 50.0  # IPC minimum annular ring used to derive ring_orange_um
   ipc_standard: "IPC-6012 Class 2"
 
-POLAR_DRIFT:
-  center_score_ref_um: 10.0      # Median reference for centre health score (lower = tighter)
-  tail_score_ref_um: 16.0        # P90 reference for tail health score
-  spread_ref_um: 12.0            # Spread reference for confidence calculation
-  outlier_ratio_threshold: 0.20  # Fraction of outliers that triggers spike-dominant classification
-  concentration_high: 0.70       # Rayleigh concentration above which directional drift is flagged
-  concentration_low: 0.20        # Rayleigh concentration below which broad-ring pattern is flagged
-  drift_p90_threshold_um: 8.0    # P90 threshold paired with low concentration for broad-ring detection
 
-PROCESS_STABILITY:
-  via_nominal_diameter: 0.020         # Nominal Via diameter in mm (20 µm)
-  via_ucl: 0.0215                     # Upper Control Limit for Vias (21.5 µm)
-  via_lcl: 0.0185                     # Lower Control Limit for Vias (18.5 µm)
-  via_y_min: 0.015                    # Via Y-axis min (15 µm)
-  via_y_max: 0.035                    # Via Y-axis max (35 µm)
-  
-  pad_nominal_diameter: 0.3125        # Nominal Pad diameter in mm (312.5 µm)
-  pad_ucl: 0.3157                     # Upper Control Limit for Pads (315.7 µm)
-  pad_lcl: 0.3093                     # Lower Control Limit for Pads (309.3 µm)
-  pad_y_min: 0.300                    # Pad Y-axis min (300 µm)
-  pad_y_max: 0.325                    # Pad Y-axis max (325 µm)
-  
-  marker_size: 8                      # Scatter plot marker size
-  nominal_color: "#1f77b4"            # Blue for nominal line
-  nominal_width: 2                    # Nominal line width
-  control_limit_color: "#ff7f0e"      # Orange for UCL/LCL lines
-  control_limit_width: 2              # Control limit line width
-  outlier_color: "#d62728"            # Red for out-of-spec points
-  normal_color: "#2ca02c"             # Green for in-spec points

@@ -15,17 +15,10 @@ logger = logging.getLogger(__name__)
 
 class BaseView(ABC):
     """Abstract base class for all dashboard views."""
-    
-    def __init__(self, settings: Dict, data_processor):
-        """
-        Initialize base view.
-        
-        Args:
-            settings: Application settings from YAML
-            data_processor: DataProcessor instance
-        """
+
+    def __init__(self, settings: Dict):
+        """Initialize base view from application settings."""
         self.settings = settings
-        self.processor = data_processor
         self.col_names = settings.get('COLUMN_NAMES', {})
         self.chart_colors = settings.get('CHART_COLORS', {})
         self.chart_heights = settings.get('CHART_HEIGHTS', {})

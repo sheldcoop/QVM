@@ -1,101 +1,132 @@
 import re
-import pandas as pd
-from typing import List, Dict, Any
-import yaml
 import os
+import pandas as pd
+from typing import Dict, Any, Optional
+
+from src.utils import load_settings
+
 
 class QVMParseError(Exception):
     """Custom exception for QVM file parsing errors."""
     pass
 
-def load_settings():
-    """Load settings from yaml file."""
-    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'settings.yaml')
-    try:
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
-    except FileNotFoundError:
-        raise
 
-def parse_filename(filename: str) -> Dict[str, str]:
-    """
-    Extract Process, Panel Number, and Side from the filename.
-    Supports two formats:
-      4-part: [Process]_[Type]_Panel [N]_[Side].txt  e.g. Post PFC_Pad to Via_Panel 20_F.txt
-      3-part: [Process]_Panel [N]_[Side].txt          e.g. Via to Pad_Panel 25_F.txt
+_PTS_RE = re.compile(r"From\s+(\d+)\s*Pts\.")
+_PANEL_RE = re.compile(r'panel[\s_]*(\d+)', re.IGNORECASE)
+_SIDE_RE = re.compile(r'[_\s]([fb])\s*$', re.IGNORECASE)
+
+
+def parse_filename(filename: str) -> Dict[str, Optional[str]]:
+    """Extract a format hint, Panel Number, and Side from an uploaded filename.
+
+    Naming is lenient — any casing of 'VTP'/'PTV' (or the longer 'Via to Pad' /
+    'Pad to Via') is accepted, anywhere in the name:
+
+      Pad-to-Via:  ...PTV..._Panel <N>_<Side>.txt   e.g. PostPFC_PTV_Panel20_F.txt
+      Via-to-Pad:  ...VTP..._Panel <N>_<Side>.txt   e.g. vtp_panel_25_f.txt
+
+    Routing in the dashboard is content-driven (see parse_qvm_content). The
+    format_hint here is informational — used by the upload code to warn when
+    the filename and the parsed content disagree, or when no hint is present.
+
+    Returns:
+        {
+            'format_hint': 'Via to Pad' | 'Pad to Via' | None,
+            'Panel Number': str | 'Unknown',
+            'Side': 'F' | 'B' | 'Unknown',
+        }
     """
     basename = os.path.basename(filename)
     name_without_ext, _ = os.path.splitext(basename)
-    parts = name_without_ext.split('_')
+    lower = name_without_ext.lower()
 
-    result = {
-        'Process': 'Unknown',
-        'Panel Number': 'Unknown',
-        'Side': 'Unknown'
+    has_vtp = 'vtp' in lower or 'via to pad' in lower
+    has_ptv = 'ptv' in lower or 'pad to via' in lower
+
+    if has_vtp and not has_ptv:
+        format_hint: Optional[str] = 'Via to Pad'
+    elif has_ptv and not has_vtp:
+        format_hint = 'Pad to Via'
+    else:
+        format_hint = None  # absent or ambiguous (both)
+
+    panel_match = _PANEL_RE.search(name_without_ext)
+    panel_number = panel_match.group(1) if panel_match else 'Unknown'
+
+    side_match = _SIDE_RE.search(name_without_ext)
+    side = side_match.group(1).upper() if side_match else 'Unknown'
+
+    return {
+        'format_hint': format_hint,
+        'Panel Number': panel_number,
+        'Side': side,
     }
 
-    if len(parts) >= 4:
-        result['Process'] = parts[0]
-        panel_part = parts[2]
-        result['Panel Number'] = panel_part.replace('Panel ', '')
-        result['Side'] = parts[3]
-    elif len(parts) == 3:
-        result['Process'] = parts[0]
-        panel_part = parts[1]
-        result['Panel Number'] = panel_part.replace('Panel ', '')
-        result['Side'] = parts[2]
-    elif len(parts) > 0:
-        result['Process'] = parts[0]
 
-    return result
-
-
-def _parse_blocks(content: str, settings: dict, file_type: str) -> pd.DataFrame:
-    """
-    Shared positional state machine for both file formats.
-
-    Pad-to-Via order:  Pad → Via → Distance (trigger: 'Circle: Pad_')
-    Via-to-Pad order:  Via → Pad → Distance (trigger: 'Circle: Via[')
-
-    Grid IDs are assigned from POSITIONAL_MAPPING by block index (0–15),
-    ignoring any IDs or location names embedded in the file.
-    """
+def _emit_row(current: Dict[str, Any], block_index: int, settings: dict) -> dict:
+    """Build a single output row dict from the accumulated parser state."""
     col_names = settings.get('COLUMN_NAMES', {})
     positional_mapping = settings.get('POSITIONAL_MAPPING', [])
-    pts_re = re.compile(r"From\s+(\d+)\s*Pts\.")
+    grid_id = positional_mapping[block_index] if block_index < len(positional_mapping) else None
+    return {
+        col_names.get('location', 'Location'): current.get('location', ''),
+        col_names.get('grid_id', 'Grid ID'): int(grid_id) if grid_id is not None else None,
+        col_names.get('outer_diameter', 'Pad Diameter'): current.get('pad_diameter'),
+        col_names.get('inner_diameter', 'Via Parameter'): current.get('via_diameter'),
+        col_names.get('coord_x', 'Coord. X'): current.get('via_coord_x'),
+        col_names.get('coord_y', 'Coord. Y'): current.get('via_coord_y'),
+        col_names.get('ptv_distance', 'PtV Distance'): current['sc'],
+        col_names.get('total_shift', 'SC'): current['sc'],
+        col_names.get('x_distance', 'Shift (DX)'): current['dx'],
+        col_names.get('y_distance', 'Shift (DY)'): current['dy'],
+        col_names.get('pad_pts', 'Pad Pts.'): current.get('pad_pts'),
+        col_names.get('via_pts', 'Via Pts.'): current.get('via_pts'),
+        col_names.get('item_type', 'Type'): 'Via',
+    }
 
-    is_ptv = (file_type == 'PadToVia')
 
-    lines = content.splitlines()
-    rows = []
-    block_index = 0
+def _step_distance_tail(s: str, state: str, current: Dict[str, Any]):
+    """Advance the shared DIST_HEADER → SC → DX → DY tail by one line.
+
+    Returns (new_state, completed) where completed=True signals the block
+    is fully parsed and the caller should emit a row.
+    """
+    if state == "DIST_HEADER" and s.startswith("Distance:"):
+        return "SC", False
+    if state == "SC" and s.startswith("SC"):
+        current['sc'] = float(s.split('=')[1].strip())
+        return "DX", False
+    if state == "DX" and s.startswith("DX"):
+        current['dx'] = float(s.split('=')[1].strip())
+        return "DY", False
+    if state == "DY" and s.startswith("DY"):
+        current['dy'] = float(s.split('=')[1].strip())
+        return "IDLE", True
+    return state, False
+
+
+def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
+    """Parse a Pad-to-Via QVM log.
+
+    Per-block order in source: Pad circle → Via circle → Distance.
+    """
+    rows: list = []
     current: Dict[str, Any] = {}
-
-    # States differ by file type but follow same progression:
-    # PadToVia: IDLE → PAD_X → PAD_Y → PAD_DIAM → VIA_X → VIA_Y → VIA_DIAM → SC → DX → DY
-    # ViaToVia: IDLE → VIA_DIAM → PAD_DIAM → SC → DX → DY
+    block_index = 0
     state = "IDLE"
 
-    for line in lines:
+    for line in content.splitlines():
         s = line.strip()
 
         if state == "IDLE":
-            if is_ptv and s.startswith("Circle: Pad_"):
-                pts_m = pts_re.search(s)
+            if s.startswith("Circle: Pad_"):
+                pts_m = _PTS_RE.search(s)
                 current = {
                     'location': s.split('(')[0].replace('Circle: Pad_', '').strip(),
                     'pad_pts': int(pts_m.group(1)) if pts_m else None,
                 }
                 state = "PAD_X"
-            elif not is_ptv and s.startswith("Circle: Via_"):
-                pts_m = pts_re.search(s)
-                current = {
-                    'location': s.split('(')[0].replace('Circle: Via_', '').strip(),
-                    'via_pts': int(pts_m.group(1)) if pts_m else None,
-                }
-                state = "VIA_DIAM"
 
-        # --- Pad-to-Via states ---
         elif state == "PAD_X":
             if s.startswith("Coord.") and 'X' in s:
                 current['pad_coord_x'] = float(s.split('=')[1].strip())
@@ -109,11 +140,11 @@ def _parse_blocks(content: str, settings: dict, file_type: str) -> pd.DataFrame:
         elif state == "PAD_DIAM":
             if 'Diameter' in s:
                 current['pad_diameter'] = float(s.split('=')[1].strip())
-                state = "VIA_HEADER" if is_ptv else "DIST_HEADER"
+                state = "VIA_HEADER"
 
         elif state == "VIA_HEADER":
             if s.startswith("Circle: Via_"):
-                pts_m = pts_re.search(s)
+                pts_m = _PTS_RE.search(s)
                 current['via_pts'] = int(pts_m.group(1)) if pts_m else None
                 state = "VIA_X"
 
@@ -125,92 +156,104 @@ def _parse_blocks(content: str, settings: dict, file_type: str) -> pd.DataFrame:
         elif state == "VIA_Y":
             if s.startswith("Coord.") and 'Y' in s:
                 current['via_coord_y'] = float(s.split('=')[1].strip())
-                state = "VIA_DIAM" if not is_ptv else "VIA_DIAM_PTV"
+                state = "VIA_DIAM"
 
-        elif state == "VIA_DIAM_PTV":
+        elif state == "VIA_DIAM":
             if 'Diameter' in s:
                 current['via_diameter'] = float(s.split('=')[1].strip())
                 state = "DIST_HEADER"
 
-        # --- Via-to-Pad states ---
-        elif state == "VIA_DIAM":
-            if 'Diameter' in s:
-                current['via_diameter'] = float(s.split('=')[1].strip())
-                state = "PAD_HEADER" if not is_ptv else state
-
-        elif state == "PAD_HEADER":
-            if s.startswith("Circle: Pad_"):
-                pts_m = pts_re.search(s)
-                current['pad_pts'] = int(pts_m.group(1)) if pts_m else None
-                state = "PAD_DIAM"
-
-        # --- Shared Distance states ---
-        elif state == "DIST_HEADER":
-            if s.startswith("Distance:"):
-                state = "SC"
-
-        elif state == "SC":
-            if s.startswith("SC"):
-                current['sc'] = float(s.split('=')[1].strip())
-                state = "DX"
-
-        elif state == "DX":
-            if s.startswith("DX"):
-                current['dx'] = float(s.split('=')[1].strip())
-                state = "DY"
-
-        elif state == "DY":
-            if s.startswith("DY"):
-                current['dy'] = float(s.split('=')[1].strip())
-                grid_id = positional_mapping[block_index] if block_index < len(positional_mapping) else None
-                rows.append({
-                    col_names.get('location', 'Location'): current.get('location', ''),
-                    col_names.get('grid_id', 'Grid ID'): int(grid_id) if grid_id is not None else None,
-                    col_names.get('outer_diameter', 'Pad Diameter'): current.get('pad_diameter'),
-                    col_names.get('inner_diameter', 'Via Parameter'): current.get('via_diameter'),
-                    col_names.get('coord_x', 'Coord. X'): current.get('via_coord_x'),
-                    col_names.get('coord_y', 'Coord. Y'): current.get('via_coord_y'),
-                    col_names.get('ptv_distance', 'PtV Distance'): current['sc'],
-                    col_names.get('total_shift', 'SC'): current['sc'],
-                    col_names.get('x_distance', 'Shift (DX)'): current['dx'],
-                    col_names.get('y_distance', 'Shift (DY)'): current['dy'],
-                    col_names.get('pad_pts', 'Pad Pts.'): current.get('pad_pts'),
-                    col_names.get('via_pts', 'Via Pts.'): current.get('via_pts'),
-                    col_names.get('item_type', 'Type'): 'Via',
-                })
+        else:
+            state, completed = _step_distance_tail(s, state, current)
+            if completed:
+                rows.append(_emit_row(current, block_index, settings))
                 block_index += 1
                 current = {}
-                state = "IDLE"
 
     if not rows:
         raise QVMParseError("No valid measurement blocks found in the file.")
-
     return pd.DataFrame(rows)
 
 
-def parse_qvm_content(content: str) -> pd.DataFrame:
-    """
-    Parse raw QVM text log content into a Pandas DataFrame.
-    Auto-detects format: Via-to-Pad (VtP) or Pad-to-Via (PtV).
+def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
+    """Parse a Via-to-Pad QVM log.
 
-    Raises:
-        QVMParseError: If the file format is invalid or expected data is missing.
+    Per-block order in source: Via circle → Pad circle → Distance.
+    Via-to-Pad logs carry no absolute coordinates — only diameters and shifts.
     """
-    settings = load_settings()
-    # Via-to-Pad files: Via circle always appears before Pad circle in each block
+    rows: list = []
+    current: Dict[str, Any] = {}
+    block_index = 0
+    state = "IDLE"
+
+    for line in content.splitlines():
+        s = line.strip()
+
+        if state == "IDLE":
+            if s.startswith("Circle: Via_"):
+                pts_m = _PTS_RE.search(s)
+                current = {
+                    'location': s.split('(')[0].replace('Circle: Via_', '').strip(),
+                    'via_pts': int(pts_m.group(1)) if pts_m else None,
+                }
+                state = "VIA_DIAM"
+
+        elif state == "VIA_DIAM":
+            if 'Diameter' in s:
+                current['via_diameter'] = float(s.split('=')[1].strip())
+                state = "PAD_HEADER"
+
+        elif state == "PAD_HEADER":
+            if s.startswith("Circle: Pad_"):
+                pts_m = _PTS_RE.search(s)
+                current['pad_pts'] = int(pts_m.group(1)) if pts_m else None
+                state = "PAD_DIAM"
+
+        elif state == "PAD_DIAM":
+            if 'Diameter' in s:
+                current['pad_diameter'] = float(s.split('=')[1].strip())
+                state = "DIST_HEADER"
+
+        else:
+            state, completed = _step_distance_tail(s, state, current)
+            if completed:
+                rows.append(_emit_row(current, block_index, settings))
+                block_index += 1
+                current = {}
+
+    if not rows:
+        raise QVMParseError("No valid measurement blocks found in the file.")
+    return pd.DataFrame(rows)
+
+
+def parse_qvm_content(content: str, settings: Optional[dict] = None) -> pd.DataFrame:
+    """Parse raw QVM text log content into a Pandas DataFrame.
+
+    Auto-detects format by checking whether the first 'Circle: Via_' marker
+    appears before any 'Circle: Pad_' marker (Via-to-Pad) or after one
+    (Pad-to-Via). The resulting DataFrame carries a 'Process' column tagged
+    'Via to Pad' or 'Pad to Via' — this is the source of truth for routing,
+    regardless of what the user named the file.
+    """
+    if settings is None:
+        settings = load_settings()
     first_via = content.find('Circle: Via_')
     first_pad = content.find('Circle: Pad_')
     via_first = first_via != -1 and (first_pad == -1 or first_via < first_pad)
-    file_type = 'ViaToVia' if (via_first or 'VtP[' in content) else 'PadToVia'
-    return _parse_blocks(content, settings, file_type)
+    if via_first or 'VtP[' in content:
+        df = _parse_via_to_pad(content, settings)
+        df['Process'] = 'Via to Pad'
+    else:
+        df = _parse_pad_to_via(content, settings)
+        df['Process'] = 'Pad to Via'
+    return df
 
 
-def parse_qvm_file(filepath: str) -> pd.DataFrame:
+def parse_qvm_file(filepath: str, settings: Optional[dict] = None) -> pd.DataFrame:
     """Read a file and parse it."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
     except Exception as e:
         raise QVMParseError(f"Error reading file: {e}")
-
-    return parse_qvm_content(content)
+    return parse_qvm_content(content, settings)

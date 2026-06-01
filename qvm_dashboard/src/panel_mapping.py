@@ -1,6 +1,6 @@
-import os
-import yaml
 import plotly.graph_objects as go
+
+from src.utils import load_settings
 
 
 def get_rounded_rect_path(x0: float, y0: float, x1: float, y1: float, r: float) -> str:
@@ -21,17 +21,6 @@ def get_rounded_rect_path(x0: float, y0: float, x1: float, y1: float, r: float) 
         f"Q {x0} {y0} {x0+r} {y0} "
         "Z"
     )
-
-
-def _build_vtp_key(block_index: int) -> str:
-    """Convert a 0-15 block index back to its Via-to-Pad array notation [r,c][x,y]."""
-    quadrant = block_index // 4        # 0=LL, 1=UL, 2=LR, 3=UR → maps to [1,1],[1,2],[2,1],[2,2]
-    position = block_index % 4         # 0-3 within quadrant
-    quad_map = {0: (1, 1), 1: (1, 2), 2: (2, 1), 3: (2, 2)}
-    pos_map  = {0: (1, 1), 1: (1, 2), 2: (2, 1), 3: (2, 2)}
-    qr, qc = quad_map[quadrant]
-    pr, pc = pos_map[position]
-    return f"[{qr},{qc}][{pr},{pc}]"
 
 
 def create_four_quarters_view(settings: dict) -> go.Figure:
@@ -107,13 +96,9 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
             layer='below',
         ))
 
-    # --- Hover lookup: grid_id → (named_location, vtp_array_key) ---
+    # --- Hover lookup: grid_id → named_location ---
     grid_mapping = settings.get('GRID_MAPPING', {})
-    positional_mapping = settings.get('POSITIONAL_MAPPING', [])
-    # Reverse GRID_MAPPING: int(grid_id) → "LL_2"
     id_to_name = {int(v): k for k, v in grid_mapping.items()}
-    # Reverse POSITIONAL_MAPPING: int(grid_id) → "[1,1][1,1]"
-    id_to_vtp = {int(gid): _build_vtp_key(idx) for idx, gid in enumerate(positional_mapping)}
 
     # --- Grid Points ---
     point_x, point_y, point_text, point_hover = [], [], [], []
@@ -133,8 +118,7 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
             point_y.append(py)
             point_text.append(str(gid))
             named = id_to_name.get(gid, "")
-            vtp = id_to_vtp.get(gid, "")
-            point_hover.append(f"<b>Grid ID:</b> {gid}<br><b>Location:</b> {named}<br><b>VtP Index:</b> {vtp}")
+            point_hover.append(f"<b>Grid ID:</b> {gid}<br><b>Location:</b> {named}")
 
     # Counter-Clockwise factory mapping: 1=UL, 2=LL, 3=LR, 4=UR
     add_points('1', origins['UL'][0], origins['UL'][1])
@@ -171,12 +155,6 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
     return fig
 
 
-def _load_settings() -> dict:
-    config_path = os.path.join(os.path.dirname(__file__), 'config', 'settings.yaml')
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
-
-
 if __name__ == "__main__":
-    fig = create_four_quarters_view(_load_settings())
+    fig = create_four_quarters_view(load_settings())
     fig.show(renderer="browser")
