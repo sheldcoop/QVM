@@ -5,8 +5,7 @@ Centralizes all sidebar logic for cleaner app.py.
 """
 
 import streamlit as st
-import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 
 
 def render_sidebar(settings: Dict) -> Dict:
@@ -41,12 +40,6 @@ def render_sidebar(settings: Dict) -> Dict:
             process      = st.text_input("Process", "")
             panel        = st.text_input("Panel", "")
         
-        # Process Stability Limits Configuration
-        st.markdown("---")
-        st.subheader("📊 Process Limits (µm)")
-        
-        process_config = _render_process_limits(settings)
-        
         # Store all sidebar data
         sidebar_config = {
             'uploaded_files': uploaded_files,
@@ -57,66 +50,10 @@ def render_sidebar(settings: Dict) -> Dict:
             'build_up':      build_up,
             'process':       process,
             'panel':         panel,
-            'process_limits': process_config
+            'process_limits': {}
         }
         
         return sidebar_config
-
-
-def _render_process_limits(settings: Dict) -> Dict:
-    """
-    Render Process Stability limits configuration.
-    
-    Args:
-        settings: Application settings
-    
-    Returns:
-        Dictionary with user-configured limits
-    """
-    process_stability = settings.get('PROCESS_STABILITY', {})
-    
-    # Via Drill Limits
-    with st.expander("🔴 Via Drill Limits", expanded=False):
-        default_via_nom = process_stability.get('via_nominal_diameter', 0.020) * 1000
-        default_via_ucl = process_stability.get('via_ucl', 0.0215) * 1000
-        default_via_lcl = process_stability.get('via_lcl', 0.0185) * 1000
-        
-        via_nom = st.number_input("Via Nominal (µm)", value=default_via_nom, step=0.1, key="via_nom_input")
-        via_ucl = st.number_input("Via UCL (µm)", value=default_via_ucl, step=0.1, key="via_ucl_input")
-        via_lcl = st.number_input("Via LCL (µm)", value=default_via_lcl, step=0.1, key="via_lcl_input")
-        
-        # Store in session state (convert back to mm)
-        st.session_state['via_nominal'] = via_nom / 1000
-        st.session_state['via_ucl'] = via_ucl / 1000
-        st.session_state['via_lcl'] = via_lcl / 1000
-    
-    # Pad Etch Limits
-    with st.expander("🟠 Pad Etch Limits", expanded=False):
-        default_pad_nom = process_stability.get('pad_nominal_diameter', 0.3125) * 1000
-        default_pad_ucl = process_stability.get('pad_ucl', 0.3157) * 1000
-        default_pad_lcl = process_stability.get('pad_lcl', 0.3093) * 1000
-        
-        pad_nom = st.number_input("Pad Nominal (µm)", value=default_pad_nom, step=0.1, key="pad_nom_input")
-        pad_ucl = st.number_input("Pad UCL (µm)", value=default_pad_ucl, step=0.1, key="pad_ucl_input")
-        pad_lcl = st.number_input("Pad LCL (µm)", value=default_pad_lcl, step=0.1, key="pad_lcl_input")
-        
-        # Store in session state (convert back to mm)
-        st.session_state['pad_nominal'] = pad_nom / 1000
-        st.session_state['pad_ucl'] = pad_ucl / 1000
-        st.session_state['pad_lcl'] = pad_lcl / 1000
-    
-    return {
-        'via': {
-            'nominal': st.session_state.get('via_nominal', process_stability.get('via_nominal_diameter', 0.020)),
-            'ucl': st.session_state.get('via_ucl', process_stability.get('via_ucl', 0.0215)),
-            'lcl': st.session_state.get('via_lcl', process_stability.get('via_lcl', 0.0185))
-        },
-        'pad': {
-            'nominal': st.session_state.get('pad_nominal', process_stability.get('pad_nominal_diameter', 0.3125)),
-            'ucl': st.session_state.get('pad_ucl', process_stability.get('pad_ucl', 0.3157)),
-            'lcl': st.session_state.get('pad_lcl', process_stability.get('pad_lcl', 0.3093))
-        }
-    }
 
 
 def render_nav_buttons(

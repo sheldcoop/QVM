@@ -127,26 +127,51 @@ class QualityControlView(BaseView):
                 if is_via_to_pad:
                     _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
-                    # --- Sheet 1: "Via to Pad" — Grid ID + measurements only ---
-                    sheet1 = display_df.copy()
-                    sheet1 = sheet1.rename(columns={grid_id_col: 'Grid ID'})
-                    sheet1.to_excel(writer, sheet_name='Via to Pad', index=False)
+                    def _make_measurement_sheet(df_in, side_vals):
+                        """Grid ID + measurements, no metadata."""
+                        s = df_in.copy()
+                        s = s.rename(columns={grid_id_col: 'Grid ID'})
+                        return s
 
-                    # --- Sheet 2: "Report" — metadata + Fiducial + measurements ---
-                    sheet2 = display_df.copy()
-                    grid_str2 = sheet2[grid_id_col].astype(str).str.zfill(2)
-                    sheet2.insert(0, 'Fiducial_Number', grid_str2.str[1].astype(int))
-                    sheet2.insert(0, 'Fiducial',        grid_str2.str[0].map(_region_map))
-                    sheet2.insert(0, 'Side',        _side_series if _side_series is not None else '')
-                    sheet2.insert(0, 'Panel',       meta.get('panel', ''))
-                    sheet2.insert(0, 'Process',     meta.get('process', ''))
-                    sheet2.insert(0, 'Buildup',     meta.get('build_up', ''))
-                    sheet2.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
-                    sheet2.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
-                    sheet2.insert(0, 'Part_Number', meta.get('part_number', ''))
-                    sheet2.insert(0, 'Project_Name', meta.get('project_name', ''))
-                    sheet2 = sheet2.drop(columns=[grid_id_col])
-                    sheet2.to_excel(writer, sheet_name='Report', index=False)
+                    def _make_report_sheet(df_in, side_vals):
+                        """Metadata + Fiducial info + measurements."""
+                        s = df_in.copy()
+                        grid_str = s[grid_id_col].astype(str).str.zfill(2)
+                        s.insert(0, 'Fiducial_Number', grid_str.str[1].astype(int))
+                        s.insert(0, 'Fiducial',        grid_str.str[0].map(_region_map))
+                        s.insert(0, 'Side',        side_vals if side_vals is not None else '')
+                        s.insert(0, 'Panel',       meta.get('panel', ''))
+                        s.insert(0, 'Process',     meta.get('process', ''))
+                        s.insert(0, 'Buildup',     meta.get('build_up', ''))
+                        s.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
+                        s.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
+                        s.insert(0, 'Part_Number', meta.get('part_number', ''))
+                        s.insert(0, 'Project_Name', meta.get('project_name', ''))
+                        s = s.drop(columns=[grid_id_col])
+                        return s
+
+                    # Split by Side if both Front and Back are present
+                    sides = filtered_df['Side'].unique() if 'Side' in filtered_df.columns else []
+                    report_frames = []
+
+                    if len(sides) > 1:
+                        for side in sorted(sides):
+                            mask = filtered_df['Side'] == side
+                            side_display = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
+                            side_vals = filtered_df.loc[mask, 'Side'].values
+                            # Measurement sheet per side
+                            _make_measurement_sheet(side_display, side_vals).to_excel(
+                                writer, sheet_name=f'Via to Pad - {side}', index=False)
+                            report_frames.append(_make_report_sheet(side_display, side_vals))
+                        # Combined Report sheet
+                        pd.concat(report_frames, ignore_index=True).to_excel(
+                            writer, sheet_name='Report', index=False)
+                    else:
+                        # Single side — original behaviour
+                        _make_measurement_sheet(display_df, _side_series).to_excel(
+                            writer, sheet_name='Via to Pad', index=False)
+                        _make_report_sheet(display_df, _side_series).to_excel(
+                            writer, sheet_name='Report', index=False)
                 else:
                     # Pad-to-Via: full export with conditional red highlighting
                     display_df_export = display_df.dropna(axis=1, how='all').copy()
