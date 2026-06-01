@@ -9,7 +9,6 @@ from src.visuals import plot_bullseye_scatter, plot_quiver, plot_heatmap
 from src.data_processor import DataProcessor
 from src.views.process_stability import ProcessStabilityView
 from src.views.quality_control import QualityControlView
-from src.views.optical_edge_confidence import OpticalEdgeConfidenceView
 from src.views.analytics import AnalyticsView
 from src.views.polar_drift import PolarDriftView
 from src.views.spatial_heatmap import SpatialHeatmapView
@@ -77,25 +76,16 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                       data_processor, col_names: dict, tolerances: dict,
                       chart_colors: dict, chart_heights: dict, chart_markers: dict,
-                      optical_thresholds: dict, optical_model: dict, process_limits: dict):
+                      optical_thresholds: dict, optical_model: dict, process_limits: dict,
+                      is_via_to_pad: bool = False):
     """Render whichever sub-view is active."""
     if sub_view == "Quality Control":
         QualityControlView(settings, data_processor).render(
-            filtered_df, col_names=col_names, tolerances=tolerances)
+            filtered_df, col_names=col_names, tolerances=tolerances,
+            is_via_to_pad=is_via_to_pad)
 
     elif sub_view == "Analytics":
         AnalyticsView(settings, data_processor).render(filtered_df, settings=settings)
-
-    elif sub_view == "Optical Edge Confidence":
-        OpticalEdgeConfidenceView(settings, data_processor).render(
-            filtered_df,
-            col_names=col_names,
-            chart_colors=chart_colors,
-            chart_heights=chart_heights,
-            chart_markers=chart_markers,
-            optical_thresholds=optical_thresholds,
-            optical_model=optical_model,
-        )
 
     elif sub_view == "Process Stability":
         ProcessStabilityView(settings, data_processor).render(
@@ -228,7 +218,7 @@ def main():
         # which Via-to-Pad files do not contain — those views are intentionally
         # excluded here as they would produce meaningless results without position data.
         sub_view = render_nav_buttons(
-            ["Quality Control", "Registration Scatter", "Process Stability", "Optical Edge Confidence"],
+            ["Quality Control", "Registration Scatter"],
             state_key="vtp_sub_view",
             default="Quality Control",
         )
@@ -238,6 +228,7 @@ def main():
             filtered_vtp, sub_view, settings, data_processor,
             col_names, tolerances, chart_colors, chart_heights,
             chart_markers, optical_thresholds, optical_model, process_limits,
+            is_via_to_pad=True,
         )
 
     elif main_view == "Alignment":

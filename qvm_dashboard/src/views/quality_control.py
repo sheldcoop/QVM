@@ -34,30 +34,38 @@ class QualityControlView(BaseView):
         """
         col_names = kwargs.get('col_names', {})
         tolerances = kwargs.get('tolerances', {})
+        is_via_to_pad = kwargs.get('is_via_to_pad', False)
         
         annular_col = col_names.get('annular_ring', 'Annular Ring')
         threshold = tolerances.get('annular_ring_min', 0.0)
         grid_id_col = col_names.get('grid_id', 'Grid ID')
         
+        # Column name references
+        via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
+        pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
+        dx_col       = col_names.get('x_distance', 'Shift (DX)')
+        dy_col       = col_names.get('y_distance', 'Shift (DY)')
+        sc_col       = col_names.get('total_shift', 'SC')
+
+        # Determine file type: Via-to-Pad has no Annular Ring column
+        # is_via_to_pad is passed explicitly from app.py
+
         # Prepare display dataframe
-        display_df = filtered_df.copy()
-        
-        # Drop Panel and Side columns (not needed in display)
-        cols_to_drop = [col for col in ['Panel', 'Side'] if col in display_df.columns]
-        display_df = display_df.drop(columns=cols_to_drop)
-        
-        # Convert all measurements from mm to microns
-        measurement_cols = [
-            col_names.get('outer_diameter', 'Outer Diameter'),
-            col_names.get('inner_diameter', 'Inner Diameter'),
-            col_names.get('ptv_distance', 'PtV Distance'),
-            col_names.get('total_shift', 'SC'),
-            col_names.get('x_distance', 'Shift (DX)'),
-            col_names.get('y_distance', 'Shift (DY)'),
-            col_names.get('annular_ring', 'Annular Ring'),
-        ]
+        if is_via_to_pad:
+            # Keep ONLY the 6 required columns for Via-to-Pad
+            vtp_keep = [c for c in [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, sc_col]
+                        if c in filtered_df.columns]
+            display_df = filtered_df[vtp_keep].copy()
+        else:
+            display_df = filtered_df.copy()
+            cols_to_drop = [col for col in ['Panel', 'Side'] if col in display_df.columns]
+            display_df = display_df.drop(columns=cols_to_drop)
+
+        # Convert measurements from mm to microns (applies to whichever columns exist)
+        measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
+                            col_names.get('ptv_distance', 'PtV Distance'), annular_col]
         display_df = convert_to_microns(display_df, measurement_cols)
-        
+
         # Sort by Grid ID ascending
         if grid_id_col in display_df.columns:
             display_df = display_df.sort_values(by=grid_id_col, ascending=True)
@@ -102,30 +110,35 @@ class QualityControlView(BaseView):
         
         # --- Export to Excel button ---
         col_left, col_right = st.columns([3, 1])
+
         with col_left:
-            st.write(f"Highlighting rows where {annular_col} < {threshold}")
+            if is_via_to_pad:
+                st.write("Via-to-Pad export: Location Grid ID | Via Diameter | Pad Diameter | DX | DY | SC  (µm)")
+            else:
+                st.write(f"Highlighting rows where {annular_col} < {threshold}")
         with col_right:
-            # Create Excel file in memory
             buffer = BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                # Write data with highlighting
-                display_df_export = display_df.dropna(axis=1, how='all').copy()
-                display_df_export.to_excel(writer, sheet_name='QVM Data', index=False)
-                
-                # Get workbook and worksheet
-                workbook = writer.book
-                worksheet = writer.sheets['QVM Data']
-                
-                # Apply conditional formatting for failed points
-                red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
-                
-                if annular_col in display_df_export.columns:
-                    ar_col_idx = list(display_df_export.columns).index(annular_col) + 1  # Excel is 1-indexed
-                    for row_idx, value in enumerate(display_df_export[annular_col], start=2):  # start=2 to skip header
-                        if value < threshold:
-                            for col_idx in range(1, len(display_df_export.columns) + 1):
-                                worksheet.cell(row=row_idx, column=col_idx).fill = red_fill
-            
+                if is_via_to_pad:
+                    # display_df already has only the 6 required columns — just rename Grid ID
+                    display_df_export = display_df.rename(columns={grid_id_col: 'Location Grid ID'}).copy()
+                    display_df_export.to_excel(writer, sheet_name='Via to Pad', index=False)
+                else:
+                    # Pad-to-Via: full export with conditional red highlighting
+                    display_df_export = display_df.dropna(axis=1, how='all').copy()
+                    display_df_export.to_excel(writer, sheet_name='QVM Data', index=False)
+
+                    workbook = writer.book
+                    worksheet = writer.sheets['QVM Data']
+                    red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
+
+                    if annular_col in display_df_export.columns:
+                        ar_col_idx = list(display_df_export.columns).index(annular_col) + 1
+                        for row_idx, value in enumerate(display_df_export[annular_col], start=2):
+                            if value < threshold:
+                                for col_idx in range(1, len(display_df_export.columns) + 1):
+                                    worksheet.cell(row=row_idx, column=col_idx).fill = red_fill
+
             buffer.seek(0)
             st.download_button(
                 label="📥 Export to Excel",
@@ -162,34 +175,6 @@ class QualityControlView(BaseView):
         
         st.dataframe(styled_df, use_container_width=True)
 
-        with st.expander("🔎 What these signals mean", expanded=False):
-            st.markdown(
-                "### 1. PtV Distance\n"
-                "- This is the distance between the pad center and the via center.\n"
-                "- Lower is better: 3 µm means the hole is very close to the pad. 10 µm is already a significant offset.\n"
-                "- Example: if PtV = 8 µm, the via is 8 µm away from the pad center, which is a sign of registration or placement error.\n\n"
-                "### 2. Via Pts. / Pad Pts.\n"
-                "- These are optical edge counts from the inspection system. They are quality indicators, not physical distances.\n"
-                "- Higher is better: more points means the edge is clean and the camera saw a good circle. Low values mean the edge is fuzzy, damaged, or hard to detect.\n"
-                "- Example: Via Pts = 20 and Pad Pts = 25 is okay; Via Pts = 5 with Pad Pts = 22 means the via edge is suspect while the pad edge is still okay.\n"
-                "- If both Via Pts and Pad Pts are low, the hole/image is likely bad overall, and the measured shifts may not be trustworthy.\n\n"
-                "### 3. Annular Ring\n"
-                "- This is calculated in the app as: (Pad diameter / 2) - (Via diameter / 2) - PtV.\n"
-                "- It tells you how much copper remains around the hole after the via is placed.\n"
-                "- Example: if Pad dia = 312 µm, Via dia = 16 µm and PtV = 4 µm, then Annular Ring = 146 µm, which is good.\n"
-                "- If Annular Ring drops below your tolerance, the hole may fail electrically or mechanically, even if the shift numbers look okay.\n\n"
-                "### 4. What each signal can tell you\n"
-                "- High PtV + low annular ring: the hole is displaced and the pad ring is shrinking because of offset. This is often a registration/alignment issue.\n"
-                "- Low PtV + low annular ring: the problem is pad or via geometry (too small pad or too large via), not necessarily placement.\n"
-                "- Low Via Pts + high Pad Pts: the inspection may be failing on the via edge, or the via surface is contaminated. The shift value may be less reliable.\n"
-                "- High SC in one panel quadrant: the distortion is likely field-related, not a single bad hole. This points to the optics, panel mounting, or scanner field rather than only the hole itself.\n\n"
-                "### 5. Example interpretation\n"
-                "- PtV = 5 µm, Via Pts = 22, Pad Pts = 28, Annular Ring = 130 µm: likely good alignment, good edge quality, healthy ring.\n"
-                "- PtV = 12 µm, Via Pts = 24, Pad Pts = 30, Annular Ring = 119 µm: alignment problem is starting; ring is still acceptable but moving toward warning.\n"
-                "- PtV = 3 µm, Via Pts = 7, Pad Pts = 20, Annular Ring = 140 µm: alignment is good, but the via edge quality is bad; the hole may be defective or inspection is unreliable.\n"
-                "- PtV = 9 µm, Via Pts = 16, Pad Pts = 18, Annular Ring = 80 µm: this is a mixed failure. There is both offset and ring loss, so it is a higher-risk hole."
-            )
-    
     @staticmethod
     def _highlight_annular_ring(row, col_name, threshold):
         """
