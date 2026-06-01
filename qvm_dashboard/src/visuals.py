@@ -517,14 +517,14 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=work[loc_col],
+        x=work[grid_col],
         y=work['sc_um'],
         marker_color=work['color'],
         marker_line=dict(width=1, color='rgba(0,0,0,0.3)'),
-        customdata=work[[grid_col, 'sc_um']].values,
+        customdata=work[[loc_col, 'sc_um']].values,
         hovertemplate=(
-            '<b>%{x}</b><br>'
-            'Grid ID: %{customdata[0]}<br>'
+            'Grid ID: <b>%{x}</b><br>'
+            'Location: %{customdata[0]}<br>'
             'SC: %{customdata[1]:.2f} µm<br>'
             '<extra></extra>'
         ),
@@ -548,10 +548,11 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     )
 
     bg = chart_colors.get('chart_background', '#FFFFFF')
+    y_max = max(work['sc_um'].max() * 1.2, ring_orange * 1.1)
     fig.update_layout(
         title='Registration SC per Fiducial Site (ordered by Grid ID: UL → LL → LR → UR)',
-        xaxis=dict(title='Fiducial Site', showgrid=False),
-        yaxis=dict(title='SC Distance (µm)', range=[0, bar_y_max], dtick=bar_y_dtick, showgrid=True),
+        xaxis=dict(title='Grid ID', showgrid=False, type='category'),
+        yaxis=dict(title='SC Distance (µm)', range=[0, y_max], showgrid=True),
         plot_bgcolor=bg,
         hovermode='x unified',
         height=450,
