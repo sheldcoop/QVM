@@ -548,7 +548,9 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     )
 
     bg = chart_colors.get('chart_background', '#FFFFFF')
-    y_max = max(work['sc_um'].max() * 1.2, ring_orange * 1.1)
+    data_max = work['sc_um'].max()
+    # Y-axis: data + 30% headroom, minimum 10 µm so threshold lines are always legible
+    y_max = max(data_max * 1.3, 10.0)
     fig.update_layout(
         title='Registration SC per Fiducial Site (ordered by Grid ID: UL → LL → LR → UR)',
         xaxis=dict(title='Grid ID', showgrid=False, type='category'),
