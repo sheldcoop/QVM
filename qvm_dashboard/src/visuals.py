@@ -29,13 +29,13 @@ CONFIDENCE_MEDIUM = 0.45
 # Mapping: Grid ID → (plot_x, plot_y) on the 4×4 quiver grid (1-indexed).
 # Single source of truth — the heatmap matrix layout is derived from it.
 _GRID_PLOT_POSITIONS: Dict[str, Tuple[int, int]] = {
-    # Upper Left quadrant (11-14)
+    # Upper Left quarter (11-14)
     '11': (1, 4), '12': (1, 3), '13': (2, 3), '14': (2, 4),
-    # Lower Left quadrant (21-24)
+    # Lower Left quarter (21-24)
     '21': (1, 2), '22': (1, 1), '23': (2, 1), '24': (2, 2),
-    # Lower Right quadrant (31-34)
+    # Lower Right quarter (31-34)
     '31': (3, 2), '32': (3, 1), '33': (4, 1), '34': (4, 2),
-    # Upper Right quadrant (41-44)
+    # Upper Right quarter (41-44)
     '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
 }
 
@@ -57,6 +57,35 @@ def _coerce_numeric(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
+
+
+def _traffic_light_color(
+    sc_um: float,
+    ring_excellent: float,
+    ring_good: float,
+    chart_colors: Dict,
+    ring_fail: float | None = None,
+) -> str:
+    """Map an SC magnitude (µm) to a traffic-light colour.
+
+    Three-zone mode (ring_fail is None):
+        sc ≤ ring_excellent               → dark green
+        ring_excellent < sc ≤ ring_good   → green
+        sc > ring_good                    → red
+
+    Four-zone mode (ring_fail provided):
+        sc ≤ ring_excellent               → dark green
+        ring_excellent < sc ≤ ring_good   → green
+        ring_good < sc ≤ ring_fail        → orange
+        sc > ring_fail                    → red
+    """
+    if sc_um <= ring_excellent:
+        return chart_colors.get('traffic_light_dark_green', '#1e7e3a')
+    if sc_um <= ring_good:
+        return chart_colors.get('traffic_light_green', '#2ecc71')
+    if ring_fail is not None and sc_um <= ring_fail:
+        return chart_colors.get('traffic_light_orange', '#e67e22')
+    return chart_colors.get('traffic_light_red', '#e74c3c')
 
 
 def _default_valid_grid_ids() -> set:
@@ -255,7 +284,7 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
     entropy = float(-np.sum(probs * np.log(np.clip(probs, 1e-12, 1.0))) / np.log(len(probs)))
     certainty = float(np.clip(1.0 - entropy, 0.0, 1.0))
 
-    # Stability: top-cause agreement across panel quadrants.
+    # Stability: top-cause agreement across panel quarters.
     quad_masks = [
         (pos_x[signal_mask] < 0) & (pos_y[signal_mask] >= 0),   # UL
         (pos_x[signal_mask] < 0) & (pos_y[signal_mask] < 0),    # LL
@@ -286,10 +315,10 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
         }
         return max(local_scores, key=local_scores.get)
 
-    quadrant_top_causes = [cause for cause in (_top_cause_for_mask(mask) for mask in quad_masks) if cause]
-    if quadrant_top_causes:
-        agreement = sum(1 for cause in quadrant_top_causes if cause == top_cause)
-        stability = float(np.clip(agreement / len(quadrant_top_causes), 0.0, 1.0))
+    quarter_top_causes = [cause for cause in (_top_cause_for_mask(mask) for mask in quad_masks) if cause]
+    if quarter_top_causes:
+        agreement = sum(1 for cause in quarter_top_causes if cause == top_cause)
+        stability = float(np.clip(agreement / len(quarter_top_causes), 0.0, 1.0))
     else:
         stability = 0.0
 
@@ -316,7 +345,7 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
     reasons = [
         f"Top cause signal: {top_cause} ({top_probability * 100:.1f}%).",
         f"Class certainty: {certainty * 100:.1f}% (entropy-adjusted).",
-        f"Quadrant stability: {stability * 100:.1f}% agreement.",
+        f"Quarter stability: {stability * 100:.1f}% agreement.",
         f"Directional coherence: {directional_coherence * 100:.1f}%.",
         f"Coverage: {valid_points}/{expected_points} valid grid points.",
     ]
@@ -451,12 +480,16 @@ def get_panel_image_path() -> str:
     return os.path.join(base_dir, 'assets', 'panel_background.png')
 
 def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
-    """
-    Clean DX/DY scatter for Via-to-Pad registration.
-    Each point is one fiducial site labeled with its location name.
+    """DX/DY bullseye scatter for Via-to-Pad registration.
+
+    Each fiducial site is a single point at (DX, DY) in µm. Two concentric
+    tolerance rings (green pass-limit, orange warn-limit) make pass/warn/fail
+    visually obvious without doing the radial math by eye. Point color matches
+    the bar-chart traffic-light palette via _traffic_light_color.
     """
     col_names = settings.get('COLUMN_NAMES', {})
     chart_colors = settings.get('CHART_COLORS', {})
+    vtp_cfg = settings.get('VTP_REGISTRATION', {})
 
     dx_col = col_names.get('x_distance', 'Shift (DX)')
     dy_col = col_names.get('y_distance', 'Shift (DY)')
@@ -464,25 +497,76 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
+    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 2.0))
+    ring_good = float(vtp_cfg.get('ring_good_um', 5.0))
+    ring_fail = float(vtp_cfg.get('ring_fail_um', 10.0))
+
     work = df[[dx_col, dy_col, sc_col, loc_col, grid_col]].dropna().copy()
     work['dx_um'] = work[dx_col] * 1000
     work['dy_um'] = work[dy_col] * 1000
     work['sc_um'] = work[sc_col] * 1000
+    work['color'] = work['sc_um'].apply(
+        lambda v: _traffic_light_color(v, ring_excellent, ring_good, chart_colors, ring_fail)
+    )
 
     bg = chart_colors.get('chart_background', '#FFFFFF')
+    dark_green_color = chart_colors.get('traffic_light_dark_green', '#1e7e3a')
+    orange_color = chart_colors.get('traffic_light_orange', '#e67e22')
+    red_color = chart_colors.get('traffic_light_red', '#e74c3c')
+
+    # Data-driven axis range: largest abs displacement + 2 µm padding,
+    # but never smaller than ring_fail so all three rings are always visible.
+    if len(work):
+        max_displacement = max(
+            work['dx_um'].abs().max(),
+            work['dy_um'].abs().max(),
+            ring_fail,
+        )
+    else:
+        max_displacement = ring_fail
+    spread = max_displacement + 2.0
 
     fig = go.Figure()
+
+    # Three concentric rings for pass / warn / fail zones.
+    # Ring 1 — dark green at ring_excellent (≤2 µm, excellent)
+    fig.add_shape(
+        type='circle', xref='x', yref='y',
+        x0=-ring_excellent, y0=-ring_excellent, x1=ring_excellent, y1=ring_excellent,
+        line=dict(color=dark_green_color, width=2),
+        fillcolor='rgba(0,0,0,0)',
+        layer='below',
+    )
+    # Ring 2 — orange at ring_good (2–5 µm boundary)
+    fig.add_shape(
+        type='circle', xref='x', yref='y',
+        x0=-ring_good, y0=-ring_good, x1=ring_good, y1=ring_good,
+        line=dict(color=orange_color, width=2, dash='dot'),
+        fillcolor='rgba(0,0,0,0)',
+        layer='below',
+    )
+    # Ring 3 — red at ring_fail (5–10 µm boundary)
+    fig.add_shape(
+        type='circle', xref='x', yref='y',
+        x0=-ring_fail, y0=-ring_fail, x1=ring_fail, y1=ring_fail,
+        line=dict(color=red_color, width=2, dash='dash'),
+        fillcolor='rgba(0,0,0,0)',
+        layer='below',
+    )
+
+    # Strong crosshairs (readable in PNG export).
+    crosshair = dict(color='rgba(80,80,80,0.6)', width=1.5)
+    fig.add_hline(y=0, line=crosshair)
+    fig.add_vline(x=0, line=crosshair)
+
     fig.add_trace(go.Scatter(
         x=work['dx_um'],
         y=work['dy_um'],
         mode='markers+text',
         marker=dict(
             size=14,
-            color=work['sc_um'],
-            colorscale='Viridis',
-            showscale=True,
-            colorbar=dict(title='SC (µm)', thickness=14),
-            line=dict(width=1, color='rgba(0,0,0,0.35)'),
+            color=work['color'],
+            line=dict(width=1, color='rgba(0,0,0,0.5)'),
         ),
         text=work[grid_col].astype(str),
         textposition='top center',
@@ -499,15 +583,54 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         showlegend=False,
     ))
 
-    # Light crosshairs at origin
-    fig.add_hline(y=0, line=dict(color='rgba(150,150,150,0.4)', width=1))
-    fig.add_vline(x=0, line=dict(color='rgba(150,150,150,0.4)', width=1))
+    # Summary stats annotation (self-describing PNG for Excel).
+    sc = work['sc_um']
+    n = int(len(sc))
+    max_sc = float(sc.max()) if n else 0.0
+    p90_sc = float(sc.quantile(0.90)) if n else 0.0
+    n_outside = int((sc > ring_fail).sum())
+    summary_text = (
+        f"<b>n</b> {n}  •  "
+        f"<b>max SC</b> {max_sc:.1f} µm  •  "
+        f"<b>p90</b> {p90_sc:.1f} µm  •  "
+        f"<b>outside warn</b> {n_outside}"
+    )
+    fig.add_annotation(
+        text=summary_text,
+        xref='paper', yref='paper',
+        x=0.02, y=0.98,
+        xanchor='left', yanchor='top',
+        showarrow=False,
+        align='left',
+        font=dict(size=11, color='#222222'),
+        bgcolor='rgba(255,255,255,0.85)',
+        bordercolor='#999999',
+        borderwidth=1,
+        borderpad=4,
+    )
 
-    pad = max(work[['dx_um', 'dy_um']].abs().max().max() * 0.25, 1.0)
-    spread = max(work[['dx_um', 'dy_um']].abs().max().max() + pad, 5.0)
+    # Ring legend in opposite corner so it doesn't fight the summary.
+    fig.add_annotation(
+        text=(
+            f"<span style='color:{dark_green_color}'>●</span> ≤ {ring_excellent:.0f} µm (excellent)<br>"
+            f"<span style='color:{chart_colors.get('traffic_light_green', '#2ecc71')}'>●</span> {ring_excellent:.0f}–{ring_good:.0f} µm (good)<br>"
+            f"<span style='color:{orange_color}'>●</span> {ring_good:.0f}–{ring_fail:.0f} µm (warn)<br>"
+            f"<span style='color:{red_color}'>●</span> > {ring_fail:.0f} µm (fail)"
+        ),
+        xref='paper', yref='paper',
+        x=0.98, y=0.02,
+        xanchor='right', yanchor='bottom',
+        showarrow=False,
+        align='left',
+        font=dict(size=10, color='#222222'),
+        bgcolor='rgba(255,255,255,0.85)',
+        bordercolor='#999999',
+        borderwidth=1,
+        borderpad=4,
+    )
 
     fig.update_layout(
-        title='DX vs DY Registration Scatter — Via-to-Pad',
+        title='DX vs DY Registration Bullseye — Via-to-Pad',
         xaxis=dict(title='DX Shift (µm)', zeroline=False, showgrid=True,
                    scaleanchor='y', scaleratio=1,
                    range=[-spread, spread]),
@@ -536,10 +659,8 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
-    ring_green = float(vtp_cfg.get('ring_green_um', 50.0))
-    ring_orange = float(vtp_cfg.get('ring_orange_um', 96.0))
-    bar_y_max = float(vtp_cfg.get('bar_y_max_um', 50.0))
-    bar_y_dtick = float(vtp_cfg.get('bar_y_dtick_um', 5.0))
+    ring_green = float(vtp_cfg.get('ring_green_um', 10.0))
+    ring_orange = float(vtp_cfg.get('ring_orange_um', 15.0))
 
     work = df[[sc_col, loc_col, grid_col]].dropna().copy()
     work['sc_um'] = work[sc_col] * 1000
@@ -547,14 +668,9 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     work = work.dropna(subset=[grid_col]).sort_values(grid_col)
     work[grid_col] = work[grid_col].astype(int).astype(str)
 
-    def _bar_color(sc: float) -> str:
-        if sc <= ring_green:
-            return chart_colors.get('traffic_light_green', '#2ecc71')
-        if sc <= ring_orange:
-            return chart_colors.get('traffic_light_orange', '#f39c12')
-        return chart_colors.get('traffic_light_red', '#e74c3c')
-
-    work['color'] = work['sc_um'].apply(_bar_color)
+    work['color'] = work['sc_um'].apply(
+        lambda v: _traffic_light_color(v, ring_green, ring_orange, chart_colors)
+    )
 
     fig = go.Figure()
     fig.add_trace(go.Bar(

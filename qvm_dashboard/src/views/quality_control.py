@@ -3,6 +3,7 @@ Quality Control View - Statistical summary and annular ring analysis
 Extracted from app.py for modularity and reusability.
 """
 
+import logging
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -14,6 +15,9 @@ from PIL import Image as PILImage
 from src.views.base import BaseView
 from src.utils import convert_to_microns
 from src.visuals import plot_vtp_bullseye
+
+
+logger = logging.getLogger(__name__)
 
 
 class QualityControlView(BaseView):
@@ -127,28 +131,47 @@ class QualityControlView(BaseView):
                 if is_via_to_pad:
                     _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
-                    def _fig_to_xl_image(fig, width_px=600, height_px=500) -> XLImage:
-                        """Convert a plotly figure to an openpyxl Image object."""
+                    def _fig_to_xl_image(fig, width_px: int = 700, height_px: int = 700) -> XLImage:
+                        """Convert a plotly figure to an openpyxl Image.
+
+                        Square 700×700 matches the bullseye's 1:1 aspect ratio so it
+                        doesn't squish horizontally in Excel. Requires `kaleido`.
+                        """
                         img_bytes = fig.to_image(format='png', width=width_px, height=height_px, scale=2)
                         img_buf = BytesIO(img_bytes)
-                        # Resize via PIL to control final cell size
                         pil_img = PILImage.open(img_buf)
                         out_buf = BytesIO()
                         pil_img.save(out_buf, format='PNG')
                         out_buf.seek(0)
                         xl_img = XLImage(out_buf)
-                        xl_img.width  = width_px
+                        xl_img.width = width_px
                         xl_img.height = height_px
                         return xl_img
 
-                    def _add_chart_to_sheet(ws, df_for_chart, settings, anchor='A20'):
-                        """Generate scatter plot and embed it below data in the sheet."""
+                    def _add_chart_to_sheet(ws, df_for_chart, settings, sheet_label: str):
+                        """Generate scatter plot and embed it below the data table.
+
+                        Anchor row is computed from data length (header + rows + 2 row gap)
+                        so the chart never overlaps the table. Failures surface as
+                        sidebar warnings + a log entry instead of being swallowed.
+                        """
+                        anchor = f'A{len(df_for_chart) + 4}'
                         try:
                             fig = plot_vtp_bullseye(df_for_chart, settings)
                             xl_img = _fig_to_xl_image(fig)
                             ws.add_image(xl_img, anchor)
-                        except Exception:
-                            pass  # silently skip if chart generation fails
+                        except ImportError as e:
+                            logger.warning("Chart embed skipped for %s: %s", sheet_label, e)
+                            st.sidebar.warning(
+                                f"⚠️ Could not embed scatter in '{sheet_label}': "
+                                f"`kaleido` is required for PNG export. Run "
+                                f"`pip install kaleido` and re-export."
+                            )
+                        except Exception as e:
+                            logger.warning("Chart embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(
+                                f"⚠️ Could not embed scatter in '{sheet_label}': {e}"
+                            )
 
                     def _make_measurement_sheet(df_in, side_vals):
                         """Grid ID + measurements, no metadata."""
@@ -187,9 +210,8 @@ class QualityControlView(BaseView):
                             # Write measurement data
                             _make_measurement_sheet(side_display, side_vals).to_excel(
                                 writer, sheet_name=sheet_name, index=False)
-                            # Embed DX vs DY scatter below data (row 20 = after 16 data rows + header + gap)
                             ws = writer.sheets[sheet_name]
-                            _add_chart_to_sheet(ws, side_df_raw, self.settings, anchor='A20')
+                            _add_chart_to_sheet(ws, side_df_raw, self.settings, sheet_name)
                             report_frames.append(_make_report_sheet(side_display, side_vals))
                         # Combined Report sheet
                         report_df = pd.concat(report_frames, ignore_index=True)
@@ -199,7 +221,7 @@ class QualityControlView(BaseView):
                         _make_measurement_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Via to Pad', index=False)
                         ws = writer.sheets['Via to Pad']
-                        _add_chart_to_sheet(ws, filtered_df, self.settings, anchor='A20')
+                        _add_chart_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
                         _make_report_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Report', index=False)
                 else:

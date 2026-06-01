@@ -115,7 +115,7 @@ Color-coded panel-level heatmap of registration error magnitude at each fiducial
 ## Configuration (`config/settings.yaml`)
 
 ### POSITIONAL_MAPPING
-Maps block index (0–15, in the order blocks appear in the file top-to-bottom) to Grid ID. Grid IDs are two-digit codes where the tens digit is the quadrant (1=UL, 2=LL, 3=LR, 4=UR) and the units digit is the hole number within that quadrant (1–4).
+Maps block index (0–15, in the order blocks appear in the file top-to-bottom) to Grid ID. Grid IDs are two-digit codes where the tens digit is the quarter (1=UL, 2=LL, 3=LR, 4=UR) and the units digit is the hole number within that quarter (1–4).
 
 ```yaml
 POSITIONAL_MAPPING:
@@ -177,7 +177,7 @@ Thresholds for color-coding optical edge confidence point counts.
 | Column | Unit | Meaning |
 |---|---|---|
 | `Location` | — | Fiducial site name (e.g., `UL_1`, `LL_2`) |
-| `Grid ID` | — | Two-digit numeric site code (e.g., `11` = UL quadrant, hole 1) |
+| `Grid ID` | — | Two-digit numeric site code (e.g., `11` = UL quarter, hole 1) |
 | `Coord. X` / `Coord. Y` | mm | Absolute pad center position on the panel (PtV only; absent in VtP) |
 | `Pad Diameter` | µm (display) / mm (raw) | Outer diameter of the etched copper pad |
 | `Via Parameter` | µm (display) / mm (raw) | Diameter of the laser-drilled or mechanically-drilled via |
@@ -205,7 +205,7 @@ Thresholds for color-coding optical edge confidence point counts.
 ```
 qvm_dashboard/
 ├── app.py                              # Entry point: navigation, data ingestion, view dispatch
-├── panel_mapping.py                    # Panel map figure builder (4-quadrant Plotly layout)
+├── panel_mapping.py                    # Panel map figure builder (4-quarter Plotly layout)
 ├── requirements.txt
 ├── config/
 │   └── settings.yaml                   # All thresholds, limits, colors, column names, mappings

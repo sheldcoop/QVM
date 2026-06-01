@@ -87,7 +87,7 @@ PANEL_VIEW:
 COLORS:
   background: "#2C3E50"
   panel_body: "#C87533"
-  quadrant_fill: "#F4B486"
+  quarter_fill: "#F4B486"
   grid_border: "#8B4513"
   app_background: "#212121"
   app_text: "#FFFFFF"
@@ -102,8 +102,9 @@ FIGURE_SETTINGS:
   point_text_size: 14
 
 CHART_COLORS:
-  traffic_light_green: "#2ecc71"      # Healthy (>75 points)
-  traffic_light_orange: "#f39c12"     # Warning (40-75 points)
+  traffic_light_dark_green: "#1e7e3a" # Excellent — inner pass band
+  traffic_light_green: "#2ecc71"      # Good — outer pass band
+  traffic_light_orange: "#f39c12"     # (legacy, no longer used by the bullseye)
   traffic_light_red: "#e74c3c"        # Critical (<40 points)
   traffic_light_gray: "#999999"       # Unknown/Missing
   chart_background: "#FFFFFF"         # Pure white
@@ -121,18 +122,17 @@ CAM_COMPENSATION:
   min_valid_ratio: 0.75
 
 VTP_REGISTRATION:
-  # Tolerance ring radii in µm for the bullseye scatter.
-  # Derived from: pad_radius(156.25) - via_radius(10) - IPC_Class2_AR_min(50) = 96µm hard limit.
-  ring_green_um: 50.0      # Inner zone — process healthy, no action needed
-  ring_orange_um: 96.0     # Outer zone — approaching annular ring limit, monitor closely
-  # Anything beyond ring_orange_um is red — annular ring at risk
+  # Bullseye uses three regions defined by two concentric rings:
+  #   inside ring_excellent ........ DARK GREEN — excellent
+  #   ring_excellent..ring_good .... GREEN — good
+  #   outside ring_good ............ RED — fail
+  ring_excellent_um: 5.0   # Inner ring — anything inside is registered very tightly
+  ring_good_um: 10.0       # Outer ring — beyond this is red (fail)
   point_size: 12           # Scatter point size
-  bar_y_max_um: 20.0         # Site bar chart Y-axis ceiling
-  bar_y_dtick_um: 5.0        # Site bar chart Y-axis tick interval
-  bullseye_axis_half_um: 20.0  # Half-width of bullseye X/Y axes (rings outside this range are clipped but still drawn)
-  pad_nominal_um: 312.5    # Nominal pad diameter for caption / ring derivation
-  via_nominal_um: 20.0     # Nominal via diameter for caption / ring derivation
-  annular_ring_min_um: 50.0  # IPC minimum annular ring used to derive ring_orange_um
+  bullseye_axis_half_um: 15.0  # Half-width of bullseye X/Y axes (fixed; outliers report in summary annotation)
+  pad_nominal_um: 312.5    # Nominal pad diameter for caption
+  via_nominal_um: 20.0     # Nominal via diameter for caption
+  annular_ring_min_um: 50.0  # IPC minimum annular ring (caption only)
   ipc_standard: "IPC-6012 Class 2"
 
 

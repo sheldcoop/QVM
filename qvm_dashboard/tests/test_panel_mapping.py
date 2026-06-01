@@ -13,7 +13,7 @@ _SETTINGS = {
         'corner_radius': 20.0, 'point_margin_factor': 0.20,
     },
     'COLORS': {
-        'panel_body': '#C87533', 'quadrant_fill': '#F4B486',
+        'panel_body': '#C87533', 'quarter_fill': '#F4B486',
         'grid_border': '#8B4513', 'background': '#2C3E50',
     },
     'FIGURE_SETTINGS': {'width': 800, 'height': 800, 'margin': 40,
@@ -34,7 +34,7 @@ def test_panel_map_renders_16_points():
 
     fig = create_four_quarters_view(_SETTINGS)
     assert isinstance(fig, go.Figure)
-    # One scatter trace with 16 points (4 per quadrant × 4 quadrants)
+    # One scatter trace with 16 points (4 per quarter × 4 quarters)
     assert len(fig.data) == 1
     assert len(fig.data[0].x) == 16
 

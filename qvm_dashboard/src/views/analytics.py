@@ -16,7 +16,7 @@ class AnalyticsView(BaseView):
     
     Supported plot types:
     - Quiver/Vector Plot: Directional shift with configurable exaggeration
-    - Heatmap: Measurement distribution across quadrants
+    - Heatmap: Measurement distribution across quarters
     """
 
     def _render_root_cause_confidence(self, diagnosis: dict) -> None:
@@ -41,7 +41,7 @@ class AnalyticsView(BaseView):
 
         col4, col5 = st.columns(2)
         col4.metric("Class Certainty", f"{stats.get('certainty', 0.0) * 100:.1f}%")
-        col5.metric("Quadrant Stability", f"{stats.get('stability', 0.0) * 100:.1f}%")
+        col5.metric("Quarter Stability", f"{stats.get('stability', 0.0) * 100:.1f}%")
 
         st.caption(
             f"Valid points: {stats.get('valid_points', 0)}/{stats.get('expected_points', 0)} | "

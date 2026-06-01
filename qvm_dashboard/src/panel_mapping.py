@@ -42,7 +42,7 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
 
     # --- Colors ---
     PANEL_BG_COLOR  = colors.get('panel_body', '#C87533')
-    QUADRANT_COLOR  = colors.get('quadrant_fill', '#F4B486')
+    QUARTER_COLOR   = colors.get('quarter_fill', '#F4B486')
     GRID_COLOR      = colors.get('grid_border', '#8B4513')
     BG_COLOR        = colors.get('background', '#2C3E50')
 
@@ -91,7 +91,7 @@ def create_four_quarters_view(settings: dict) -> go.Figure:
             y0=y_start,
             x1=x_start + quad_width,
             y1=y_start + quad_height,
-            fillcolor=QUADRANT_COLOR,
+            fillcolor=QUARTER_COLOR,
             line=dict(color=GRID_COLOR, width=3),
             layer='below',
         ))
