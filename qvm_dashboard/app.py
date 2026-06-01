@@ -85,9 +85,16 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
         if is_via_to_pad:
             tab1, tab2 = st.tabs(["Registration Scatter", "Quiver Plot"])
             with tab1:
-                RegistrationScatterView(settings, data_processor).render(filtered_df)
+                # Side selector for scatter when both sides uploaded
+                if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
+                    side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
+                    chosen_side_scatter = st.selectbox("Select Side", side_options, key="scatter_side")
+                    scatter_df = filtered_df if chosen_side_scatter == 'Both' else filtered_df[filtered_df['Side'] == chosen_side_scatter].copy()
+                else:
+                    scatter_df = filtered_df.copy()
+                RegistrationScatterView(settings, data_processor).render(scatter_df)
             with tab2:
-                # If multiple sides uploaded, let user pick one
+                # Side selector for quiver — must be single side (16 points only)
                 if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
                     side_options = sorted(filtered_df['Side'].unique().tolist())
                     chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")

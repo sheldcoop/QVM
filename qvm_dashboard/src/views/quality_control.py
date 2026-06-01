@@ -199,9 +199,12 @@ class QualityControlView(BaseView):
         
         # Add clarification about Grid ID
         st.info(
-            "📍 **Grid ID**: Position on the PCB quadrant (11-14 = Upper Left, "
-            "21-24 = Lower Left, 31-34 = Lower Right, 41-44 = Upper Right). "
-            "First digit = quadrant, second digit = point (1-4). "
+            "📍 **Grid ID**: Position on the panel quarter — "
+            "11–14 = Upper Left quarter, "
+            "21–24 = Lower Left quarter, "
+            "31–34 = Lower Right quarter, "
+            "41–44 = Upper Right quarter. "
+            "First digit = quarter, second digit = point (1–4). "
             "All measurements in **microns (µm)**."
         )
         
