@@ -27,8 +27,10 @@ class RegistrationScatterView(BaseView):
         )
 
         vtp_cfg = self.settings.get('VTP_REGISTRATION', {})
-        ring_green = float(vtp_cfg.get('ring_green_um', 10.0))
-        ring_orange = float(vtp_cfg.get('ring_orange_um', 15.0))
+        ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
+        ring_excellent = float(vtp_cfg.get('ring_excellent_um', 5.0))
+        ring_good = float(vtp_cfg.get('ring_good_um', 7.5))
+        ring_acceptable = float(vtp_cfg.get('ring_acceptable_um', 10.0))
 
         sc_col = self.col_names.get('ptv_distance', 'PtV Distance')
 
@@ -36,9 +38,9 @@ class RegistrationScatterView(BaseView):
         if sc_col in filtered_df.columns:
             sc_um = filtered_df[sc_col].dropna() * 1000
             n_total = len(sc_um)
-            n_pass = int((sc_um <= ring_green).sum())
-            n_warn = int(((sc_um > ring_green) & (sc_um <= ring_orange)).sum())
-            n_fail = int((sc_um > ring_orange).sum())
+            n_pass = int((sc_um <= ring_exceptional).sum())
+            n_warn = int(((sc_um > ring_exceptional) & (sc_um <= ring_acceptable)).sum())
+            n_fail = int((sc_um > ring_acceptable).sum())
 
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Sites measured", n_total)
@@ -71,8 +73,10 @@ class RegistrationScatterView(BaseView):
             ar_min = float(vtp_cfg.get('annular_ring_min_um', 50.0))
             ipc = vtp_cfg.get('ipc_standard', 'IPC-6012 Class 2')
             st.caption(
-                f"Tolerance rings: green < {ring_green:.0f} µm | "
-                f"orange {ring_green:.0f}–{ring_orange:.0f} µm | "
-                f"red > {ring_orange:.0f} µm  "
+                f"Tolerance rings: blue ≤ {ring_exceptional:.1f} µm | "
+                f"green {ring_exceptional:.1f}–{ring_excellent:.1f} µm | "
+                f"green {ring_excellent:.1f}–{ring_good:.1f} µm | "
+                f"orange {ring_good:.1f}–{ring_acceptable:.0f} µm | "
+                f"red > {ring_acceptable:.0f} µm  "
                 f"({ipc}, pad ∅{pad_um:.1f} µm, via ∅{via_um:.1f} µm, AR min {ar_min:.0f} µm)"
             )
