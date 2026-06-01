@@ -22,6 +22,20 @@ class BaseView(ABC):
         self.col_names = settings.get('COLUMN_NAMES', {})
         self.chart_colors = settings.get('CHART_COLORS', {})
         self.chart_heights = settings.get('CHART_HEIGHTS', {})
+        self.tolerances = settings.get('TOLERANCES', {})
+
+    def apply_standard_layout(self, fig, *, height_key: str = 'analytics_plot') -> None:
+        """Apply the dashboard's default Plotly layout (height, background, gridlines).
+
+        Views that need fine control over layout should call this and then their
+        own `fig.update_layout(...)` afterwards.
+        """
+        fig.update_layout(
+            height=self.get_chart_height(height_key),
+            plot_bgcolor=self.get_chart_background(),
+            xaxis=dict(showgrid=self.get_gridlines_visible()),
+            yaxis=dict(showgrid=self.get_gridlines_visible()),
+        )
     
     @abstractmethod
     def render(self, filtered_df: pd.DataFrame, **kwargs) -> None:

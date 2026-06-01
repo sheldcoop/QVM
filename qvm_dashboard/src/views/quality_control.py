@@ -28,23 +28,20 @@ class QualityControlView(BaseView):
     """
     
     def render(self, filtered_df: pd.DataFrame, **kwargs) -> None:
+        """Render the Quality Control analysis view.
+
+        Kwargs:
+            is_via_to_pad (bool): true when rendering Via-to-Pad data
+            meta (dict): sidebar metadata (project_name, panel, process, …)
         """
-        Render the Quality Control analysis view.
-        
-        Args:
-            filtered_df: Input DataFrame with measurement data
-            **kwargs: Additional context including 'col_names' and 'tolerances'
-        """
-        col_names = kwargs.get('col_names', {})
-        tolerances = kwargs.get('tolerances', {})
         is_via_to_pad = kwargs.get('is_via_to_pad', False)
         meta = kwargs.get('meta', {})
-        
+
+        col_names = self.col_names
         annular_col = col_names.get('annular_ring', 'Annular Ring')
-        threshold = tolerances.get('annular_ring_min', 0.0)
+        threshold = self.tolerances.get('annular_ring_min', 0.0)
         grid_id_col = col_names.get('grid_id', 'Grid ID')
-        
-        # Column name references
+
         via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
         pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
         dx_col       = col_names.get('x_distance', 'Shift (DX)')
