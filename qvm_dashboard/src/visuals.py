@@ -497,9 +497,9 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
-    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 2.0))
-    ring_good = float(vtp_cfg.get('ring_good_um', 5.0))
-    ring_fail = float(vtp_cfg.get('ring_fail_um', 10.0))
+    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 1.25))   # inner ring
+    ring_good = float(vtp_cfg.get('ring_good_um', 2.5))             # mid ring
+    ring_fail = float(vtp_cfg.get('ring_fail_um', 5.0))             # outer ring
 
     work = df[[dx_col, dy_col, sc_col, loc_col, grid_col]].dropna().copy()
     work['dx_um'] = work[dx_col] * 1000
@@ -514,22 +514,14 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     orange_color = chart_colors.get('traffic_light_orange', '#e67e22')
     red_color = chart_colors.get('traffic_light_red', '#e74c3c')
 
-    # Data-driven axis range: largest abs displacement + 2 µm padding,
-    # but never smaller than ring_fail so all three rings are always visible.
-    if len(work):
-        max_displacement = max(
-            work['dx_um'].abs().max(),
-            work['dy_um'].abs().max(),
-            ring_fail,
-        )
-    else:
-        max_displacement = ring_fail
-    spread = max_displacement + 2.0
+    # Fixed axis around the outermost ring (+2 µm breathing room).
+    # Points beyond this are clipped from view but still counted in the summary.
+    spread = ring_fail + 2.0
 
     fig = go.Figure()
 
     # Three concentric rings for pass / warn / fail zones.
-    # Ring 1 — dark green at ring_excellent (≤2 µm, excellent)
+    # Ring 1 — dark green at 2.5 µm
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_excellent, y0=-ring_excellent, x1=ring_excellent, y1=ring_excellent,
@@ -537,7 +529,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         fillcolor='rgba(0,0,0,0)',
         layer='below',
     )
-    # Ring 2 — orange at ring_good (2–5 µm boundary)
+    # Ring 2 — orange at 5 µm
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_good, y0=-ring_good, x1=ring_good, y1=ring_good,
@@ -545,7 +537,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         fillcolor='rgba(0,0,0,0)',
         layer='below',
     )
-    # Ring 3 — red at ring_fail (5–10 µm boundary)
+    # Ring 3 — red at 10 µm
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_fail, y0=-ring_fail, x1=ring_fail, y1=ring_fail,
@@ -612,10 +604,10 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     # Ring legend in opposite corner so it doesn't fight the summary.
     fig.add_annotation(
         text=(
-            f"<span style='color:{dark_green_color}'>●</span> ≤ {ring_excellent:.0f} µm (excellent)<br>"
-            f"<span style='color:{chart_colors.get('traffic_light_green', '#2ecc71')}'>●</span> {ring_excellent:.0f}–{ring_good:.0f} µm (good)<br>"
-            f"<span style='color:{orange_color}'>●</span> {ring_good:.0f}–{ring_fail:.0f} µm (warn)<br>"
-            f"<span style='color:{red_color}'>●</span> > {ring_fail:.0f} µm (fail)"
+            f"<span style='color:{dark_green_color}'>●</span> r ≤ {ring_excellent:.2f} µm (excellent)<br>"
+            f"<span style='color:{chart_colors.get('traffic_light_green', '#2ecc71')}'>●</span> r ≤ {ring_good:.1f} µm (good)<br>"
+            f"<span style='color:{orange_color}'>●</span> r ≤ {ring_fail:.1f} µm (warn)<br>"
+            f"<span style='color:{red_color}'>●</span> r > {ring_fail:.1f} µm (fail)"
         ),
         xref='paper', yref='paper',
         x=0.98, y=0.02,
