@@ -8,9 +8,12 @@ import pandas as pd
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import PatternFill
+from openpyxl.drawing.image import Image as XLImage
+from PIL import Image as PILImage
 
 from src.views.base import BaseView
 from src.utils import convert_to_microns
+from src.visuals import plot_vtp_bullseye
 
 
 class QualityControlView(BaseView):
@@ -127,6 +130,29 @@ class QualityControlView(BaseView):
                 if is_via_to_pad:
                     _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
+                    def _fig_to_xl_image(fig, width_px=600, height_px=500) -> XLImage:
+                        """Convert a plotly figure to an openpyxl Image object."""
+                        img_bytes = fig.to_image(format='png', width=width_px, height=height_px, scale=2)
+                        img_buf = BytesIO(img_bytes)
+                        # Resize via PIL to control final cell size
+                        pil_img = PILImage.open(img_buf)
+                        out_buf = BytesIO()
+                        pil_img.save(out_buf, format='PNG')
+                        out_buf.seek(0)
+                        xl_img = XLImage(out_buf)
+                        xl_img.width  = width_px
+                        xl_img.height = height_px
+                        return xl_img
+
+                    def _add_chart_to_sheet(ws, df_for_chart, settings, anchor='A20'):
+                        """Generate scatter plot and embed it below data in the sheet."""
+                        try:
+                            fig = plot_vtp_bullseye(df_for_chart, settings)
+                            xl_img = _fig_to_xl_image(fig)
+                            ws.add_image(xl_img, anchor)
+                        except Exception:
+                            pass  # silently skip if chart generation fails
+
                     def _make_measurement_sheet(df_in, side_vals):
                         """Grid ID + measurements, no metadata."""
                         s = df_in.copy()
@@ -158,18 +184,25 @@ class QualityControlView(BaseView):
                         for side in sorted(sides):
                             mask = filtered_df['Side'] == side
                             side_display = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
-                            side_vals = filtered_df.loc[mask, 'Side'].values
-                            # Measurement sheet per side
+                            side_df_raw  = filtered_df[mask].copy()
+                            side_vals    = filtered_df.loc[mask, 'Side'].values
+                            sheet_name   = f'Via to Pad - {side}'
+                            # Write measurement data
                             _make_measurement_sheet(side_display, side_vals).to_excel(
-                                writer, sheet_name=f'Via to Pad - {side}', index=False)
+                                writer, sheet_name=sheet_name, index=False)
+                            # Embed DX vs DY scatter below data (row 20 = after 16 data rows + header + gap)
+                            ws = writer.sheets[sheet_name]
+                            _add_chart_to_sheet(ws, side_df_raw, self.settings, anchor='A20')
                             report_frames.append(_make_report_sheet(side_display, side_vals))
                         # Combined Report sheet
-                        pd.concat(report_frames, ignore_index=True).to_excel(
-                            writer, sheet_name='Report', index=False)
+                        report_df = pd.concat(report_frames, ignore_index=True)
+                        report_df.to_excel(writer, sheet_name='Report', index=False)
                     else:
-                        # Single side — original behaviour
+                        # Single side
                         _make_measurement_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Via to Pad', index=False)
+                        ws = writer.sheets['Via to Pad']
+                        _add_chart_to_sheet(ws, filtered_df, self.settings, anchor='A20')
                         _make_report_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Report', index=False)
                 else:
