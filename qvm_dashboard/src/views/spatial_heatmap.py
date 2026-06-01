@@ -29,20 +29,13 @@ class SpatialHeatmapView(BaseView):
     """
     
     def render(self, filtered_df: pd.DataFrame, **kwargs) -> None:
-        """
-        Render the 2D Spatial Heatmap view.
-        
-        Args:
-            filtered_df: Input DataFrame with coordinate and shift data
-            **kwargs: Additional context (col_names, chart_colors, etc.)
-        """
+        """Render the 2D Spatial Heatmap view."""
         st.subheader("🎨 2D Spatial Heatmap: Laser Scan Field Analysis")
         st.write("Visualize the physical panel layout with spatial drilling distortion patterns. Color gradient reveals laser galvo-scanner field distortion.")
-        
-        col_names = kwargs.get('col_names', {})
-        chart_colors = kwargs.get('chart_colors', {})
-        
-        # Prepare data
+
+        col_names = self.col_names
+        chart_colors = self.chart_colors
+
         plot_df = self._prepare_heatmap_data(filtered_df, col_names)
         
         if plot_df.empty:
@@ -57,17 +50,7 @@ class SpatialHeatmapView(BaseView):
     
     @staticmethod
     def _prepare_heatmap_data(df: pd.DataFrame, col_names: dict) -> pd.DataFrame:
-        """
-        Prepare data by filtering Vias only and normalizing coordinates.
-        
-        Args:
-            df: Input DataFrame with coordinate data
-            col_names: Column name mappings
-            
-        Returns:
-            DataFrame with normalized coordinates and filtered to Vias only
-        """
-        # Column name mappings
+        """Prepare coordinate + shift data for the spatial heatmap."""
         location_col = col_names.get('location', 'Location')
         coord_x_col = col_names.get('coord_x', 'Coord. X')
         coord_y_col = col_names.get('coord_y', 'Coord. Y')
@@ -75,61 +58,44 @@ class SpatialHeatmapView(BaseView):
         dx_col = col_names.get('x_distance', 'Shift (DX)')
         dy_col = col_names.get('y_distance', 'Shift (DY)')
         pts_col = col_names.get('via_pts', 'Via Pts.')
-        item_type_col = col_names.get('item_type', 'Type')
-        
-        # Filter for Vias only
-        plot_df = df[df[item_type_col] == 'Via'].copy() if item_type_col in df.columns else df.copy()
-        
-        # Check for required columns
+
+        plot_df = df.copy()
         required_cols = [location_col, coord_x_col, coord_y_col, sc_col]
         if not all(col in plot_df.columns for col in required_cols):
             return pd.DataFrame()
-        
-        # Filter out rows with NaN coordinates
+
         plot_df = plot_df[[location_col, coord_x_col, coord_y_col, sc_col, dx_col, dy_col, pts_col]].dropna(subset=[coord_x_col, coord_y_col, sc_col])
-        
         if plot_df.empty:
             return pd.DataFrame()
-        
-        # Convert shift measurements to micrometers for display (mm -> µm)
+
         plot_df = convert_to_microns(plot_df, [sc_col, dx_col, dy_col])
-        
-        # Store metadata for layout
+
         plot_df._metadata = {
             'max_x': plot_df[coord_x_col].max(),
-            'max_y': plot_df[coord_y_col].max()
+            'max_y': plot_df[coord_y_col].max(),
         }
-        
         return plot_df
     
     @staticmethod
     def _render_heatmap(plot_df: pd.DataFrame, col_names: dict, chart_colors: dict) -> None:
-        """
-        Render the 2D spatial heatmap with absolute coordinates.
-        
-        Args:
-            plot_df: DataFrame with coordinates and SC values
-            col_names: Column name mappings
-            chart_colors: Color configuration
-        """
-        # Get column names
+        """Render the 2D spatial heatmap with absolute coordinates."""
+        location_col = col_names.get('location', 'Location')
         coord_x_col = col_names.get('coord_x', 'Coord. X')
         coord_y_col = col_names.get('coord_y', 'Coord. Y')
-        
-        # Extract metadata
-        extent = plot_df._metadata if hasattr(plot_df, '_metadata') else {'max_x': 1, 'max_y': 1}
-        max_x = extent.get('max_x', 1)
-        max_y = extent.get('max_y', 1)
-        
+        sc_col = col_names.get('total_shift', 'SC')
+        dx_col = col_names.get('x_distance', 'Shift (DX)')
+        dy_col = col_names.get('y_distance', 'Shift (DY)')
+        pts_col = col_names.get('via_pts', 'Via Pts.')
+
         # Create scatter plot with color gradient (SC magnitude as heat)
         fig = px.scatter(
             plot_df,
             x=coord_x_col,
             y=coord_y_col,
-            color='SC',
-            size='SC',
-            hover_name='Location',
-            custom_data=['SC', 'Shift (DX)', 'Shift (DY)', 'Via Pts.'],
+            color=sc_col,
+            size=sc_col,
+            hover_name=location_col,
+            custom_data=[sc_col, dx_col, dy_col, pts_col],
             color_continuous_scale='RdYlGn_r',  # Red-Yellow-Green reversed (high=red, low=green)
             size_max=20,
             title='2D Spatial Heatmap: Laser Drilling Distortion Pattern'

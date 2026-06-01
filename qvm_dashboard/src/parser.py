@@ -1,9 +1,13 @@
 import re
 import os
+import logging
 import pandas as pd
 from typing import Dict, Any, Optional
 
-from src.utils import load_settings
+from src.utils import load_settings, resolve_columns
+
+
+logger = logging.getLogger(__name__)
 
 
 class QVMParseError(Exception):
@@ -14,6 +18,19 @@ class QVMParseError(Exception):
 _PTS_RE = re.compile(r"From\s+(\d+)\s*Pts\.")
 _PANEL_RE = re.compile(r'panel[\s_]*(\d+)', re.IGNORECASE)
 _SIDE_RE = re.compile(r'[_\s]([fb])\s*$', re.IGNORECASE)
+
+
+def _parse_value(line: str) -> float:
+    """Parse `<label> = <number>` and return the number.
+
+    Raises QVMParseError with the offending line if the format is malformed.
+    """
+    if '=' not in line:
+        raise QVMParseError(f"Malformed measurement line (missing '='): {line!r}")
+    try:
+        return float(line.split('=', 1)[1].strip())
+    except ValueError as e:
+        raise QVMParseError(f"Could not parse number from line {line!r}: {e}")
 
 
 def parse_filename(filename: str) -> Dict[str, Optional[str]]:
@@ -63,25 +80,38 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
     }
 
 
+_EMIT_KEYS = (
+    'location', 'grid_id', 'outer_diameter', 'inner_diameter',
+    'coord_x', 'coord_y', 'ptv_distance', 'total_shift',
+    'x_distance', 'y_distance', 'pad_pts', 'via_pts',
+)
+
+
 def _emit_row(current: Dict[str, Any], block_index: int, settings: dict) -> dict:
     """Build a single output row dict from the accumulated parser state."""
-    col_names = settings.get('COLUMN_NAMES', {})
+    cols = resolve_columns(settings, _EMIT_KEYS)
     positional_mapping = settings.get('POSITIONAL_MAPPING', [])
-    grid_id = positional_mapping[block_index] if block_index < len(positional_mapping) else None
+    if block_index < len(positional_mapping):
+        grid_id: Optional[int] = int(positional_mapping[block_index])
+    else:
+        logger.warning(
+            "Block index %d exceeds POSITIONAL_MAPPING length %d; Grid ID will be None.",
+            block_index, len(positional_mapping),
+        )
+        grid_id = None
     return {
-        col_names.get('location', 'Location'): current.get('location', ''),
-        col_names.get('grid_id', 'Grid ID'): int(grid_id) if grid_id is not None else None,
-        col_names.get('outer_diameter', 'Pad Diameter'): current.get('pad_diameter'),
-        col_names.get('inner_diameter', 'Via Parameter'): current.get('via_diameter'),
-        col_names.get('coord_x', 'Coord. X'): current.get('via_coord_x'),
-        col_names.get('coord_y', 'Coord. Y'): current.get('via_coord_y'),
-        col_names.get('ptv_distance', 'PtV Distance'): current['sc'],
-        col_names.get('total_shift', 'SC'): current['sc'],
-        col_names.get('x_distance', 'Shift (DX)'): current['dx'],
-        col_names.get('y_distance', 'Shift (DY)'): current['dy'],
-        col_names.get('pad_pts', 'Pad Pts.'): current.get('pad_pts'),
-        col_names.get('via_pts', 'Via Pts.'): current.get('via_pts'),
-        col_names.get('item_type', 'Type'): 'Via',
+        cols['location']: current.get('location', ''),
+        cols['grid_id']: grid_id,
+        cols['outer_diameter']: current.get('pad_diameter'),
+        cols['inner_diameter']: current.get('via_diameter'),
+        cols['coord_x']: current.get('via_coord_x'),
+        cols['coord_y']: current.get('via_coord_y'),
+        cols['ptv_distance']: current['sc'],
+        cols['total_shift']: current['sc'],
+        cols['x_distance']: current['dx'],
+        cols['y_distance']: current['dy'],
+        cols['pad_pts']: current.get('pad_pts'),
+        cols['via_pts']: current.get('via_pts'),
     }
 
 
@@ -94,13 +124,13 @@ def _step_distance_tail(s: str, state: str, current: Dict[str, Any]):
     if state == "DIST_HEADER" and s.startswith("Distance:"):
         return "SC", False
     if state == "SC" and s.startswith("SC"):
-        current['sc'] = float(s.split('=')[1].strip())
+        current['sc'] = _parse_value(s)
         return "DX", False
     if state == "DX" and s.startswith("DX"):
-        current['dx'] = float(s.split('=')[1].strip())
+        current['dx'] = _parse_value(s)
         return "DY", False
     if state == "DY" and s.startswith("DY"):
-        current['dy'] = float(s.split('=')[1].strip())
+        current['dy'] = _parse_value(s)
         return "IDLE", True
     return state, False
 
@@ -129,17 +159,17 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
 
         elif state == "PAD_X":
             if s.startswith("Coord.") and 'X' in s:
-                current['pad_coord_x'] = float(s.split('=')[1].strip())
+                current['pad_coord_x'] = _parse_value(s)
                 state = "PAD_Y"
 
         elif state == "PAD_Y":
             if s.startswith("Coord.") and 'Y' in s:
-                current['pad_coord_y'] = float(s.split('=')[1].strip())
+                current['pad_coord_y'] = _parse_value(s)
                 state = "PAD_DIAM"
 
         elif state == "PAD_DIAM":
             if 'Diameter' in s:
-                current['pad_diameter'] = float(s.split('=')[1].strip())
+                current['pad_diameter'] = _parse_value(s)
                 state = "VIA_HEADER"
 
         elif state == "VIA_HEADER":
@@ -150,17 +180,17 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
 
         elif state == "VIA_X":
             if s.startswith("Coord.") and 'X' in s:
-                current['via_coord_x'] = float(s.split('=')[1].strip())
+                current['via_coord_x'] = _parse_value(s)
                 state = "VIA_Y"
 
         elif state == "VIA_Y":
             if s.startswith("Coord.") and 'Y' in s:
-                current['via_coord_y'] = float(s.split('=')[1].strip())
+                current['via_coord_y'] = _parse_value(s)
                 state = "VIA_DIAM"
 
         elif state == "VIA_DIAM":
             if 'Diameter' in s:
-                current['via_diameter'] = float(s.split('=')[1].strip())
+                current['via_diameter'] = _parse_value(s)
                 state = "DIST_HEADER"
 
         else:
@@ -170,6 +200,8 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
                 block_index += 1
                 current = {}
 
+    if state != "IDLE":
+        logger.warning("Pad-to-Via file ended mid-block in state %s; trailing data discarded.", state)
     if not rows:
         raise QVMParseError("No valid measurement blocks found in the file.")
     return pd.DataFrame(rows)
@@ -200,7 +232,7 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
 
         elif state == "VIA_DIAM":
             if 'Diameter' in s:
-                current['via_diameter'] = float(s.split('=')[1].strip())
+                current['via_diameter'] = _parse_value(s)
                 state = "PAD_HEADER"
 
         elif state == "PAD_HEADER":
@@ -211,7 +243,7 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
 
         elif state == "PAD_DIAM":
             if 'Diameter' in s:
-                current['pad_diameter'] = float(s.split('=')[1].strip())
+                current['pad_diameter'] = _parse_value(s)
                 state = "DIST_HEADER"
 
         else:
@@ -221,6 +253,8 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
                 block_index += 1
                 current = {}
 
+    if state != "IDLE":
+        logger.warning("Via-to-Pad file ended mid-block in state %s; trailing data discarded.", state)
     if not rows:
         raise QVMParseError("No valid measurement blocks found in the file.")
     return pd.DataFrame(rows)

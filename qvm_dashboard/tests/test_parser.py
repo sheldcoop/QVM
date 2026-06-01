@@ -90,3 +90,129 @@ def test_parse_qvm_content_valid(mock_settings):
 def test_parse_qvm_content_invalid():
     with pytest.raises(QVMParseError):
         parse_qvm_content(INVALID_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Per-format multi-block parser tests
+# ---------------------------------------------------------------------------
+
+# Two Pad-to-Via blocks back-to-back. Pad circle appears BEFORE the Via circle
+# in each block, so content sniffing should route to _parse_pad_to_via.
+PTV_TWO_BLOCKS = """
+Circle: Pad_LL_2(ID:1, From 180 Pts.)
+     Coord. X =        63.857203
+     Coord. Y =       104.634501
+     Diameter =         0.308911
+
+Circle: Via_LL_2(ID:2, From 70 Pts.)
+     Coord. X =        63.856611
+     Coord. Y =       104.630820
+     Diameter =         0.016742
+
+Distance: PtV_LL_2(ID:3) between Via_LL_2(ID:2) and Pad_LL_2(ID:1)
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+
+Circle: Pad_LL_1(ID:4, From 180 Pts.)
+     Coord. X =        63.10
+     Coord. Y =       104.10
+     Diameter =         0.305
+
+Circle: Via_LL_1(ID:5, From 70 Pts.)
+     Coord. X =        63.11
+     Coord. Y =       104.12
+     Diameter =         0.017
+
+Distance: PtV_LL_1(ID:6) between Via_LL_1(ID:5) and Pad_LL_1(ID:4)
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+"""
+
+# Two Via-to-Pad blocks. Via circle appears BEFORE the Pad circle in each
+# block (no Coord. lines for these — VtP files carry only diameters + shifts).
+VTP_TWO_BLOCKS = """
+Circle: Via_LL_2(ID:1, From 70 Pts.)
+     Diameter =         0.016742
+
+Circle: Pad_LL_2(ID:2, From 180 Pts.)
+     Diameter =         0.308911
+
+Distance: PtV_LL_2(ID:3) between Via_LL_2(ID:1) and Pad_LL_2(ID:2)
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+
+Circle: Via_LL_1(ID:4, From 70 Pts.)
+     Diameter =         0.0170
+
+Circle: Pad_LL_1(ID:5, From 180 Pts.)
+     Diameter =         0.3050
+
+Distance: PtV_LL_1(ID:6) between Via_LL_1(ID:4) and Pad_LL_1(ID:5)
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+"""
+
+_MOCK_SETTINGS = {
+    'COLUMN_NAMES': {
+        'location': 'Location',
+        'grid_id': 'Grid ID',
+        'outer_diameter': 'Outer Diameter',
+        'inner_diameter': 'Inner Diameter',
+        'ptv_distance': 'PtV Distance',
+        'x_distance': 'X Distance',
+        'y_distance': 'Y Distance',
+        'total_shift': 'SC',
+        'pad_pts': 'Pad Pts.',
+        'via_pts': 'Via Pts.',
+    },
+    'POSITIONAL_MAPPING': ['22', '21'],
+}
+
+
+def test_pad_to_via_multi_block():
+    df = parse_qvm_content(PTV_TWO_BLOCKS, _MOCK_SETTINGS)
+    assert len(df) == 2
+    # Each row is tagged as Pad to Via via content sniffing.
+    assert (df['Process'] == 'Pad to Via').all()
+    # POSITIONAL_MAPPING governs Grid IDs by block order.
+    assert df['Grid ID'].tolist() == [22, 21]
+    # Spot-check that the block-1 measurements survived parsing in mm.
+    assert df.iloc[1]['DX' if 'DX' in df.columns else 'X Distance'] == pytest.approx(0.0010)
+
+
+def test_via_to_pad_multi_block():
+    df = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS)
+    assert len(df) == 2
+    assert (df['Process'] == 'Via to Pad').all()
+    assert df['Grid ID'].tolist() == [22, 21]
+    # Via-to-Pad files carry no absolute coordinates — those columns must be empty.
+    assert pd.isna(df.iloc[0]['Coord. X'])
+    assert pd.isna(df.iloc[0]['Coord. Y'])
+
+
+def test_content_sniffing_tags_process_correctly():
+    """Filename-agnostic routing: the parser tags Process from content order."""
+    ptv = parse_qvm_content(PTV_TWO_BLOCKS, _MOCK_SETTINGS)
+    vtp = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS)
+    assert ptv['Process'].iloc[0] == 'Pad to Via'
+    assert vtp['Process'].iloc[0] == 'Via to Pad'
+
+
+# ---------------------------------------------------------------------------
+# Error-handling tests for the hardened parser
+# ---------------------------------------------------------------------------
+
+def test_malformed_measurement_line_raises_qvm_error():
+    """A 'Diameter' line without '=' should produce a clear QVMParseError, not IndexError."""
+    bad_content = """
+Circle: Pad_LL_2(ID:1, From 180 Pts.)
+     Coord. X =        63.85
+     Coord. Y =       104.63
+     Diameter without equals sign
+"""
+    with pytest.raises(QVMParseError):
+        parse_qvm_content(bad_content, _MOCK_SETTINGS)

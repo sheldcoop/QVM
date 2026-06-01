@@ -64,14 +64,15 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
 
 
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
-                      col_names: dict, tolerances: dict,
-                      chart_colors: dict, chart_heights: dict,
                       is_via_to_pad: bool = False, meta: dict = None):
-    """Render whichever sub-view is active."""
+    """Render whichever sub-view is active.
+
+    Views pull their own settings slices from `self.settings` via BaseView, so
+    only the per-render context (is_via_to_pad, meta) needs threading here.
+    """
     if sub_view == "Quality Control":
         QualityControlView(settings).render(
-            filtered_df, col_names=col_names, tolerances=tolerances,
-            is_via_to_pad=is_via_to_pad, meta=meta or {})
+            filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
 
     elif sub_view == "Analytics":
         if is_via_to_pad:
@@ -99,11 +100,10 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                 fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
                 st.plotly_chart(fig_q, use_container_width=True)
         else:
-            AnalyticsView(settings).render(filtered_df, settings=settings)
+            AnalyticsView(settings).render(filtered_df)
 
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
-        SpatialHeatmapView(settings).render(
-            filtered_df, col_names=col_names, chart_colors=chart_colors)
+        SpatialHeatmapView(settings).render(filtered_df)
 
     elif sub_view == "Registration Scatter":
         RegistrationScatterView(settings).render(filtered_df)
@@ -112,10 +112,6 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
 def main():
     settings = load_settings()
     ui_strings = settings.get('UI_STRINGS', {})
-    col_names = settings.get('COLUMN_NAMES', {})
-    tolerances = settings.get('TOLERANCES', {})
-    chart_colors = settings.get('CHART_COLORS', {})
-    chart_heights = settings.get('CHART_HEIGHTS', {})
 
     st.set_page_config(page_title=ui_strings.get('dashboard_title', 'QVM Dashboard'), layout="wide")
     load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"), settings)
@@ -144,25 +140,30 @@ def main():
                 filename_info = parse_filename(file.name)
                 content = file.getvalue().decode('utf-8')
                 df = parse_qvm_content(content, settings)
-                df = calculate_annular_ring(df, settings)
-                df['Panel'] = filename_info.get('Panel Number', 'Unknown')
-                df['Side'] = filename_info.get('Side', 'Unknown')
-                all_data.append(df)
+            except QVMParseError as e:
+                st.sidebar.error(f"❌ `{file.name}`: {e}")
+                continue
+            except UnicodeDecodeError as e:
+                st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
+                continue
 
-                hint = filename_info.get('format_hint')
-                detected = df['Process'].iloc[0]
-                if hint is None:
-                    st.sidebar.warning(
-                        f"⚠️ `{file.name}`: filename doesn't include `VTP` or `PTV`. "
-                        f"Treated as **{detected}** based on file content."
-                    )
-                elif hint != detected:
-                    st.sidebar.warning(
-                        f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
-                        f"**{detected}**. Going with the content."
-                    )
-            except Exception as e:
-                st.sidebar.error(f"Error parsing {file.name}: {e}")
+            df = calculate_annular_ring(df, settings)
+            df['Panel'] = filename_info.get('Panel Number', 'Unknown')
+            df['Side'] = filename_info.get('Side', 'Unknown')
+            all_data.append(df)
+
+            hint = filename_info.get('format_hint')
+            detected = df['Process'].iloc[0] if not df.empty else None
+            if hint is None:
+                st.sidebar.warning(
+                    f"⚠️ `{file.name}`: filename doesn't include `VTP` or `PTV`. "
+                    f"Treated as **{detected}** based on file content."
+                )
+            elif detected is not None and hint != detected:
+                st.sidebar.warning(
+                    f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
+                    f"**{detected}**. Going with the content."
+                )
 
     # --- Top-Level Navigation ---
     main_view = render_nav_buttons(
@@ -208,10 +209,7 @@ def main():
         )
         st.markdown("---")
 
-        _render_sub_views(
-            filtered_df, sub_view, settings,
-            col_names, tolerances, chart_colors, chart_heights,
-        )
+        _render_sub_views(filtered_df, sub_view, settings)
 
     # ------------------------------------------------------------------ #
     #  VIA TO PAD — 3 sub-views only (no absolute coordinates)            #
@@ -241,11 +239,7 @@ def main():
         )
         st.markdown("---")
 
-        _render_sub_views(
-            filtered_vtp, sub_view, settings,
-            col_names, tolerances, chart_colors, chart_heights,
-            is_via_to_pad=True, meta=meta,
-        )
+        _render_sub_views(filtered_vtp, sub_view, settings, is_via_to_pad=True, meta=meta)
 
     elif main_view == "Alignment":
         st.markdown("### Alignment — Coming Soon")

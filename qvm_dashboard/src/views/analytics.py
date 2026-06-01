@@ -85,15 +85,9 @@ class AnalyticsView(BaseView):
             st.warning("Grid ID data quality warning: " + "; ".join(warning_parts) + ".")
     
     def render(self, filtered_df: pd.DataFrame, **kwargs) -> None:
-        """
-        Render the Analytics view with plot type selector.
-        
-        Args:
-            filtered_df: Input DataFrame with measurement data
-            **kwargs: Additional context including 'settings'
-        """
-        settings = kwargs.get('settings', {})
-        chart_heights = settings.get('CHART_HEIGHTS', {})
+        """Render the Analytics view with plot type selector."""
+        settings = self.settings
+        chart_heights = self.chart_heights
         plot_settings = settings.get('PLOT_SETTINGS', {})
 
         self._show_grid_id_warnings(filtered_df, settings)

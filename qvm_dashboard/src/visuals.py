@@ -1,17 +1,66 @@
+import os
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Iterable, Tuple
+
+from src.utils import resolve_columns
+
+
+# ---------------------------------------------------------------------------
+# Module constants — hoisted out of inline magic numbers for clarity.
+# ---------------------------------------------------------------------------
+
+# Panel geometry defaults (mm). Overridable from settings['DIAGNOSTICS'].
+PANEL_CENTER_X = 255.0  # 510 mm panel width / 2
+PANEL_CENTER_Y = 257.5  # 515 mm panel height / 2
+
+# Quiver rendering
+MIN_ARROW_LENGTH_GRID_UNITS = 0.05  # Smallest visible arrow length in plot units
+EXPANSION_DOT_THRESHOLD = 0.5       # |dot| above which an arrow is expansion/contraction
+TWIST_DOT_THRESHOLD = 0.2           # |dot| below which a high-magnitude arrow is "twist"
+TWIST_MAGNITUDE_THRESHOLD_UM = 10.0 # µm above which a low-dot arrow is "twist"
+
+# Confidence-band cutoffs used by diagnose_root_cause_confidence
+CONFIDENCE_HIGH = 0.72
+CONFIDENCE_MEDIUM = 0.45
+
+# Mapping: Grid ID → (plot_x, plot_y) on the 4×4 quiver grid (1-indexed).
+# Single source of truth — the heatmap matrix layout is derived from it.
+_GRID_PLOT_POSITIONS: Dict[str, Tuple[int, int]] = {
+    # Upper Left quadrant (11-14)
+    '11': (1, 4), '12': (1, 3), '13': (2, 3), '14': (2, 4),
+    # Lower Left quadrant (21-24)
+    '21': (1, 2), '22': (1, 1), '23': (2, 1), '24': (2, 2),
+    # Lower Right quadrant (31-34)
+    '31': (3, 2), '32': (3, 1), '33': (4, 1), '34': (4, 2),
+    # Upper Right quadrant (41-44)
+    '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
+}
+
+
+def _plot_to_matrix(plot_x: int, plot_y: int) -> Tuple[int, int]:
+    """Convert 1-indexed plot coords to 0-indexed (row, col) for Plotly heatmap."""
+    return (plot_y - 1, plot_x - 1)
+
+
+# Derived map: Grid ID → (matrix_row, matrix_col). Plotly heatmap reads (row, col).
+_GRID_MATRIX_POSITIONS: Dict[str, Tuple[int, int]] = {
+    gid: _plot_to_matrix(x, y) for gid, (x, y) in _GRID_PLOT_POSITIONS.items()
+}
+
+
+def _coerce_numeric(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
+    """In-place pd.to_numeric(errors='coerce') for each named column that exists."""
+    for col in cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
 
 
 def _default_valid_grid_ids() -> set:
-    return {
-        '11', '12', '13', '14',
-        '21', '22', '23', '24',
-        '31', '32', '33', '34',
-        '41', '42', '43', '44',
-    }
+    return set(_GRID_PLOT_POSITIONS.keys())
 
 
 def _get_valid_grid_ids(settings: Dict) -> set:
@@ -87,11 +136,7 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
     unknown_grid_ids = sorted({gid for gid in grid_str.unique() if gid not in valid_grid_ids})
 
     # Keep only rows with valid numeric data and valid Grid IDs.
-    df_work[grid_col] = pd.to_numeric(df_work[grid_col], errors='coerce')
-    df_work[x_col] = pd.to_numeric(df_work[x_col], errors='coerce')
-    df_work[y_col] = pd.to_numeric(df_work[y_col], errors='coerce')
-    df_work[coord_x_col] = pd.to_numeric(df_work[coord_x_col], errors='coerce')
-    df_work[coord_y_col] = pd.to_numeric(df_work[coord_y_col], errors='coerce')
+    df_work = _coerce_numeric(df_work, [grid_col, x_col, y_col, coord_x_col, coord_y_col])
     df_work = df_work.dropna(subset=[grid_col, x_col, y_col, coord_x_col, coord_y_col]).copy()
     df_work[grid_col] = df_work[grid_col].astype(int).astype(str)
     df_work = df_work[df_work[grid_col].isin(valid_grid_ids)].copy()
@@ -117,8 +162,8 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
             },
         }
 
-    panel_center_x = float(diagnostics.get('panel_center_x', 255.0))
-    panel_center_y = float(diagnostics.get('panel_center_y', 257.5))
+    panel_center_x = float(diagnostics.get('panel_center_x', PANEL_CENTER_X))
+    panel_center_y = float(diagnostics.get('panel_center_y', PANEL_CENTER_Y))
     min_signal_um = float(diagnostics.get('min_signal_um', 2.0))
     strength_scale_um = float(diagnostics.get('strength_scale_um', 12.0))
     score_sharpening_alpha = float(diagnostics.get('score_sharpening_alpha', 1.35))
@@ -261,9 +306,9 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
         0.0,
         1.0
     ))
-    if confidence >= 0.72:
+    if confidence >= CONFIDENCE_HIGH:
         confidence_band = 'High'
-    elif confidence >= 0.45:
+    elif confidence >= CONFIDENCE_MEDIUM:
         confidence_band = 'Medium'
     else:
         confidence_band = 'Low'
@@ -312,8 +357,8 @@ def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict
 
     diagnostics = settings.get('DIAGNOSTICS', {})
     cam_cfg = settings.get('CAM_COMPENSATION', {})
-    panel_center_x = float(diagnostics.get('panel_center_x', 255.0))
-    panel_center_y = float(diagnostics.get('panel_center_y', 257.5))
+    panel_center_x = float(diagnostics.get('panel_center_x', PANEL_CENTER_X))
+    panel_center_y = float(diagnostics.get('panel_center_y', PANEL_CENTER_Y))
 
     required_cols = [x_col, y_col, coord_x_col, coord_y_col]
     missing_cols = [col for col in required_cols if col not in df.columns]
@@ -330,10 +375,7 @@ def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict
             'recommendation': 'Cannot calculate CAM compensation without the required fields.',
         }
 
-    work_df = df.copy()
-    for col in required_cols:
-        work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
-
+    work_df = _coerce_numeric(df.copy(), required_cols)
     valid_df = work_df.dropna(subset=required_cols).copy()
     total_points = len(df)
     valid_points = len(valid_df)
@@ -405,7 +447,6 @@ def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict
 
 def get_panel_image_path() -> str:
     """Return path to the panel background image."""
-    import os
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_dir, 'assets', 'panel_background.png')
 
@@ -562,157 +603,6 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     return fig
 
 
-def plot_scaling_panel(inputs: Dict, settings: Dict, exaggeration: int) -> go.Figure:
-    """
-    Panel map for the Global Scaling Calculator.
-
-    Draws the panel outline, nominal corner positions (hollow circles), actual
-    positions (solid dots), and exaggerated error arrows.  The exaggeration is
-    applied ONLY to the rendered arrow length — the math engine uses raw values.
-
-    Args:
-        inputs: dict keyed by corner label ('UL','UR','LL','LR'), each with
-                keys 'nom_x', 'nom_y', 'dx', 'dy', 'scale_status'
-        settings: full application settings dict
-        exaggeration: integer multiplier applied to arrow rendering
-    """
-    chart_colors = settings.get('CHART_COLORS', {})
-    bg = chart_colors.get('chart_background', '#FFFFFF')
-
-    status_colors = {
-        'SHRUNK':    chart_colors.get('traffic_light_orange', '#f39c12'),
-        'STRETCHED': chart_colors.get('traffic_light_red',    '#e74c3c'),
-        'NOMINAL':   chart_colors.get('traffic_light_green',  '#2ecc71'),
-    }
-
-    # Derive panel rectangle bounds from the nominal corner positions so all
-    # points are always inside the rectangle regardless of coordinate origin.
-    nom_xs = [c['nom_x'] for c in inputs.values()]
-    nom_ys = [c['nom_y'] for c in inputs.values()]
-    margin = 55.0
-    rect_x0 = min(nom_xs) - margin
-    rect_y0 = min(nom_ys) - margin
-    rect_x1 = max(nom_xs) + margin
-    rect_y1 = max(nom_ys) + margin
-
-    fig = go.Figure()
-
-    # Panel outline
-    fig.add_shape(
-        type='rect', x0=rect_x0, y0=rect_y0, x1=rect_x1, y1=rect_y1,
-        line=dict(color='#555555', width=2),
-        fillcolor='rgba(200,200,200,0.08)',
-    )
-
-    for label, corner in inputs.items():
-        nom_x = corner['nom_x']
-        nom_y = corner['nom_y']
-        dx    = corner['dx']
-        dy    = corner['dy']
-        act_x = nom_x + dx
-        act_y = nom_y + dy
-        color = status_colors.get(corner['scale_status'], '#999999')
-
-        # Nominal position — hollow circle
-        fig.add_trace(go.Scatter(
-            x=[nom_x], y=[nom_y],
-            mode='markers',
-            marker=dict(symbol='circle-open', size=14, color='#555555', line=dict(width=2)),
-            name=f'{label} nominal',
-            hovertemplate=f'<b>{label} Nominal</b><br>X: {nom_x:.3f}<br>Y: {nom_y:.3f}<extra></extra>',
-            showlegend=False,
-        ))
-
-        # Exaggerated arrow: tail at nominal, head at exaggerated actual
-        arr_tip_x = nom_x + dx * exaggeration
-        arr_tip_y = nom_y + dy * exaggeration
-        fig.add_annotation(
-            x=arr_tip_x, y=arr_tip_y,
-            ax=nom_x,    ay=nom_y,
-            xref='x', yref='y', axref='x', ayref='y',
-            text='', showarrow=True,
-            arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
-            arrowcolor=color,
-        )
-
-        # Actual position — solid dot
-        fig.add_trace(go.Scatter(
-            x=[act_x], y=[act_y],
-            mode='markers+text',
-            marker=dict(size=10, color=color),
-            text=[label],
-            textposition='top center',
-            textfont=dict(size=10, color=color),
-            hovertemplate=(
-                f'<b>{label} Actual</b><br>'
-                f'X: {act_x:.4f} mm<br>Y: {act_y:.4f} mm<br>'
-                f'DX: {dx*1000:.2f} µm  DY: {dy*1000:.2f} µm<extra></extra>'
-            ),
-            showlegend=False,
-        ))
-
-    fig.update_layout(
-        title=f'Corner Displacement Map  ({exaggeration}× exaggeration)',
-        xaxis=dict(title='X (mm)', range=[rect_x0 - 10, rect_x1 + 10], showgrid=False, zeroline=False),
-        yaxis=dict(title='Y (mm)', range=[rect_y0 - 10, rect_y1 + 10], showgrid=False, zeroline=False,
-                   scaleanchor='x', scaleratio=1),
-        plot_bgcolor=bg,
-        hovermode='closest',
-        height=540,
-        margin=dict(l=40, r=40, t=50, b=40),
-    )
-    return fig
-
-
-def plot_bullseye_scatter(df: pd.DataFrame, settings: Dict) -> go.Figure:
-    """
-    Create a Bullseye Scatter plot of Shift (DX) vs Shift (DY).
-    """
-    col_names = settings.get('COLUMN_NAMES', {})
-    chart_colors = settings.get('CHART_COLORS', {})
-    x_col = col_names.get('x_distance', 'Shift (DX)')
-    y_col = col_names.get('y_distance', 'Shift (DY)')
-    loc_col = col_names.get('location', 'Location')
-    
-    # Convert to microns for consistency
-    df_microns = df.copy()
-    df_microns[x_col] = df[x_col] * 1000
-    df_microns[y_col] = df[y_col] * 1000
-
-    fig = px.scatter(
-        df_microns,
-        x=x_col,
-        y=y_col,
-        text=loc_col,
-        title="Bullseye Scatter: Shift DX vs DY",
-        labels={x_col: 'DX Shift (µm)', y_col: 'DY Shift (µm)'}
-    )
-
-    # Update layout to make it a square and centered
-    fig.update_traces(textposition='top center')
-
-    # Add crosshairs
-    fig.add_hline(y=0, line_dash="dash", line_color="red", opacity=0.5)
-    fig.add_vline(x=0, line_dash="dash", line_color="red", opacity=0.5)
-
-    # Make axes symmetric
-    max_val = max(abs(df_microns[x_col].max()), abs(df_microns[x_col].min()),
-                  abs(df_microns[y_col].max()), abs(df_microns[y_col].min()))
-
-    # Add a little padding
-    max_val = max_val * 1.2 if max_val > 0 else 0.1
-
-    fig.update_xaxes(range=[-max_val, max_val], zeroline=False, showgrid=chart_colors.get('chart_gridlines_visible', False))
-    fig.update_yaxes(range=[-max_val, max_val], zeroline=False, showgrid=chart_colors.get('chart_gridlines_visible', False))
-    fig.update_layout(
-        width=700, 
-        height=700,
-        plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF')
-    )
-
-    return fig
-
-
 def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figure:
     """
     Pattern Hunter: Create a Quiver/Vector Plot with ABF distortion pattern detection.
@@ -736,35 +626,22 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     df_plot = df.dropna(subset=[grid_col]).copy()
     df_plot[grid_col] = df_plot[grid_col].astype(int).astype(str)
 
-    # Create explicit mapping: Grid ID -> (plot_x, plot_y)
-    grid_position_map = {
-        # Upper Left Quadrant (11-14)
-        '11': (1, 4), '12': (1, 3), '13': (2, 3), '14': (2, 4),
-        # Lower Left Quadrant (21-24)
-        '21': (1, 2), '22': (1, 1), '23': (2, 1), '24': (2, 2),
-        # Lower Right Quadrant (31-34)
-        '31': (3, 2), '32': (3, 1), '33': (4, 1), '34': (4, 2),
-        # Upper Right Quadrant (41-44)
-        '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
-    }
-    
-    df_plot['plot_x'] = df_plot[grid_col].map(lambda gid: grid_position_map.get(gid, (np.nan, np.nan))[0])
-    df_plot['plot_y'] = df_plot[grid_col].map(lambda gid: grid_position_map.get(gid, (np.nan, np.nan))[1])
+    df_plot['plot_x'] = df_plot[grid_col].map(lambda gid: _GRID_PLOT_POSITIONS.get(gid, (np.nan, np.nan))[0])
+    df_plot['plot_y'] = df_plot[grid_col].map(lambda gid: _GRID_PLOT_POSITIONS.get(gid, (np.nan, np.nan))[1])
     df_plot = df_plot.dropna(subset=['plot_x', 'plot_y']).copy()
-    
+
     # Calculate magnitude for statistics
     df_plot['magnitude'] = np.sqrt(df_plot[x_col]**2 + df_plot[y_col]**2) * 1000  # Convert to microns
 
-    # Panel center (510mm x 515mm panel)
-    panel_center_x = 255.0
-    panel_center_y = 257.5
+    panel_center_x = PANEL_CENTER_X
+    panel_center_y = PANEL_CENTER_Y
 
     fig = go.Figure()
-    
-    # Pattern detection thresholds
-    expansion_threshold = 0.5
-    twist_dot_threshold = 0.2
-    twist_mag_threshold = 10.0
+
+    # Pattern detection thresholds (module-level constants)
+    expansion_threshold = EXPANSION_DOT_THRESHOLD
+    twist_dot_threshold = TWIST_DOT_THRESHOLD
+    twist_mag_threshold = TWIST_MAGNITUDE_THRESHOLD_UM
 
     # Track pattern counts and collect scatter data
     expansion_count = 0
@@ -784,11 +661,10 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         dx_scaled = dx_um * multiplier * 0.001
         dy_scaled = dy_um * multiplier * 0.001
 
-        # Guarantee a minimum visible arrow length of 0.05 grid units
+        # Guarantee a minimum visible arrow length
         arrow_len = np.sqrt(dx_scaled**2 + dy_scaled**2)
-        min_len = 0.05
-        if arrow_len > 0 and arrow_len < min_len:
-            scale_up = min_len / arrow_len
+        if arrow_len > 0 and arrow_len < MIN_ARROW_LENGTH_GRID_UNITS:
+            scale_up = MIN_ARROW_LENGTH_GRID_UNITS / arrow_len
             dx_scaled *= scale_up
             dy_scaled *= scale_up
         mag = row['magnitude']
@@ -942,27 +818,10 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
     grid_col = col_names.get('grid_id', 'Grid ID')
     loc_col = col_names.get('location', 'Location')
 
-    # Create an empty 4x4 matrix (row, col) where [0,0] is top-left
-    matrix = np.zeros((4, 4))
-    matrix[:] = np.nan # Use NaN for missing values
-
+    # Create an empty 4x4 matrix (row, col) where [0,0] is bottom-left in Plotly heatmap
+    matrix = np.full((4, 4), np.nan)
     text_matrix = np.empty((4, 4), dtype=object)
     text_matrix[:] = ''
-
-    # Create explicit mapping: Grid ID -> (matrix_row, matrix_col)
-    # Matrix indexing: Plotly displays rows from bottom to top, so reverse row order
-    # Row 0 displays at BOTTOM, Row 3 displays at TOP
-    # Pattern within each quadrant: 1=top-left, 2=bottom-left, 3=bottom-right, 4=top-right
-    grid_matrix_map = {
-        # Upper Left Quadrant (11-14) - displayed at TOP-LEFT
-        '11': (3, 0), '12': (2, 0), '13': (2, 1), '14': (3, 1),
-        # Lower Left Quadrant (21-24) - displayed at BOTTOM-LEFT
-        '21': (1, 0), '22': (0, 0), '23': (0, 1), '24': (1, 1),
-        # Lower Right Quadrant (31-34) - displayed at BOTTOM-RIGHT
-        '31': (1, 2), '32': (0, 2), '33': (0, 3), '34': (1, 3),
-        # Upper Right Quadrant (41-44) - displayed at TOP-RIGHT
-        '41': (3, 2), '42': (2, 2), '43': (2, 3), '44': (3, 3),
-    }
 
     df_plot = df.dropna(subset=[grid_col]).copy()
     df_plot[grid_col] = df_plot[grid_col].astype(int).astype(str)
@@ -972,8 +831,8 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
     for idx, row in df_plot.iterrows():
         grid_id = row[grid_col]
-        if grid_id in grid_matrix_map:
-            r, c = grid_matrix_map[grid_id]
+        if grid_id in _GRID_MATRIX_POSITIONS:
+            r, c = _GRID_MATRIX_POSITIONS[grid_id]
             matrix[r, c] = ptv_microns.loc[idx]
             text_matrix[r, c] = f"Grid {grid_id}<br>{row[loc_col]}<br>{ptv_microns.loc[idx]:.3f} µm"
 
