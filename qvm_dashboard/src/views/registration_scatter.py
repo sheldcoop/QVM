@@ -14,8 +14,8 @@ class RegistrationScatterView(BaseView):
     1. Bullseye scatter — every site plotted at (DX, DY) with concentric
        tolerance rings. Quickly shows individual failures and overall spread.
 
-    2. Per-site SC bar chart — ordered by Grid ID so quadrant patterns jump
-       out. Useful for spotting one rogue fiducial site versus a quadrant-wide
+    2. Per-site SC bar chart — ordered by Grid ID so quarter patterns jump
+       out. Useful for spotting one rogue fiducial site versus a quarter-wide
        problem.
     """
 
@@ -27,8 +27,8 @@ class RegistrationScatterView(BaseView):
         )
 
         vtp_cfg = self.settings.get('VTP_REGISTRATION', {})
-        ring_green = float(vtp_cfg.get('ring_green_um', 50.0))
-        ring_orange = float(vtp_cfg.get('ring_orange_um', 96.0))
+        ring_green = float(vtp_cfg.get('ring_green_um', 10.0))
+        ring_orange = float(vtp_cfg.get('ring_orange_um', 15.0))
 
         sc_col = self.col_names.get('ptv_distance', 'PtV Distance')
 
