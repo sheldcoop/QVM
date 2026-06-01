@@ -64,7 +64,7 @@ def _traffic_light_color(
     ring_exceptional: float,
     ring_excellent: float,
     ring_good: float,
-    ring_warning: float,
+    ring_acceptable: float,
     chart_colors: Dict,
 ) -> str:
     """Map an SC magnitude (µm) to a traffic-light colour (5 zones).
@@ -72,18 +72,18 @@ def _traffic_light_color(
     Zones:
         sc ≤ ring_exceptional               → blue (exceptional)
         ring_exceptional < sc ≤ ring_excellent → dark green (excellent)
-        ring_excellent < sc ≤ ring_good     → green (acceptable)
-        ring_good < sc ≤ ring_warning       → orange (warning)
-        sc > ring_warning                   → red (fail)
+        ring_excellent < sc ≤ ring_good     → green (good)
+        ring_good < sc ≤ ring_acceptable    → orange (acceptable)
+        sc > ring_acceptable                → red (fail)
     """
     if sc_um <= ring_exceptional:
         return chart_colors.get('traffic_light_blue', '#3498db')  # exceptional
     if sc_um <= ring_excellent:
         return chart_colors.get('traffic_light_dark_green', '#1e7e3a')  # excellent
     if sc_um <= ring_good:
-        return chart_colors.get('traffic_light_green', '#2ecc71')  # acceptable
-    if sc_um <= ring_warning:
-        return chart_colors.get('traffic_light_orange', '#e67e22')  # warning
+        return chart_colors.get('traffic_light_green', '#2ecc71')  # good
+    if sc_um <= ring_acceptable:
+        return chart_colors.get('traffic_light_orange', '#e67e22')  # acceptable
     return chart_colors.get('traffic_light_red', '#e74c3c')  # fail
 
 
@@ -496,17 +496,17 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
-    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 5.0))   # exceptional zone
-    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 7.5))   # excellent zone
-    ring_good = float(vtp_cfg.get('ring_good_um', 10.0))            # acceptable zone
-    ring_warning = float(vtp_cfg.get('ring_warning_um', 10.0))      # warning zone; > this is fail
+    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))   # exceptional zone
+    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 5.0))    # excellent zone
+    ring_good = float(vtp_cfg.get('ring_good_um', 7.5))              # good zone
+    ring_acceptable = float(vtp_cfg.get('ring_acceptable_um', 10.0)) # acceptable zone; > this is fail
 
     work = df[[dx_col, dy_col, sc_col, loc_col, grid_col]].dropna().copy()
     work['dx_um'] = work[dx_col] * 1000
     work['dy_um'] = work[dy_col] * 1000
     work['sc_um'] = work[sc_col] * 1000
     work['color'] = work['sc_um'].apply(
-        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent, ring_good, ring_warning, chart_colors)
+        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent, ring_good, ring_acceptable, chart_colors)
     )
 
     bg = chart_colors.get('chart_background', '#FFFFFF')
@@ -518,11 +518,11 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
     # Fixed axis around the outermost ring (+2 µm breathing room).
     # Points beyond this are clipped from view but still counted in the summary.
-    spread = ring_good + 2.0
+    spread = ring_acceptable + 2.0
 
     fig = go.Figure()
 
-    # Three concentric rings for four zones: exceptional / excellent / acceptable / fail
+    # Three concentric rings for five zones: exceptional / excellent / good / acceptable / fail
     # Ring 1 — blue at 2.5 µm (exceptional boundary)
     fig.add_shape(
         type='circle', xref='x', yref='y',
@@ -531,7 +531,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         fillcolor='rgba(0,0,0,0)',
         layer='below',
     )
-    # Ring 2 — dark green at 3.75 µm (excellent boundary)
+    # Ring 2 — dark green at 5.0 µm (excellent boundary)
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_excellent, y0=-ring_excellent, x1=ring_excellent, y1=ring_excellent,
@@ -539,11 +539,19 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         fillcolor='rgba(0,0,0,0)',
         layer='below',
     )
-    # Ring 3 — red at 5.0 µm (acceptable boundary)
+    # Ring 3 — green at 7.5 µm (good boundary)
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_good, y0=-ring_good, x1=ring_good, y1=ring_good,
-        line=dict(color=red_color, width=2, dash='dash'),
+        line=dict(color=green_color, width=2, dash='dash'),
+        fillcolor='rgba(0,0,0,0)',
+        layer='below',
+    )
+    # Ring 4 — red at 10.0 µm (acceptable boundary)
+    fig.add_shape(
+        type='circle', xref='x', yref='y',
+        x0=-ring_acceptable, y0=-ring_acceptable, x1=ring_acceptable, y1=ring_acceptable,
+        line=dict(color=red_color, width=2, dash='dot'),
         fillcolor='rgba(0,0,0,0)',
         layer='below',
     )
@@ -582,7 +590,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     n = int(len(sc))
     max_sc = float(sc.max()) if n else 0.0
     p90_sc = float(sc.quantile(0.90)) if n else 0.0
-    n_outside = int((sc > ring_warning).sum())
+    n_outside = int((sc > ring_acceptable).sum())
     summary_text = (
         f"<b>n</b> {n}  •  "
         f"<b>max SC</b> {max_sc:.1f} µm  •  "
@@ -606,11 +614,11 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     # Ring legend in opposite corner so it doesn't fight the summary.
     fig.add_annotation(
         text=(
-            f"<span style='color:{blue_color}'>●</span> r ≤ {ring_exceptional:.2f} µm (exceptional)<br>"
-            f"<span style='color:{dark_green_color}'>●</span> r ≤ {ring_excellent:.2f} µm (excellent)<br>"
-            f"<span style='color:{green_color}'>●</span> r ≤ {ring_good:.1f} µm (acceptable)<br>"
-            f"<span style='color:{orange_color}'>●</span> r ≤ {ring_warning:.0f} µm (warning)<br>"
-            f"<span style='color:{red_color}'>●</span> r > {ring_warning:.0f} µm (fail)"
+            f"<span style='color:{blue_color}'>●</span> r ≤ {ring_exceptional:.1f} µm (exceptional)<br>"
+            f"<span style='color:{dark_green_color}'>●</span> r ≤ {ring_excellent:.1f} µm (excellent)<br>"
+            f"<span style='color:{green_color}'>●</span> r ≤ {ring_good:.1f} µm (good)<br>"
+            f"<span style='color:{orange_color}'>●</span> r ≤ {ring_acceptable:.1f} µm (acceptable)<br>"
+            f"<span style='color:{red_color}'>●</span> r > {ring_acceptable:.1f} µm (fail)"
         ),
         xref='paper', yref='paper',
         x=0.98, y=0.02,
@@ -654,10 +662,10 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
-    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 5.0))
-    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 7.5))
-    ring_good = float(vtp_cfg.get('ring_good_um', 10.0))
-    ring_warning = float(vtp_cfg.get('ring_warning_um', 10.0))
+    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
+    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 5.0))
+    ring_good = float(vtp_cfg.get('ring_good_um', 7.5))
+    ring_acceptable = float(vtp_cfg.get('ring_acceptable_um', 10.0))
 
     work = df[[sc_col, loc_col, grid_col]].dropna().copy()
     work['sc_um'] = work[sc_col] * 1000
@@ -666,7 +674,7 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     work[grid_col] = work[grid_col].astype(int).astype(str)
 
     work['color'] = work['sc_um'].apply(
-        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent, ring_good, ring_warning, chart_colors)
+        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent, ring_good, ring_acceptable, chart_colors)
     )
 
     fig = go.Figure()
@@ -686,16 +694,23 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     ))
 
     fig.add_hline(
-        y=ring_good,
-        line=dict(color=chart_colors.get('traffic_light_green', '#2ecc71'), width=1.5, dash='dash'),
-        annotation_text=f'Acceptable limit {ring_good:.1f} µm',
+        y=ring_excellent,
+        line=dict(color=chart_colors.get('traffic_light_dark_green', '#1e7e3a'), width=1.5, dash='dash'),
+        annotation_text=f'Excellent limit {ring_excellent:.1f} µm',
         annotation_position='right',
         annotation_font_size=10,
     )
     fig.add_hline(
-        y=ring_warning,
-        line=dict(color=chart_colors.get('traffic_light_red', '#e74c3c'), width=1.5, dash='dot'),
-        annotation_text=f'Fail limit {ring_warning:.0f} µm',
+        y=ring_good,
+        line=dict(color=chart_colors.get('traffic_light_green', '#2ecc71'), width=1.5, dash='dot'),
+        annotation_text=f'Good limit {ring_good:.1f} µm',
+        annotation_position='right',
+        annotation_font_size=10,
+    )
+    fig.add_hline(
+        y=ring_acceptable,
+        line=dict(color=chart_colors.get('traffic_light_red', '#e74c3c'), width=1.5, dash='dash'),
+        annotation_text=f'Acceptable limit {ring_acceptable:.0f} µm',
         annotation_position='right',
         annotation_font_size=10,
     )
