@@ -7,13 +7,10 @@ from src.parser import parse_qvm_content, parse_filename, QVMParseError
 from src.calculations import calculate_annular_ring, calculate_cam_compensation
 from src.visuals import plot_bullseye_scatter, plot_quiver, plot_heatmap
 from src.data_processor import DataProcessor
-from src.views.process_stability import ProcessStabilityView
 from src.views.quality_control import QualityControlView
 from src.views.analytics import AnalyticsView
-from src.views.polar_drift import PolarDriftView
 from src.views.spatial_heatmap import SpatialHeatmapView
 from src.views.registration_scatter import RegistrationScatterView
-from src.views.global_scaling import GlobalScalingView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from panel_mapping import create_four_quarters_view
 
@@ -77,23 +74,15 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                       data_processor, col_names: dict, tolerances: dict,
                       chart_colors: dict, chart_heights: dict, chart_markers: dict,
                       optical_thresholds: dict, optical_model: dict, process_limits: dict,
-                      is_via_to_pad: bool = False):
+                      is_via_to_pad: bool = False, meta: dict = None):
     """Render whichever sub-view is active."""
     if sub_view == "Quality Control":
         QualityControlView(settings, data_processor).render(
             filtered_df, col_names=col_names, tolerances=tolerances,
-            is_via_to_pad=is_via_to_pad)
+            is_via_to_pad=is_via_to_pad, meta=meta or {})
 
     elif sub_view == "Analytics":
         AnalyticsView(settings, data_processor).render(filtered_df, settings=settings)
-
-    elif sub_view == "Process Stability":
-        ProcessStabilityView(settings, data_processor).render(
-            filtered_df, process_limits=process_limits)
-
-    elif sub_view == "Polar Drift (Machine Health)":
-        PolarDriftView(settings, data_processor).render(
-            filtered_df, col_names=col_names, chart_colors=chart_colors, chart_heights=chart_heights)
 
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
         SpatialHeatmapView(settings, data_processor).render(
@@ -101,9 +90,6 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
 
     elif sub_view == "Registration Scatter":
         RegistrationScatterView(settings, data_processor).render(filtered_df)
-
-    elif sub_view == "Global Scaling Calculator":
-        GlobalScalingView(settings, data_processor).render(filtered_df)
 
 
 def main():
@@ -125,9 +111,18 @@ def main():
 
     sidebar_config = render_sidebar(settings)
     uploaded_files = sidebar_config['uploaded_files']
-    material_build_up = sidebar_config['material_build_up']
-    batch_id = sidebar_config['batch_id']
+    material_build_up = sidebar_config.get('build_up', '')
+    batch_id = sidebar_config.get('lot_number', '')
     process_limits = sidebar_config['process_limits']
+    meta = {
+        'Project Name': sidebar_config.get('project_name', ''),
+        'Part Number':  sidebar_config.get('part_number', ''),
+        'Lot Number':   sidebar_config.get('lot_number', ''),
+        'Lot Name':     sidebar_config.get('lot_name', ''),
+        'Build Up':     sidebar_config.get('build_up', ''),
+        'Process':      sidebar_config.get('process', ''),
+        'Panel':        sidebar_config.get('panel', ''),
+    }
 
     # --- Data Ingestion ---
     all_data = []
@@ -182,9 +177,8 @@ def main():
         st.markdown("<br>", unsafe_allow_html=True)
 
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics", "Global Scaling Calculator",
-             "Optical Edge Confidence", "Process Stability",
-             "Polar Drift (Machine Health)", "2D Spatial Heatmap (Laser Scan Field)"],
+            ["Quality Control", "Analytics",
+             "2D Spatial Heatmap (Laser Scan Field)", "Registration Scatter"],
             state_key="ptv_sub_view",
             default="Quality Control",
         )
@@ -228,7 +222,7 @@ def main():
             filtered_vtp, sub_view, settings, data_processor,
             col_names, tolerances, chart_colors, chart_heights,
             chart_markers, optical_thresholds, optical_model, process_limits,
-            is_via_to_pad=True,
+            is_via_to_pad=True, meta=meta,
         )
 
     elif main_view == "Alignment":
