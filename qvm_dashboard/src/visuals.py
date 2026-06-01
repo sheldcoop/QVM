@@ -61,31 +61,30 @@ def _coerce_numeric(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
 
 def _traffic_light_color(
     sc_um: float,
+    ring_exceptional: float,
     ring_excellent: float,
     ring_good: float,
+    ring_warning: float,
     chart_colors: Dict,
-    ring_fail: float | None = None,
 ) -> str:
-    """Map an SC magnitude (µm) to a traffic-light colour.
+    """Map an SC magnitude (µm) to a traffic-light colour (5 zones).
 
-    Three-zone mode (ring_fail is None):
-        sc ≤ ring_excellent               → dark green
-        ring_excellent < sc ≤ ring_good   → green
-        sc > ring_good                    → red
-
-    Four-zone mode (ring_fail provided):
-        sc ≤ ring_excellent               → dark green
-        ring_excellent < sc ≤ ring_good   → green
-        ring_good < sc ≤ ring_fail        → orange
-        sc > ring_fail                    → red
+    Zones:
+        sc ≤ ring_exceptional               → blue (exceptional)
+        ring_exceptional < sc ≤ ring_excellent → dark green (excellent)
+        ring_excellent < sc ≤ ring_good     → green (acceptable)
+        ring_good < sc ≤ ring_warning       → orange (warning)
+        sc > ring_warning                   → red (fail)
     """
+    if sc_um <= ring_exceptional:
+        return chart_colors.get('traffic_light_blue', '#3498db')  # exceptional
     if sc_um <= ring_excellent:
-        return chart_colors.get('traffic_light_dark_green', '#1e7e3a')
+        return chart_colors.get('traffic_light_dark_green', '#1e7e3a')  # excellent
     if sc_um <= ring_good:
-        return chart_colors.get('traffic_light_green', '#2ecc71')
-    if ring_fail is not None and sc_um <= ring_fail:
-        return chart_colors.get('traffic_light_orange', '#e67e22')
-    return chart_colors.get('traffic_light_red', '#e74c3c')
+        return chart_colors.get('traffic_light_green', '#2ecc71')  # acceptable
+    if sc_um <= ring_warning:
+        return chart_colors.get('traffic_light_orange', '#e67e22')  # warning
+    return chart_colors.get('traffic_light_red', '#e74c3c')  # fail
 
 
 def _default_valid_grid_ids() -> set:
@@ -497,50 +496,53 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
-    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 1.25))   # inner ring
-    ring_good = float(vtp_cfg.get('ring_good_um', 2.5))             # mid ring
-    ring_fail = float(vtp_cfg.get('ring_fail_um', 5.0))             # outer ring
+    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 5.0))   # exceptional zone
+    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 7.5))   # excellent zone
+    ring_good = float(vtp_cfg.get('ring_good_um', 10.0))            # acceptable zone
+    ring_warning = float(vtp_cfg.get('ring_warning_um', 10.0))      # warning zone; > this is fail
 
     work = df[[dx_col, dy_col, sc_col, loc_col, grid_col]].dropna().copy()
     work['dx_um'] = work[dx_col] * 1000
     work['dy_um'] = work[dy_col] * 1000
     work['sc_um'] = work[sc_col] * 1000
     work['color'] = work['sc_um'].apply(
-        lambda v: _traffic_light_color(v, ring_excellent, ring_good, chart_colors, ring_fail)
+        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent, ring_good, ring_warning, chart_colors)
     )
 
     bg = chart_colors.get('chart_background', '#FFFFFF')
+    blue_color = chart_colors.get('traffic_light_blue', '#3498db')
     dark_green_color = chart_colors.get('traffic_light_dark_green', '#1e7e3a')
+    green_color = chart_colors.get('traffic_light_green', '#2ecc71')
     orange_color = chart_colors.get('traffic_light_orange', '#e67e22')
     red_color = chart_colors.get('traffic_light_red', '#e74c3c')
 
     # Fixed axis around the outermost ring (+2 µm breathing room).
     # Points beyond this are clipped from view but still counted in the summary.
-    spread = ring_fail + 2.0
+    spread = ring_good + 2.0
 
     fig = go.Figure()
 
-    # Three concentric rings for pass / warn / fail zones.
-    # Ring 1 — dark green at 2.5 µm
+    # Three concentric rings for four zones: exceptional / excellent / acceptable / fail
+    # Ring 1 — blue at 2.5 µm (exceptional boundary)
+    fig.add_shape(
+        type='circle', xref='x', yref='y',
+        x0=-ring_exceptional, y0=-ring_exceptional, x1=ring_exceptional, y1=ring_exceptional,
+        line=dict(color=blue_color, width=2),
+        fillcolor='rgba(0,0,0,0)',
+        layer='below',
+    )
+    # Ring 2 — dark green at 3.75 µm (excellent boundary)
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_excellent, y0=-ring_excellent, x1=ring_excellent, y1=ring_excellent,
-        line=dict(color=dark_green_color, width=2),
+        line=dict(color=dark_green_color, width=2, dash='dot'),
         fillcolor='rgba(0,0,0,0)',
         layer='below',
     )
-    # Ring 2 — orange at 5 µm
+    # Ring 3 — red at 5.0 µm (acceptable boundary)
     fig.add_shape(
         type='circle', xref='x', yref='y',
         x0=-ring_good, y0=-ring_good, x1=ring_good, y1=ring_good,
-        line=dict(color=orange_color, width=2, dash='dot'),
-        fillcolor='rgba(0,0,0,0)',
-        layer='below',
-    )
-    # Ring 3 — red at 10 µm
-    fig.add_shape(
-        type='circle', xref='x', yref='y',
-        x0=-ring_fail, y0=-ring_fail, x1=ring_fail, y1=ring_fail,
         line=dict(color=red_color, width=2, dash='dash'),
         fillcolor='rgba(0,0,0,0)',
         layer='below',
@@ -580,7 +582,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     n = int(len(sc))
     max_sc = float(sc.max()) if n else 0.0
     p90_sc = float(sc.quantile(0.90)) if n else 0.0
-    n_outside = int((sc > ring_fail).sum())
+    n_outside = int((sc > ring_warning).sum())
     summary_text = (
         f"<b>n</b> {n}  •  "
         f"<b>max SC</b> {max_sc:.1f} µm  •  "
@@ -604,10 +606,11 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     # Ring legend in opposite corner so it doesn't fight the summary.
     fig.add_annotation(
         text=(
+            f"<span style='color:{blue_color}'>●</span> r ≤ {ring_exceptional:.2f} µm (exceptional)<br>"
             f"<span style='color:{dark_green_color}'>●</span> r ≤ {ring_excellent:.2f} µm (excellent)<br>"
-            f"<span style='color:{chart_colors.get('traffic_light_green', '#2ecc71')}'>●</span> r ≤ {ring_good:.1f} µm (good)<br>"
-            f"<span style='color:{orange_color}'>●</span> r ≤ {ring_fail:.1f} µm (warn)<br>"
-            f"<span style='color:{red_color}'>●</span> r > {ring_fail:.1f} µm (fail)"
+            f"<span style='color:{green_color}'>●</span> r ≤ {ring_good:.1f} µm (acceptable)<br>"
+            f"<span style='color:{orange_color}'>●</span> r ≤ {ring_warning:.0f} µm (warning)<br>"
+            f"<span style='color:{red_color}'>●</span> r > {ring_warning:.0f} µm (fail)"
         ),
         xref='paper', yref='paper',
         x=0.98, y=0.02,
@@ -651,8 +654,10 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     loc_col = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
-    ring_green = float(vtp_cfg.get('ring_green_um', 10.0))
-    ring_orange = float(vtp_cfg.get('ring_orange_um', 15.0))
+    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 5.0))
+    ring_excellent = float(vtp_cfg.get('ring_excellent_um', 7.5))
+    ring_good = float(vtp_cfg.get('ring_good_um', 10.0))
+    ring_warning = float(vtp_cfg.get('ring_warning_um', 10.0))
 
     work = df[[sc_col, loc_col, grid_col]].dropna().copy()
     work['sc_um'] = work[sc_col] * 1000
@@ -661,7 +666,7 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     work[grid_col] = work[grid_col].astype(int).astype(str)
 
     work['color'] = work['sc_um'].apply(
-        lambda v: _traffic_light_color(v, ring_green, ring_orange, chart_colors)
+        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent, ring_good, ring_warning, chart_colors)
     )
 
     fig = go.Figure()
@@ -680,18 +685,17 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
         showlegend=False,
     ))
 
-    # Threshold lines
     fig.add_hline(
-        y=ring_green,
+        y=ring_good,
         line=dict(color=chart_colors.get('traffic_light_green', '#2ecc71'), width=1.5, dash='dash'),
-        annotation_text=f'Pass limit {ring_green:.0f} µm',
+        annotation_text=f'Acceptable limit {ring_good:.1f} µm',
         annotation_position='right',
         annotation_font_size=10,
     )
     fig.add_hline(
-        y=ring_orange,
-        line=dict(color=chart_colors.get('traffic_light_orange', '#f39c12'), width=1.5, dash='dot'),
-        annotation_text=f'Warn limit {ring_orange:.0f} µm',
+        y=ring_warning,
+        line=dict(color=chart_colors.get('traffic_light_red', '#e74c3c'), width=1.5, dash='dot'),
+        annotation_text=f'Fail limit {ring_warning:.0f} µm',
         annotation_position='right',
         annotation_font_size=10,
     )
