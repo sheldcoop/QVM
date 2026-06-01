@@ -1,25 +1,18 @@
 import streamlit as st
 import pandas as pd
-import yaml
 import os
 from pathlib import Path
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
-from src.calculations import calculate_annular_ring, calculate_cam_compensation
-from src.visuals import plot_bullseye_scatter, plot_quiver, plot_heatmap
-from src.data_processor import DataProcessor
+from src.visuals import plot_quiver, plot_heatmap
+from src.utils import load_settings, calculate_annular_ring
 from src.views.quality_control import QualityControlView
 from src.views.analytics import AnalyticsView
 from src.views.spatial_heatmap import SpatialHeatmapView
 from src.views.registration_scatter import RegistrationScatterView
 from ui.sidebar import render_sidebar, render_nav_buttons
-from panel_mapping import create_four_quarters_view
+from src.panel_mapping import create_four_quarters_view
 
 pd.options.mode.copy_on_write = True
-
-def load_settings():
-    config_path = os.path.join(os.path.dirname(__file__), 'config', 'settings.yaml')
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
 
 def load_css(file_path: str, settings: dict = None) -> None:
     try:
@@ -71,13 +64,12 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
 
 
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
-                      data_processor, col_names: dict, tolerances: dict,
-                      chart_colors: dict, chart_heights: dict, chart_markers: dict,
-                      optical_thresholds: dict, optical_model: dict, process_limits: dict,
+                      col_names: dict, tolerances: dict,
+                      chart_colors: dict, chart_heights: dict,
                       is_via_to_pad: bool = False, meta: dict = None):
     """Render whichever sub-view is active."""
     if sub_view == "Quality Control":
-        QualityControlView(settings, data_processor).render(
+        QualityControlView(settings).render(
             filtered_df, col_names=col_names, tolerances=tolerances,
             is_via_to_pad=is_via_to_pad, meta=meta or {})
 
@@ -92,7 +84,7 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                     scatter_df = filtered_df if chosen_side_scatter == 'Both' else filtered_df[filtered_df['Side'] == chosen_side_scatter].copy()
                 else:
                     scatter_df = filtered_df.copy()
-                RegistrationScatterView(settings, data_processor).render(scatter_df)
+                RegistrationScatterView(settings).render(scatter_df)
             with tab2:
                 # Side selector for quiver — must be single side (16 points only)
                 if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
@@ -107,14 +99,14 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                 fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
                 st.plotly_chart(fig_q, use_container_width=True)
         else:
-            AnalyticsView(settings, data_processor).render(filtered_df, settings=settings)
+            AnalyticsView(settings).render(filtered_df, settings=settings)
 
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
-        SpatialHeatmapView(settings, data_processor).render(
+        SpatialHeatmapView(settings).render(
             filtered_df, col_names=col_names, chart_colors=chart_colors)
 
     elif sub_view == "Registration Scatter":
-        RegistrationScatterView(settings, data_processor).render(filtered_df)
+        RegistrationScatterView(settings).render(filtered_df)
 
 
 def main():
@@ -124,11 +116,6 @@ def main():
     tolerances = settings.get('TOLERANCES', {})
     chart_colors = settings.get('CHART_COLORS', {})
     chart_heights = settings.get('CHART_HEIGHTS', {})
-    optical_thresholds = settings.get('OPTICAL_EDGE_THRESHOLDS', {})
-    optical_model = settings.get('OPTICAL_CONFIDENCE_MODEL', {})
-    chart_markers = settings.get('CHART_MARKERS', {})
-
-    data_processor = DataProcessor(settings)
 
     st.set_page_config(page_title=ui_strings.get('dashboard_title', 'QVM Dashboard'), layout="wide")
     load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"), settings)
@@ -136,9 +123,6 @@ def main():
 
     sidebar_config = render_sidebar(settings)
     uploaded_files = sidebar_config['uploaded_files']
-    material_build_up = sidebar_config.get('build_up', '')
-    batch_id = sidebar_config.get('lot_number', '')
-    process_limits = sidebar_config['process_limits']
     meta = {
         'project_name': sidebar_config.get('project_name', ''),
         'part_number':  sidebar_config.get('part_number', ''),
@@ -150,18 +134,33 @@ def main():
     }
 
     # --- Data Ingestion ---
+    # Routing (Pad-to-Via vs Via-to-Pad) is decided by parse_qvm_content from
+    # the file contents, not the filename. The filename only contributes Panel
+    # and Side metadata, plus a hint we use to warn the user about mis-naming.
     all_data = []
     if uploaded_files:
         for file in uploaded_files:
             try:
                 filename_info = parse_filename(file.name)
                 content = file.getvalue().decode('utf-8')
-                df = parse_qvm_content(content)
+                df = parse_qvm_content(content, settings)
                 df = calculate_annular_ring(df, settings)
                 df['Panel'] = filename_info.get('Panel Number', 'Unknown')
                 df['Side'] = filename_info.get('Side', 'Unknown')
-                df['Process'] = filename_info.get('Process', 'Unknown')
                 all_data.append(df)
+
+                hint = filename_info.get('format_hint')
+                detected = df['Process'].iloc[0]
+                if hint is None:
+                    st.sidebar.warning(
+                        f"⚠️ `{file.name}`: filename doesn't include `VTP` or `PTV`. "
+                        f"Treated as **{detected}** based on file content."
+                    )
+                elif hint != detected:
+                    st.sidebar.warning(
+                        f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
+                        f"**{detected}**. Going with the content."
+                    )
             except Exception as e:
                 st.sidebar.error(f"Error parsing {file.name}: {e}")
 
@@ -210,9 +209,8 @@ def main():
         st.markdown("---")
 
         _render_sub_views(
-            filtered_df, sub_view, settings, data_processor,
+            filtered_df, sub_view, settings,
             col_names, tolerances, chart_colors, chart_heights,
-            chart_markers, optical_thresholds, optical_model, process_limits,
         )
 
     # ------------------------------------------------------------------ #
@@ -244,9 +242,8 @@ def main():
         st.markdown("---")
 
         _render_sub_views(
-            filtered_vtp, sub_view, settings, data_processor,
+            filtered_vtp, sub_view, settings,
             col_names, tolerances, chart_colors, chart_heights,
-            chart_markers, optical_thresholds, optical_model, process_limits,
             is_via_to_pad=True, meta=meta,
         )
 

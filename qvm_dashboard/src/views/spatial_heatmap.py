@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
+from src.utils import convert_to_microns
 from src.views.base import BaseView
 
 
@@ -91,9 +92,7 @@ class SpatialHeatmapView(BaseView):
             return pd.DataFrame()
         
         # Convert shift measurements to micrometers for display (mm -> µm)
-        plot_df[sc_col] = (plot_df[sc_col] * 1000).round(3)
-        plot_df[dx_col] = (plot_df[dx_col] * 1000).round(3)
-        plot_df[dy_col] = (plot_df[dy_col] * 1000).round(3)
+        plot_df = convert_to_microns(plot_df, [sc_col, dx_col, dy_col])
         
         # Store metadata for layout
         plot_df._metadata = {

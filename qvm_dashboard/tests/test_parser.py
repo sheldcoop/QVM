@@ -23,11 +23,37 @@ Distance: PtV_LL_2(ID:3) between Via_LL_2(ID:2) and Pad_LL_2(ID:1)
 
 INVALID_CONTENT = "This is a broken file that does not contain QVM format."
 
-def test_parse_filename():
+def test_parse_filename_legacy_long_form():
     result = parse_filename("Post PFC_Pad to Via_Panel 20_F.txt")
-    assert result['Process'] == "Post PFC"
+    assert result['format_hint'] == "Pad to Via"
     assert result['Panel Number'] == "20"
     assert result['Side'] == "F"
+
+
+def test_parse_filename_vtp_shorthand():
+    result = parse_filename("VTP_Panel 25_F.txt")
+    assert result['format_hint'] == "Via to Pad"
+    assert result['Panel Number'] == "25"
+    assert result['Side'] == "F"
+
+
+def test_parse_filename_lowercase_ptv():
+    result = parse_filename("postpfc_ptv_panel_30_b.txt")
+    assert result['format_hint'] == "Pad to Via"
+    assert result['Panel Number'] == "30"
+    assert result['Side'] == "B"
+
+
+def test_parse_filename_mixed_case_vtp():
+    result = parse_filename("VtP_Panel25_f.txt")
+    assert result['format_hint'] == "Via to Pad"
+    assert result['Panel Number'] == "25"
+    assert result['Side'] == "F"
+
+
+def test_parse_filename_no_hint():
+    result = parse_filename("random_data.txt")
+    assert result['format_hint'] is None
 
 @patch('qvm_dashboard.src.parser.load_settings')
 def test_parse_qvm_content_valid(mock_settings):
@@ -38,10 +64,12 @@ def test_parse_qvm_content_valid(mock_settings):
             'outer_diameter': 'Outer Diameter',
             'inner_diameter': 'Inner Diameter',
             'ptv_distance': 'PtV Distance',
-            'x_distance': 'Shift (DX)',
-            'y_distance': 'Shift (DY)'
+            'x_distance': 'X Distance',
+            'y_distance': 'Y Distance',
         },
-        'GRID_MAPPING': {'LL_2': 22}
+        # Grid ID is assigned by block index against POSITIONAL_MAPPING — the
+        # first (and only) block in VALID_CONTENT will be tagged 22.
+        'POSITIONAL_MAPPING': ['22'],
     }
 
     df = parse_qvm_content(VALID_CONTENT)
@@ -56,6 +84,8 @@ def test_parse_qvm_content_valid(mock_settings):
     assert row['PtV Distance'] == 0.003728
     assert row['X Distance'] == 0.000592
     assert row['Y Distance'] == 0.003681
+    # Content-driven routing tag: Pad circle appears first → Pad-to-Via.
+    assert row['Process'] == 'Pad to Via'
 
 def test_parse_qvm_content_invalid():
     with pytest.raises(QVMParseError):
