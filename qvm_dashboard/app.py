@@ -82,7 +82,25 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
             is_via_to_pad=is_via_to_pad, meta=meta or {})
 
     elif sub_view == "Analytics":
-        AnalyticsView(settings, data_processor).render(filtered_df, settings=settings)
+        if is_via_to_pad:
+            tab1, tab2 = st.tabs(["Registration Scatter", "Quiver Plot"])
+            with tab1:
+                RegistrationScatterView(settings, data_processor).render(filtered_df)
+            with tab2:
+                # If multiple sides uploaded, let user pick one
+                if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
+                    side_options = sorted(filtered_df['Side'].unique().tolist())
+                    chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")
+                    quiver_df = filtered_df[filtered_df['Side'] == chosen_side].copy()
+                else:
+                    quiver_df = filtered_df.copy()
+                multiplier = st.slider("Vector Multiplier", min_value=1, max_value=500,
+                                       value=100, step=1,
+                                       help="Exaggerates arrow length for visibility")
+                fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
+                st.plotly_chart(fig_q, use_container_width=True)
+        else:
+            AnalyticsView(settings, data_processor).render(filtered_df, settings=settings)
 
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
         SpatialHeatmapView(settings, data_processor).render(
@@ -115,13 +133,13 @@ def main():
     batch_id = sidebar_config.get('lot_number', '')
     process_limits = sidebar_config['process_limits']
     meta = {
-        'Project Name': sidebar_config.get('project_name', ''),
-        'Part Number':  sidebar_config.get('part_number', ''),
-        'Lot Number':   sidebar_config.get('lot_number', ''),
-        'Lot Name':     sidebar_config.get('lot_name', ''),
-        'Build Up':     sidebar_config.get('build_up', ''),
-        'Process':      sidebar_config.get('process', ''),
-        'Panel':        sidebar_config.get('panel', ''),
+        'project_name': sidebar_config.get('project_name', ''),
+        'part_number':  sidebar_config.get('part_number', ''),
+        'lot_number':   sidebar_config.get('lot_number', ''),
+        'lot_name':     sidebar_config.get('lot_name', ''),
+        'build_up':     sidebar_config.get('build_up', ''),
+        'process':      sidebar_config.get('process', ''),
+        'panel':        sidebar_config.get('panel', ''),
     }
 
     # --- Data Ingestion ---
@@ -212,7 +230,7 @@ def main():
         # which Via-to-Pad files do not contain — those views are intentionally
         # excluded here as they would produce meaningless results without position data.
         sub_view = render_nav_buttons(
-            ["Quality Control", "Registration Scatter"],
+            ["Quality Control", "Analytics"],
             state_key="vtp_sub_view",
             default="Quality Control",
         )

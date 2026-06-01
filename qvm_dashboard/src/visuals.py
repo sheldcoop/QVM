@@ -443,7 +443,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
             colorbar=dict(title='SC (µm)', thickness=14),
             line=dict(width=1, color='rgba(0,0,0,0.35)'),
         ),
-        text=work[loc_col],
+        text=work[grid_col].astype(str),
         textposition='top center',
         textfont=dict(size=9),
         customdata=work[[grid_col, 'sc_um', 'dx_um', 'dy_um']].values,
@@ -759,112 +759,129 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     fig = go.Figure()
     
     # Pattern detection thresholds
-    expansion_threshold = 0.5      # dot product threshold for expansion
-    twist_dot_threshold = 0.2      # dot product threshold for twist (near zero)
-    twist_mag_threshold = 10.0     # minimum magnitude for twist (microns)
+    expansion_threshold = 0.5
+    twist_dot_threshold = 0.2
+    twist_mag_threshold = 10.0
 
-    # Track pattern counts for legend
+    # Track pattern counts and collect scatter data
     expansion_count = 0
     twist_count = 0
     offset_count = 0
+
+    scatter_x, scatter_y, scatter_text, scatter_hover = [], [], [], []
 
     # Add quiver annotations with pattern-based color coding
     for _, row in df_plot.iterrows():
         x = row['plot_x']
         y = row['plot_y']
 
-        dx_scaled = row[x_col] * multiplier
-        dy_scaled = row[y_col] * multiplier
+        # DX/DY are in mm — convert to µm then scale to grid units
+        dx_um = row[x_col] * 1000
+        dy_um = row[y_col] * 1000
+        dx_scaled = dx_um * multiplier * 0.001
+        dy_scaled = dy_um * multiplier * 0.001
+
+        # Guarantee a minimum visible arrow length of 0.05 grid units
+        arrow_len = np.sqrt(dx_scaled**2 + dy_scaled**2)
+        min_len = 0.05
+        if arrow_len > 0 and arrow_len < min_len:
+            scale_up = min_len / arrow_len
+            dx_scaled *= scale_up
+            dy_scaled *= scale_up
         mag = row['magnitude']
-        
-        # Calculate position vector (from panel center to hole)
-        pos_x = row[coord_x_col] - panel_center_x if coord_x_col in row.index else 0
-        pos_y = row[coord_y_col] - panel_center_y if coord_y_col in row.index else 0
-        
+
+        # Calculate position vector — use real coords if available,
+        # otherwise fall back to grid position relative to grid centre (2.5, 2.5)
+        raw_x = row.get(coord_x_col) if coord_x_col in row.index else None
+        raw_y = row.get(coord_y_col) if coord_y_col in row.index else None
+        has_coords = (raw_x is not None and not (isinstance(raw_x, float) and np.isnan(raw_x)))
+        if has_coords:
+            pos_x = raw_x - panel_center_x
+            pos_y = raw_y - panel_center_y
+        else:
+            # Grid centre is at (2.5, 2.5) in plot space
+            pos_x = x - 2.5
+            pos_y = y - 2.5
+
         # Normalize position vector
         pos_mag = np.sqrt(pos_x**2 + pos_y**2)
-        if pos_mag > 0:
-            pos_x_norm = pos_x / pos_mag
-            pos_y_norm = pos_y / pos_mag
-        else:
-            pos_x_norm = 0
-            pos_y_norm = 0
-        
+        pos_x_norm = (pos_x / pos_mag) if pos_mag > 0 else 0
+        pos_y_norm = (pos_y / pos_mag) if pos_mag > 0 else 0
+
         # Normalize error vector
         err_mag = np.sqrt(dx_scaled**2 + dy_scaled**2)
-        if err_mag > 0:
-            err_x_norm = dx_scaled / err_mag
-            err_y_norm = dy_scaled / err_mag
-        else:
-            err_x_norm = 0
-            err_y_norm = 0
-        
-        # Calculate dot product
+        err_x_norm = (dx_scaled / err_mag) if err_mag > 0 else 0
+        err_y_norm = (dy_scaled / err_mag) if err_mag > 0 else 0
+
         dot_product = err_x_norm * pos_x_norm + err_y_norm * pos_y_norm
-        
-        # Pattern detection logic
+
         if abs(dot_product) > expansion_threshold:
-            # RED: Material Expansion (Positive) or Shrinkage (Negative)
-            arrow_color = 'rgb(255, 50, 50)'  # Bright Red
-            pattern = "Expansion" if dot_product > 0 else "Shrinkage"
+            if dot_product > 0:
+                # ORANGE-RED: Material Expansion (shift away from center)
+                arrow_color = 'rgb(255, 80, 0)'
+                pattern = "Expansion"
+            else:
+                # CYAN: Material Shrinkage/Contraction (shift toward center)
+                arrow_color = 'rgb(0, 210, 210)'
+                pattern = "Contraction"
             expansion_count += 1
         elif abs(dot_product) < twist_dot_threshold and mag > twist_mag_threshold:
-            # GOLD: Lamination Twist (Perpendicular)
-            arrow_color = 'rgb(255, 215, 0)'  # Gold
+            arrow_color = 'rgb(255, 215, 0)'
             pattern = "Twist"
             twist_count += 1
         else:
-            # BLUE: Global Offset (Uniform shift)
-            arrow_color = 'rgb(100, 150, 255)'  # Light Blue
+            arrow_color = 'rgb(100, 150, 255)'
             pattern = "Offset"
             offset_count += 1
 
         fig.add_annotation(
             x=x + dx_scaled,
             y=y + dy_scaled,
-            ax=x,
-            ay=y,
-            xref="x",
-            yref="y",
-            axref="x",
-            ayref="y",
-            text="",
-            showarrow=True,
-            arrowhead=2,
-            arrowsize=1.5,
-            arrowwidth=2.5,
-            arrowcolor=arrow_color,
-            opacity=0.85
+            ax=x, ay=y,
+            xref="x", yref="y", axref="x", ayref="y",
+            text="", showarrow=True,
+            arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
+            arrowcolor=arrow_color, opacity=0.9
         )
 
-        # Add a dot at the origin with grid label
-        fig.add_trace(go.Scatter(
-            x=[x], y=[y], mode='markers+text',
-            marker=dict(color='#333333', size=14, line=dict(color='#FFFF00', width=2)),
-            text=[row[grid_col]],
-            textposition="top center",
-            textfont=dict(size=11, color='#FFFF00', family='Arial Black'),
-            hovertemplate=(
-                f"<b>{row[loc_col]}</b><br>" +
-                f"Grid: {row[grid_col]}<br>" +
-                f"Pattern: {pattern}<br>" +
-                f"Dot Product: {dot_product:.3f}<br>" +
-                f"DX: {row[x_col]*1000:.3f} µm<br>" +
-                f"DY: {row[y_col]*1000:.3f} µm<br>" +
-                f"Magnitude: {mag:.3f} µm<br>" +
-                "<extra></extra>"
-            ),
-            showlegend=False
-        ))
+        # Collect for single consolidated scatter trace
+        scatter_x.append(x)
+        scatter_y.append(y)
+        scatter_text.append(str(row[grid_col]))
+        loc_name = row[loc_col] if loc_col in row.index else row[grid_col]
+        scatter_hover.append(
+            f"<b>{loc_name}</b><br>"
+            f"Grid: {row[grid_col]}<br>"
+            f"Pattern: {pattern}<br>"
+            f"DX: {dx_um:.2f} µm<br>"
+            f"DY: {dy_um:.2f} µm<br>"
+            f"Magnitude: {mag:.2f} µm<br>"
+            f"<extra></extra>"
+        )
+
+    # One single scatter trace for all points
+    fig.add_trace(go.Scatter(
+        x=scatter_x, y=scatter_y,
+        mode='markers+text',
+        marker=dict(color='#333333', size=14, line=dict(color='#FFFF00', width=2)),
+        text=scatter_text,
+        textposition="top center",
+        textfont=dict(size=11, color='#FFFF00', family='Arial Black'),
+        hovertemplate=scatter_hover,
+        showlegend=False
+    ))
 
     # Add legend annotations
     fig.add_annotation(
         x=2.5, y=0.2,
         text=(
             f"<b>Pattern Detection Summary</b><br>"
-            f"🔴 <b>Material (Exp/Shrink)</b>: {expansion_count} holes<br>"
-            f"🟡 <b>Twist</b>: {twist_count} holes<br>"
-            f"🔵 <b>Offset</b>: {offset_count} holes"
+            f"� <b>Expansion</b>: arrows pointing away from centre<br>"
+            f"🩵 <b>Contraction</b>: arrows pointing toward centre<br>"
+            f"🟡 <b>Twist</b>: perpendicular arrows<br>"
+            f"🔵 <b>Offset</b>: uniform shift<br>"
+            f"<br>"
+            f"Expansion/Contraction: {expansion_count} &nbsp; Twist: {twist_count} &nbsp; Offset: {offset_count}"
         ),
         showarrow=False,
         bgcolor='rgba(26, 26, 26, 0.8)',
