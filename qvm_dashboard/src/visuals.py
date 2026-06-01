@@ -589,13 +589,13 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     sc = work['sc_um']
     n = int(len(sc))
     max_sc = float(sc.max()) if n else 0.0
-    p90_sc = float(sc.quantile(0.90)) if n else 0.0
+    mean_sc = float(sc.mean()) if n else 0.0
     n_outside = int((sc > ring_acceptable).sum())
     summary_text = (
         f"<b>n</b> {n}  •  "
         f"<b>max SC</b> {max_sc:.1f} µm  •  "
-        f"<b>p90</b> {p90_sc:.1f} µm  •  "
-        f"<b>outside warn</b> {n_outside}"
+        f"<b>mean SC</b> {mean_sc:.1f} µm  •  "
+        f"<b>outside fail</b> {n_outside}"
     )
     fig.add_annotation(
         text=summary_text,

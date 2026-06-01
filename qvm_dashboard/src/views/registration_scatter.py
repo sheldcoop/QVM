@@ -68,15 +68,10 @@ class RegistrationScatterView(BaseView):
         with col_right:
             fig_bars = plot_vtp_site_bars(filtered_df, self.settings)
             st.plotly_chart(fig_bars, use_container_width=True)
-            pad_um = float(vtp_cfg.get('pad_nominal_um', 312.5))
-            via_um = float(vtp_cfg.get('via_nominal_um', 20.0))
-            ar_min = float(vtp_cfg.get('annular_ring_min_um', 50.0))
-            ipc = vtp_cfg.get('ipc_standard', 'IPC-6012 Class 2')
             st.caption(
                 f"Tolerance rings: blue ≤ {ring_exceptional:.1f} µm | "
                 f"green {ring_exceptional:.1f}–{ring_excellent:.1f} µm | "
                 f"green {ring_excellent:.1f}–{ring_good:.1f} µm | "
                 f"orange {ring_good:.1f}–{ring_acceptable:.0f} µm | "
-                f"red > {ring_acceptable:.0f} µm  "
-                f"({ipc}, pad ∅{pad_um:.1f} µm, via ∅{via_um:.1f} µm, AR min {ar_min:.0f} µm)"
+                f"red > {ring_acceptable:.0f} µm"
             )
