@@ -483,62 +483,413 @@ _DEFAULT_QUARTER_COLORS = {
 }
 
 
+def _zone_legend_annotation(chart_colors: dict,
+                             ring_exceptional: float, ring_excellent: float,
+                             ring_good: float, ring_acceptable: float,
+                             x: float = 0.01, y: float = 0.02,
+                             xanchor: str = 'left', yanchor: str = 'bottom') -> dict:
+    """Return a Plotly annotation dict for the 5-zone colour legend."""
+    blue       = chart_colors.get('traffic_light_blue',       '#3498db')
+    dark_green = chart_colors.get('traffic_light_dark_green', '#1e7e3a')
+    green      = chart_colors.get('traffic_light_green',      '#2ecc71')
+    orange     = chart_colors.get('traffic_light_orange',     '#e67e22')
+    red        = chart_colors.get('traffic_light_red',        '#e74c3c')
+    return dict(
+        text=(
+            f"<span style='color:{blue}'>●</span> ≤{ring_exceptional:.1f}  "
+            f"<span style='color:{dark_green}'>●</span> ≤{ring_excellent:.1f}  "
+            f"<span style='color:{green}'>●</span> ≤{ring_good:.1f}  "
+            f"<span style='color:{orange}'>●</span> ≤{ring_acceptable:.1f}  "
+            f"<span style='color:{red}'>●</span> fail (µm)"
+        ),
+        xref='paper', yref='paper',
+        x=x, y=y,
+        xanchor=xanchor, yanchor=yanchor,
+        showarrow=False,
+        font=dict(size=9, color='#444444'),
+        bgcolor='rgba(255,255,255,0.90)',
+        bordercolor='#dddddd',
+        borderwidth=1,
+        borderpad=4,
+    )
+
+
+def _stats_card_annotation(n: int, mean_v: float, median_v: float,
+                            std_v: float, pct_pass: float) -> dict:
+    """Return a Plotly annotation dict for the top-right summary stats card."""
+    pass_color = '#1e7e3a' if pct_pass == 100 else ('#e67e22' if pct_pass >= 75 else '#e74c3c')
+    return dict(
+        text=(
+            f"<b>n</b>       {n}<br>"
+            f"<b>Mean</b>   {mean_v:.2f} µm<br>"
+            f"<b>Median</b> {median_v:.2f} µm<br>"
+            f"<b>Std Dev</b>{std_v:.2f} µm<br>"
+            f"<b style='color:{pass_color}'>Pass</b>     {pct_pass:.0f}%"
+        ),
+        xref='paper', yref='paper',
+        x=0.99, y=0.99,
+        xanchor='right', yanchor='top',
+        showarrow=False,
+        align='left',
+        font=dict(size=10, color='#222222', family='monospace'),
+        bgcolor='rgba(255,255,255,0.93)',
+        bordercolor='#cccccc',
+        borderwidth=1,
+        borderpad=6,
+    )
+
+
 def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
-    """Box plot of VtP Distance SC grouped by Grid ID, coloured by quarter."""
-    col_names = settings.get('COLUMN_NAMES', {})
-    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
-    q_colors  = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
+    """Panel-level box plot: one 'All sites' box + four quarter boxes side-by-side.
+
+    Layout:  All | UL  LL  LR  UR
+    Narrow boxes (width=0.35). Every site appears as a zone-coloured dot.
+    Stats card top-right. Zone legend bottom-left.
+    """
+    col_names    = settings.get('COLUMN_NAMES', {})
+    chart_colors = settings.get('CHART_COLORS', {})
+    vtp_cfg      = settings.get('VTP_REGISTRATION', {})
+    q_colors     = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
 
     sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
     grid_col = col_names.get('grid_id', 'Grid ID')
-    usl      = float(vtp_cfg.get('vtp_usl_um', 10.0))
+    loc_col  = col_names.get('location', 'Location')
 
-    df_plot = df.dropna(subset=[grid_col, sc_col]).copy()
-    df_plot['sc_um']    = pd.to_numeric(df_plot[sc_col],   errors='coerce') * 1000
-    df_plot['grid_str'] = pd.to_numeric(df_plot[grid_col], errors='coerce') \
-                            .astype(int).astype(str).str.zfill(2)
-    df_plot['quarter']  = df_plot['grid_str'].str[0].map(_QUARTER_MAP)
-    df_plot = df_plot.dropna(subset=['sc_um', 'quarter'])
+    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
+    ring_excellent   = float(vtp_cfg.get('ring_excellent_um', 5.0))
+    ring_good        = float(vtp_cfg.get('ring_good_um', 7.5))
+    ring_acceptable  = float(vtp_cfg.get('ring_acceptable_um', 10.0))
 
-    grid_order = sorted(df_plot['grid_str'].unique(), key=int)
-    fig = px.box(
-        df_plot, x='grid_str', y='sc_um', color='quarter',
-        color_discrete_map=q_colors,
-        category_orders={'grid_str': grid_order},
-        labels={'grid_str': 'Grid ID', 'sc_um': 'VtP Distance SC (µm)', 'quarter': 'Quarter'},
-        title='VtP Distance Distribution by Position',
+    # ---- Prepare data -------------------------------------------------------
+    df_plot = df.dropna(subset=[sc_col]).copy()
+    df_plot['sc_um'] = pd.to_numeric(df_plot[sc_col], errors='coerce') * 1000
+    df_plot = df_plot.dropna(subset=['sc_um'])
+
+    if grid_col in df_plot.columns:
+        df_plot['grid_str'] = (pd.to_numeric(df_plot[grid_col], errors='coerce')
+                               .astype('Int64').astype(str).str.zfill(2))
+        df_plot['quarter']  = df_plot['grid_str'].str[0].map(_QUARTER_MAP)
+    else:
+        df_plot['grid_str'] = '??'
+        df_plot['quarter']  = None
+
+    df_plot['color'] = df_plot['sc_um'].apply(
+        lambda v: _traffic_light_color(
+            v, ring_exceptional, ring_excellent, ring_good, ring_acceptable, chart_colors)
     )
-    fig.add_hline(y=usl, line_dash='dash', line_color='red',
-                  annotation_text=f'USL {usl} µm', annotation_position='top right')
-    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white')
+
+    sc       = df_plot['sc_um']
+    n        = len(sc)
+    mean_v   = float(sc.mean())   if n else 0.0
+    median_v = float(sc.median()) if n else 0.0
+    std_v    = float(sc.std())    if n else 0.0
+    n_fail   = int((sc > ring_acceptable).sum())
+    pct_pass = 100.0 * (1 - n_fail / n) if n else 100.0
+
+    rng = np.random.default_rng(42)   # fixed seed → stable jitter every render
+
+    fig = go.Figure()
+
+    _x_order = ['All'] + _QUARTER_ORDER
+    _x_pos   = {label: i for i, label in enumerate(_x_order)}
+
+    # ---- Helper: narrow box + jitter dots -----------------------------------
+    def _add_box_and_dots(x_label: str, values: np.ndarray, colors: list,
+                          hover_texts: list, fill: str, border: str) -> None:
+        fig.add_trace(go.Box(
+            x=[x_label] * len(values),
+            y=values,
+            name=x_label,
+            boxpoints=False,
+            width=0.35,
+            fillcolor=fill,
+            line=dict(color=border, width=1.5),
+            marker_color=border,
+            showlegend=False,
+            hoverinfo='skip',
+        ))
+        # Numeric overlay axis for jitter
+        pos    = _x_pos[x_label]
+        jitter = rng.uniform(-0.14, 0.14, size=len(values))
+        fig.add_trace(go.Scatter(
+            x=pos + jitter,
+            y=values,
+            mode='markers',
+            marker=dict(color=colors, size=9,
+                        line=dict(width=1, color='rgba(0,0,0,0.30)')),
+            text=hover_texts,
+            hovertemplate='%{text}<extra></extra>',
+            showlegend=False,
+            xaxis='x2',
+        ))
+
+    def _hover(row: pd.Series) -> str:
+        loc   = row.get(loc_col, '') if loc_col in df_plot.columns else ''
+        grid  = row.get('grid_str', '')
+        q     = row.get('quarter', '') or ''
+        parts = [p for p in [loc, f'Grid {grid}', q] if p and p != 'nan']
+        return f"{' · '.join(parts)} — {row['sc_um']:.2f} µm"
+
+    hover_all = [_hover(row) for _, row in df_plot.iterrows()]
+
+    # "All" box
+    _add_box_and_dots('All', sc.values, df_plot['color'].tolist(), hover_all,
+                      fill='rgba(200,200,200,0.22)', border='#555555')
+
+    # Quarter boxes
+    for q in _QUARTER_ORDER:
+        qdf = df_plot[df_plot['quarter'] == q]
+        if qdf.empty:
+            continue
+        hx = q_colors.get(q, '#888888').lstrip('#')
+        ri, gi, bi = int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)
+        _add_box_and_dots(
+            q, qdf['sc_um'].values, qdf['color'].tolist(),
+            [_hover(row) for _, row in qdf.iterrows()],
+            fill=f'rgba({ri},{gi},{bi},0.13)',
+            border=q_colors.get(q, '#888888'),
+        )
+
+    # ---- Reference lines ----------------------------------------------------
+    # USL — labelled top left so it doesn't clash with stats card
+    fig.add_hline(
+        y=ring_acceptable,
+        line_dash='dash',
+        line_color=chart_colors.get('traffic_light_red', '#e74c3c'),
+        line_width=2,
+        annotation_text=f'  USL {ring_acceptable:.1f} µm',
+        annotation_position='top left',
+        annotation_font_size=10,
+        annotation_font_color=chart_colors.get('traffic_light_red', '#e74c3c'),
+    )
+    # Mean (dotted) and Median (solid) — thin, no text label (card shows values)
+    fig.add_hline(y=mean_v,   line_dash='dot',   line_color='#888888', line_width=1.2)
+    fig.add_hline(y=median_v, line_dash='solid', line_color='#aaaaaa', line_width=1.0)
+
+    # Separator between "All" and the quarter boxes
+    fig.add_vline(x=0.5, line_color='rgba(160,160,160,0.45)',
+                  line_width=1, line_dash='dot')
+
+    # ---- Annotations --------------------------------------------------------
+    fig.add_annotation(**_stats_card_annotation(n, mean_v, median_v, std_v, pct_pass))
+    fig.add_annotation(**_zone_legend_annotation(
+        chart_colors, ring_exceptional, ring_excellent, ring_good, ring_acceptable))
+
+    # Subtle mean/median label at far right of each line
+    for val, label in [(mean_v, 'mean'), (median_v, 'median')]:
+        fig.add_annotation(
+            text=f'<i>{label}</i>',
+            xref='paper', yref='y',
+            x=0.99, y=val,
+            xanchor='right', yanchor='bottom',
+            showarrow=False,
+            font=dict(size=8, color='#999999'),
+        )
+
+    # ---- Layout -------------------------------------------------------------
+    n_cats = len(_x_order)
+    fig.update_layout(
+        title=dict(text='SC Distribution — Panel Overview by Quarter',
+                   font=dict(size=14), x=0.5, xanchor='center'),
+        xaxis=dict(
+            type='category',
+            categoryorder='array',
+            categoryarray=_x_order,
+            title='',
+            tickfont=dict(size=12),
+            showgrid=False,
+        ),
+        xaxis2=dict(
+            overlaying='x',
+            range=[-0.5, n_cats - 0.5],
+            visible=False,
+        ),
+        yaxis=dict(
+            title='VtP Distance SC (µm)',
+            zeroline=False,
+            showgrid=True,
+            gridcolor='rgba(200,200,200,0.5)',
+            gridwidth=1,
+        ),
+        plot_bgcolor='#f8f8f8',
+        paper_bgcolor='white',
+        hovermode='closest',
+        height=520,
+        margin=dict(t=60, b=40, l=65, r=110),
+        boxmode='group',
+    )
     return fig
 
 
-def plot_vtp_violin(df: pd.DataFrame, settings: dict) -> go.Figure:
-    """Violin of VtP Distance SC grouped by quarter, with inner box and jitter overlay."""
-    col_names = settings.get('COLUMN_NAMES', {})
-    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
-    q_colors  = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
+def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
+    """Strip chart of SC by quarter: IQR box + every site as a jittered, labelled dot.
+
+    Honest alternative to a violin for small N (4 points per quarter). Every
+    measurement is visible with its Grid ID, coloured by the 5-zone traffic-light
+    palette. IQR box adds statistical context without inventing smooth curves.
+    Stats card top-right. Zone legend bottom-left. Same information level as box plot.
+    """
+    col_names    = settings.get('COLUMN_NAMES', {})
+    chart_colors = settings.get('CHART_COLORS', {})
+    vtp_cfg      = settings.get('VTP_REGISTRATION', {})
+    q_colors     = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
 
     sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
     grid_col = col_names.get('grid_id', 'Grid ID')
-    usl      = float(vtp_cfg.get('vtp_usl_um', 10.0))
 
-    df_plot = df.dropna(subset=[grid_col, sc_col]).copy()
-    df_plot['sc_um']   = pd.to_numeric(df_plot[sc_col],   errors='coerce') * 1000
-    df_plot['quarter'] = pd.to_numeric(df_plot[grid_col], errors='coerce') \
-                           .astype(int).astype(str).str.zfill(2).str[0].map(_QUARTER_MAP)
+    ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
+    ring_excellent   = float(vtp_cfg.get('ring_excellent_um', 5.0))
+    ring_good        = float(vtp_cfg.get('ring_good_um', 7.5))
+    ring_acceptable  = float(vtp_cfg.get('ring_acceptable_um', 10.0))
+
+    # ---- Prepare data -------------------------------------------------------
+    df_plot = df.dropna(subset=[sc_col]).copy()
+    df_plot['sc_um'] = pd.to_numeric(df_plot[sc_col], errors='coerce') * 1000
+    if grid_col in df_plot.columns:
+        df_plot['grid_str'] = (pd.to_numeric(df_plot[grid_col], errors='coerce')
+                               .astype('Int64').astype(str).str.zfill(2))
+        df_plot['quarter']  = df_plot['grid_str'].str[0].map(_QUARTER_MAP)
+    else:
+        df_plot['grid_str'] = '??'
+        df_plot['quarter']  = None
     df_plot = df_plot.dropna(subset=['sc_um', 'quarter'])
 
-    fig = px.violin(
-        df_plot, x='quarter', y='sc_um', color='quarter',
-        color_discrete_map=q_colors,
-        category_orders={'quarter': _QUARTER_ORDER},
-        box=True, points='all',
-        labels={'quarter': 'Quarter', 'sc_um': 'VtP Distance SC (µm)'},
-        title='VtP Distance Distribution by Quarter',
+    df_plot['color'] = df_plot['sc_um'].apply(
+        lambda v: _traffic_light_color(
+            v, ring_exceptional, ring_excellent, ring_good, ring_acceptable, chart_colors)
     )
-    fig.add_hline(y=usl, line_dash='dash', line_color='red',
-                  annotation_text=f'USL {usl} µm', annotation_position='top right')
-    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white')
+
+    # Panel-level stats (same as box plot)
+    sc       = df_plot['sc_um']
+    n        = len(sc)
+    mean_v   = float(sc.mean())   if n else 0.0
+    median_v = float(sc.median()) if n else 0.0
+    std_v    = float(sc.std())    if n else 0.0
+    n_fail   = int((sc > ring_acceptable).sum())
+    pct_pass = 100.0 * (1 - n_fail / n) if n else 100.0
+
+    rng = np.random.default_rng(7)   # fixed seed → stable jitter
+
+    fig = go.Figure()
+
+    # Integer positions for each quarter (used for jitter on numeric overlay axis)
+    _q_pos = {q: i for i, q in enumerate(_QUARTER_ORDER)}
+
+    for quarter in _QUARTER_ORDER:
+        qdf = df_plot[df_plot['quarter'] == quarter]
+        if qdf.empty:
+            continue
+
+        hx = q_colors.get(quarter, '#888888').lstrip('#')
+        ri, gi, bi = int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)
+
+        # IQR box — no points, thin styled border
+        fig.add_trace(go.Box(
+            y=qdf['sc_um'].values,
+            x0=quarter,
+            name=quarter,
+            boxpoints=False,
+            marker_color=q_colors.get(quarter, '#888888'),
+            line_color=q_colors.get(quarter, '#888888'),
+            fillcolor=f'rgba({ri},{gi},{bi},0.10)',
+            width=0.30,
+            showlegend=False,
+            hoverinfo='skip',
+        ))
+
+        # Jittered dots on numeric overlay axis
+        pos    = _q_pos[quarter]
+        jitter = rng.uniform(-0.13, 0.13, size=len(qdf))
+        fig.add_trace(go.Scatter(
+            x=pos + jitter,
+            y=qdf['sc_um'].values,
+            mode='markers+text',
+            marker=dict(
+                color=qdf['color'].values,
+                size=11,
+                line=dict(width=1, color='rgba(0,0,0,0.30)'),
+            ),
+            text=qdf['grid_str'].values,
+            textposition='middle right',
+            textfont=dict(size=8, color='#555555'),
+            customdata=qdf[['grid_str', 'sc_um']].values,
+            hovertemplate='Grid %{customdata[0]} — %{customdata[1]:.2f} µm<extra></extra>',
+            showlegend=False,
+            xaxis='x2',
+        ))
+
+    # ---- Reference lines ----------------------------------------------------
+    # USL — top left (stats card is top right)
+    fig.add_hline(
+        y=ring_acceptable,
+        line_dash='dash',
+        line_color=chart_colors.get('traffic_light_red', '#e74c3c'),
+        line_width=2,
+        annotation_text=f'  USL {ring_acceptable:.1f} µm',
+        annotation_position='top left',
+        annotation_font_size=10,
+        annotation_font_color=chart_colors.get('traffic_light_red', '#e74c3c'),
+    )
+    # Panel mean — thin dotted
+    fig.add_hline(y=mean_v, line_dash='dot', line_color='#888888', line_width=1.2)
+    fig.add_annotation(
+        text='<i>mean</i>',
+        xref='paper', yref='y',
+        x=0.99, y=mean_v,
+        xanchor='right', yanchor='bottom',
+        showarrow=False,
+        font=dict(size=8, color='#999999'),
+    )
+
+    # ---- Per-quarter mean ± std as compact column headers -------------------
+    for quarter in _QUARTER_ORDER:
+        qsc = df_plot.loc[df_plot['quarter'] == quarter, 'sc_um']
+        if qsc.empty:
+            continue
+        fig.add_annotation(
+            text=f"<b>{qsc.mean():.1f}</b> ± {qsc.std():.1f}",
+            xref='x', yref='paper',
+            x=quarter, y=1.02,
+            xanchor='center', yanchor='bottom',
+            showarrow=False,
+            font=dict(size=9, color='#555555'),
+        )
+
+    # ---- Annotations --------------------------------------------------------
+    fig.add_annotation(**_stats_card_annotation(n, mean_v, median_v, std_v, pct_pass))
+    fig.add_annotation(**_zone_legend_annotation(
+        chart_colors, ring_exceptional, ring_excellent, ring_good, ring_acceptable))
+
+    # ---- Layout -------------------------------------------------------------
+    n_cats = len(_QUARTER_ORDER)
+    fig.update_layout(
+        title=dict(text='SC Distribution by Quarter — Strip Chart',
+                   font=dict(size=14), x=0.5, xanchor='center'),
+        xaxis=dict(
+            type='category',
+            categoryorder='array',
+            categoryarray=_QUARTER_ORDER,
+            title='Quarter',
+            tickfont=dict(size=12),
+            showgrid=False,
+        ),
+        xaxis2=dict(
+            overlaying='x',
+            range=[-0.5, n_cats - 0.5],
+            visible=False,
+        ),
+        yaxis=dict(
+            title='VtP Distance SC (µm)',
+            zeroline=False,
+            showgrid=True,
+            gridcolor='rgba(200,200,200,0.5)',
+            gridwidth=1,
+        ),
+        plot_bgcolor='#f8f8f8',
+        paper_bgcolor='white',
+        hovermode='closest',
+        height=520,
+        margin=dict(t=60, b=40, l=65, r=110),
+        boxmode='overlay',
+    )
     return fig
