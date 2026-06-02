@@ -81,12 +81,13 @@ def test_bullseye_has_summary_and_legend_annotations():
     fig = plot_vtp_bullseye(_fixture_df(), _SETTINGS)
     texts = [a.text for a in fig.layout.annotations]
     assert any('max SC' in t for t in texts), 'Missing summary stats annotation'
-    assert any('exceptional' in t for t in texts), 'Missing zone legend annotation'
+    # Zone legend uses ⬤ symbols and zone thresholds
+    assert any('⬤' in t for t in texts), 'Missing zone legend annotation'
 
 
-def test_bullseye_point_colors_match_traffic_light_bands():
-    """Regression: point colours use the 5-zone traffic-light function."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye, _traffic_light_color
+def test_bullseye_point_colors_match_dark_zone_palette():
+    """Regression: point colours use the Catppuccin Mocha _DARK_ZONE palette."""
+    from qvm_dashboard.src.visuals import plot_vtp_bullseye, _DARK_ZONE
 
     df = _fixture_df()
     fig = plot_vtp_bullseye(df, _SETTINGS)
@@ -95,8 +96,12 @@ def test_bullseye_point_colors_match_traffic_light_bands():
     sc_um = df['PtV Distance'].values * 1000
 
     expected = [
-        _traffic_light_color(sc, 2.5, 5.0, 7.5, 10.0, _SETTINGS['CHART_COLORS'])
-        for sc in sc_um
+        (_DARK_ZONE['exceptional'] if v <= 2.5 else
+         _DARK_ZONE['excellent']   if v <= 5.0 else
+         _DARK_ZONE['good']        if v <= 7.5 else
+         _DARK_ZONE['acceptable']  if v <= 10.0 else
+         _DARK_ZONE['fail'])
+        for v in sc_um
     ]
     assert colors == expected
 
