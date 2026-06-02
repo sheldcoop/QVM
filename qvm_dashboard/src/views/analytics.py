@@ -7,7 +7,8 @@ import streamlit as st
 import pandas as pd
 
 from src.views.base import BaseView
-from src.visuals import plot_quiver, plot_heatmap, diagnose_root_cause_confidence, calculate_cam_compensation_summary, _get_valid_grid_ids
+from src.visuals import plot_quiver, plot_heatmap
+from src.diagnostics import diagnose_root_cause_confidence, calculate_cam_compensation_summary, _get_valid_grid_ids
 
 
 class AnalyticsView(BaseView):
