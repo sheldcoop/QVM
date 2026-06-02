@@ -75,17 +75,16 @@ def get_panel_image_path() -> str:
 def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     """DX/DY bullseye scatter for Via-to-Pad registration.
 
-    Each fiducial site is a single point at (DX, DY) in µm. Concentric
-    tolerance rings make pass/warn/fail visually obvious.
+    Dark Catppuccin Mocha theme — consistent with box / strip charts.
+    Concentric tolerance rings (zone colours) make pass/warn/fail obvious.
     """
     col_names = settings.get('COLUMN_NAMES', {})
-    chart_colors = settings.get('CHART_COLORS', {})
-    vtp_cfg = settings.get('VTP_REGISTRATION', {})
+    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
 
-    dx_col = col_names.get('x_distance', 'Shift (DX)')
-    dy_col = col_names.get('y_distance', 'Shift (DY)')
-    sc_col = col_names.get('ptv_distance', 'PtV Distance')
-    loc_col = col_names.get('location', 'Location')
+    dx_col   = col_names.get('x_distance', 'Shift (DX)')
+    dy_col   = col_names.get('y_distance', 'Shift (DY)')
+    sc_col   = col_names.get('ptv_distance', 'PtV Distance')
+    loc_col  = col_names.get('location', 'Location')
     grid_col = col_names.get('grid_id', 'Grid ID')
 
     ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
@@ -98,25 +97,24 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     work['dy_um'] = work[dy_col] * 1000
     work['sc_um'] = work[sc_col] * 1000
     work['color'] = work['sc_um'].apply(
-        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent,
-                                       ring_good, ring_acceptable, chart_colors)
+        lambda v: (
+            _DARK_ZONE['exceptional'] if v <= ring_exceptional else
+            _DARK_ZONE['excellent']   if v <= ring_excellent   else
+            _DARK_ZONE['good']        if v <= ring_good        else
+            _DARK_ZONE['acceptable']  if v <= ring_acceptable  else
+            _DARK_ZONE['fail']
+        )
     )
-
-    bg              = chart_colors.get('chart_background', '#FFFFFF')
-    blue_color      = chart_colors.get('traffic_light_blue', '#3498db')
-    dark_green_color = chart_colors.get('traffic_light_dark_green', '#1e7e3a')
-    green_color     = chart_colors.get('traffic_light_green', '#2ecc71')
-    orange_color    = chart_colors.get('traffic_light_orange', '#e67e22')
-    red_color       = chart_colors.get('traffic_light_red', '#e74c3c')
 
     spread = ring_acceptable + 2.0
     fig = go.Figure()
 
+    # Concentric tolerance rings using Catppuccin zone colours
     for r, color, dash in [
-        (ring_exceptional, blue_color, 'solid'),
-        (ring_excellent, dark_green_color, 'dot'),
-        (ring_good, green_color, 'dash'),
-        (ring_acceptable, red_color, 'dot'),
+        (ring_exceptional, _DARK_ZONE['exceptional'], 'solid'),
+        (ring_excellent,   _DARK_ZONE['excellent'],   'dot'),
+        (ring_good,        _DARK_ZONE['good'],        'dash'),
+        (ring_acceptable,  _DARK_ZONE['fail'],        'dot'),
     ]:
         fig.add_shape(
             type='circle', xref='x', yref='y',
@@ -125,18 +123,18 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
             fillcolor='rgba(0,0,0,0)', layer='below',
         )
 
-    crosshair = dict(color='rgba(80,80,80,0.6)', width=1.5)
+    # Crosshairs — subtle on dark
+    crosshair = dict(color='rgba(205,214,244,0.25)', width=1.2)
     fig.add_hline(y=0, line=crosshair)
     fig.add_vline(x=0, line=crosshair)
 
     fig.add_trace(go.Scatter(
         x=work['dx_um'], y=work['dy_um'],
         mode='markers+text',
-        marker=dict(size=14, color=work['color'],
-                    line=dict(width=1, color='rgba(0,0,0,0.5)')),
+        marker=dict(size=14, color=work['color'], line=dict(width=0)),
         text=work[grid_col].astype(str),
         textposition='top center',
-        textfont=dict(size=9),
+        textfont=dict(size=10, color=_DARK_TEXT),
         customdata=work[[grid_col, 'sc_um', 'dx_um', 'dy_um']].values,
         hovertemplate=(
             '<b>%{text}</b><br>'
@@ -149,42 +147,54 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         showlegend=False,
     ))
 
+    # Summary stats (top left)
     sc = work['sc_um']
     n = int(len(sc))
-    max_sc = float(sc.max()) if n else 0.0
-    mean_sc = float(sc.mean()) if n else 0.0
+    max_sc   = float(sc.max())  if n else 0.0
+    mean_sc  = float(sc.mean()) if n else 0.0
     n_outside = int((sc > ring_acceptable).sum())
     fig.add_annotation(
         text=(f"<b>n</b> {n}  •  <b>max SC</b> {max_sc:.1f} µm  •  "
-              f"<b>mean SC</b> {mean_sc:.1f} µm  •  <b>outside fail</b> {n_outside}"),
+              f"<b>mean SC</b> {mean_sc:.1f} µm  •  <b>fail</b> {n_outside}"),
         xref='paper', yref='paper', x=0.02, y=0.98,
         xanchor='left', yanchor='top', showarrow=False, align='left',
-        font=dict(size=11, color='#222222'),
-        bgcolor='rgba(255,255,255,0.85)', bordercolor='#999999',
-        borderwidth=1, borderpad=4,
+        font=dict(size=11, color=_DARK_TEXT),
+        bgcolor=_DARK_CARD_BG, bordercolor=_DARK_CARD_BD,
+        borderwidth=1, borderpad=5,
     )
+    # Zone legend (bottom, centred)
+    _z = _DARK_ZONE   # short alias to avoid f-string quoting conflicts
     fig.add_annotation(
         text=(
-            f"<span style='color:{blue_color}'>●</span> r ≤ {ring_exceptional:.1f} µm (exceptional)<br>"
-            f"<span style='color:{dark_green_color}'>●</span> r ≤ {ring_excellent:.1f} µm (excellent)<br>"
-            f"<span style='color:{green_color}'>●</span> r ≤ {ring_good:.1f} µm (good)<br>"
-            f"<span style='color:{orange_color}'>●</span> r ≤ {ring_acceptable:.1f} µm (acceptable)<br>"
-            f"<span style='color:{red_color}'>●</span> r > {ring_acceptable:.1f} µm (fail)"
+            f"<span style='color:{_z['exceptional']}'>⬤</span> ≤{ring_exceptional:.1f}  "
+            f"<span style='color:{_z['excellent']}'>⬤</span> ≤{ring_excellent:.1f}  "
+            f"<span style='color:{_z['good']}'>⬤</span> ≤{ring_good:.1f}  "
+            f"<span style='color:{_z['acceptable']}'>⬤</span> ≤{ring_acceptable:.1f}  "
+            f"<span style='color:{_z['fail']}'>⬤</span> fail (µm)"
         ),
-        xref='paper', yref='paper', x=0.98, y=0.02,
-        xanchor='right', yanchor='bottom', showarrow=False, align='left',
-        font=dict(size=10, color='#222222'),
-        bgcolor='rgba(255,255,255,0.85)', bordercolor='#999999',
-        borderwidth=1, borderpad=4,
+        xref='paper', yref='paper', x=0.5, y=-0.08,
+        xanchor='center', yanchor='top', showarrow=False,
+        font=dict(size=10, color=_DARK_TEXT),
+        bgcolor=_DARK_CARD_BG, bordercolor=_DARK_CARD_BD,
+        borderwidth=1, borderpad=5,
     )
 
     fig.update_layout(
-        title='DX vs DY Registration Bullseye — Via-to-Pad',
-        xaxis=dict(title='DX Shift (µm)', zeroline=False, showgrid=True,
-                   scaleanchor='y', scaleratio=1, range=[-spread, spread]),
-        yaxis=dict(title='DY Shift (µm)', zeroline=False, showgrid=True,
-                   range=[-spread, spread]),
-        plot_bgcolor=bg, hovermode='closest', height=550,
+        title=dict(text='DX vs DY Registration Bullseye — Via-to-Pad',
+                   font=dict(size=14, color=_DARK_TEXT), x=0.5, xanchor='center'),
+        xaxis=dict(title=dict(text='DX Shift (µm)', font=dict(color=_DARK_TEXT)),
+                   zeroline=False, showgrid=False,
+                   scaleanchor='y', scaleratio=1, range=[-spread, spread],
+                   tickfont=dict(color=_DARK_TEXT)),
+        yaxis=dict(title=dict(text='DY Shift (µm)', font=dict(color=_DARK_TEXT)),
+                   zeroline=False, showgrid=False,
+                   range=[-spread, spread],
+                   tickfont=dict(color=_DARK_TEXT)),
+        plot_bgcolor=_DARK_PLOT,
+        paper_bgcolor=_DARK_PAPER,
+        hovermode='closest',
+        height=580,
+        margin=dict(t=55, b=70, l=60, r=60),
     )
     return fig
 
@@ -192,12 +202,11 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
 def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     """Per-fiducial-site SC bar chart for Via-to-Pad registration.
 
-    Bars are ordered by Grid ID (UL → LL → LR → UR) and coloured by the
-    same traffic-light thresholds as the bullseye.
+    Bars ordered by Grid ID (UL → LL → LR → UR), coloured by zone.
+    Dark Catppuccin Mocha theme — consistent with bullseye and box/strip charts.
     """
     col_names = settings.get('COLUMN_NAMES', {})
-    chart_colors = settings.get('CHART_COLORS', {})
-    vtp_cfg = settings.get('VTP_REGISTRATION', {})
+    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
 
     sc_col   = col_names.get('ptv_distance', 'PtV Distance')
     loc_col  = col_names.get('location', 'Location')
@@ -214,15 +223,20 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     work = work.dropna(subset=[grid_col]).sort_values(grid_col)
     work[grid_col] = work[grid_col].astype(int).astype(str)
     work['color'] = work['sc_um'].apply(
-        lambda v: _traffic_light_color(v, ring_exceptional, ring_excellent,
-                                       ring_good, ring_acceptable, chart_colors)
+        lambda v: (
+            _DARK_ZONE['exceptional'] if v <= ring_exceptional else
+            _DARK_ZONE['excellent']   if v <= ring_excellent   else
+            _DARK_ZONE['good']        if v <= ring_good        else
+            _DARK_ZONE['acceptable']  if v <= ring_acceptable  else
+            _DARK_ZONE['fail']
+        )
     )
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=work[grid_col], y=work['sc_um'],
         marker_color=work['color'],
-        marker_line=dict(width=1, color='rgba(0,0,0,0.3)'),
+        marker_line=dict(width=0),   # no border — colour pops on dark
         customdata=work[[loc_col, 'sc_um']].values,
         hovertemplate=(
             'Grid ID: <b>%{x}</b><br>'
@@ -233,26 +247,43 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
         showlegend=False,
     ))
 
-    for y_val, color_key, label in [
-        (ring_excellent, 'traffic_light_dark_green', f'Excellent limit {ring_excellent:.1f} µm'),
-        (ring_good, 'traffic_light_green', f'Good limit {ring_good:.1f} µm'),
-        (ring_acceptable, 'traffic_light_red', f'Acceptable limit {ring_acceptable:.0f} µm'),
+    for y_val, color, label in [
+        (ring_excellent,  _DARK_ZONE['excellent'],  f'Excellent {ring_excellent:.1f} µm'),
+        (ring_good,       _DARK_ZONE['good'],       f'Good {ring_good:.1f} µm'),
+        (ring_acceptable, _DARK_ZONE['fail'],       f'Fail >{ring_acceptable:.0f} µm'),
     ]:
         fig.add_hline(
             y=y_val,
-            line=dict(color=chart_colors.get(color_key, '#888'), width=1.5, dash='dash'),
+            line=dict(color=color, width=1.5, dash='dash'),
             annotation_text=label, annotation_position='right',
             annotation_font_size=10,
+            annotation_font_color=color,
         )
 
-    bg = chart_colors.get('chart_background', '#FFFFFF')
-    data_max = work['sc_um'].max()
-    y_max = max(data_max * 1.3, 10.0)
+    data_max = work['sc_um'].max() if not work.empty else 0.0
+    y_max = max(data_max * 1.3, ring_acceptable * 1.2)
     fig.update_layout(
-        title='Registration SC per Fiducial Site (ordered by Grid ID: UL → LL → LR → UR)',
-        xaxis=dict(title='Grid ID', showgrid=False, type='category'),
-        yaxis=dict(title='SC Distance (µm)', range=[0, y_max], showgrid=True),
-        plot_bgcolor=bg, hovermode='x unified', height=450,
+        title=dict(
+            text='Registration SC per Fiducial Site (UL → LL → LR → UR)',
+            font=dict(size=14, color=_DARK_TEXT), x=0.5, xanchor='center',
+        ),
+        xaxis=dict(
+            title='',
+            showgrid=False,
+            type='category',
+            tickfont=dict(color=_DARK_TEXT, size=12),
+        ),
+        yaxis=dict(
+            title=dict(text='SC Distance (µm)', font=dict(color=_DARK_TEXT)),
+            range=[0, y_max],
+            showgrid=False,
+            tickfont=dict(color=_DARK_TEXT),
+        ),
+        plot_bgcolor=_DARK_PLOT,
+        paper_bgcolor=_DARK_PAPER,
+        hovermode='x unified',
+        height=450,
+        margin=dict(t=55, b=40, l=60, r=110),
     )
     return fig
 
@@ -482,74 +513,140 @@ _DEFAULT_QUARTER_COLORS = {
     'UL': '#1f77b4', 'LL': '#ff7f0e', 'LR': '#2ca02c', 'UR': '#d62728'
 }
 
+# ===========================================================================
+# DARK THEME — Box Plot & Strip Chart
+# All visual constants live here.  Change ONE value to retheme both charts.
+# ===========================================================================
+
+# --- Backgrounds -----------------------------------------------------------
+_DARK_PLOT     = '#1e1e2e'   # Catppuccin Mocha "base"  ← change to retheme
+_DARK_PAPER    = '#181825'   # Catppuccin Mocha "mantle" (outer paper)
+
+# --- Text & chrome ---------------------------------------------------------
+_DARK_TEXT     = '#cdd6f4'   # Catppuccin Mocha "text"  (near white)
+_DARK_SUB      = '#6c7086'   # Catppuccin Mocha "overlay0" (muted)
+_DARK_SEP      = 'rgba(205,214,244,0.18)'   # vertical separator
+_DARK_CARD_BG  = 'rgba(205,214,244,0.06)'   # annotation card background
+_DARK_CARD_BD  = 'rgba(205,214,244,0.22)'   # annotation card border
+
+# --- Zone dot / ring colours (bright against dark bg) ----------------------
+_DARK_ZONE = {
+    'exceptional': '#89b4fa',  # Catppuccin "blue"
+    'excellent':   '#a6e3a1',  # Catppuccin "green"
+    'good':        '#94e2d5',  # Catppuccin "teal"
+    'acceptable':  '#fab387',  # Catppuccin "peach"
+    'fail':        '#f38ba8',  # Catppuccin "red"
+}
+
+# --- Quarter box colours (bright against dark bg) --------------------------
+_DARK_QUARTER_COLORS = {
+    'UL': '#89dceb',   # Catppuccin "sky"
+    'LL': '#f9e2af',   # Catppuccin "yellow"
+    'LR': '#a6e3a1',   # Catppuccin "green"
+    'UR': '#cba6f7',   # Catppuccin "mauve"
+}
+
+# ===========================================================================
+
 
 def _zone_legend_annotation(chart_colors: dict,
                              ring_exceptional: float, ring_excellent: float,
                              ring_good: float, ring_acceptable: float,
-                             x: float = 0.01, y: float = 0.02,
-                             xanchor: str = 'left', yanchor: str = 'bottom') -> dict:
+                             x: float = 0.5, y: float = -0.08,
+                             xanchor: str = 'center', yanchor: str = 'top',
+                             dark: bool = False) -> dict:
     """Return a Plotly annotation dict for the 5-zone colour legend."""
-    blue       = chart_colors.get('traffic_light_blue',       '#3498db')
-    dark_green = chart_colors.get('traffic_light_dark_green', '#1e7e3a')
-    green      = chart_colors.get('traffic_light_green',      '#2ecc71')
-    orange     = chart_colors.get('traffic_light_orange',     '#e67e22')
-    red        = chart_colors.get('traffic_light_red',        '#e74c3c')
+    if dark:
+        blue, dg, green, orange, red = (
+            _DARK_ZONE['exceptional'], _DARK_ZONE['excellent'],
+            _DARK_ZONE['good'], _DARK_ZONE['acceptable'], _DARK_ZONE['fail'],
+        )
+        txt_color  = _DARK_TEXT
+        bg_color   = _DARK_CARD_BG
+        bd_color   = _DARK_CARD_BD
+        font_size  = 11
+    else:
+        blue       = chart_colors.get('traffic_light_blue',       '#3498db')
+        dg         = chart_colors.get('traffic_light_dark_green', '#1e7e3a')
+        green      = chart_colors.get('traffic_light_green',      '#2ecc71')
+        orange     = chart_colors.get('traffic_light_orange',     '#e67e22')
+        red        = chart_colors.get('traffic_light_red',        '#e74c3c')
+        txt_color  = '#444444'
+        bg_color   = 'rgba(255,255,255,0.90)'
+        bd_color   = '#dddddd'
+        font_size  = 9
     return dict(
         text=(
-            f"<span style='color:{blue}'>●</span> ≤{ring_exceptional:.1f}  "
-            f"<span style='color:{dark_green}'>●</span> ≤{ring_excellent:.1f}  "
-            f"<span style='color:{green}'>●</span> ≤{ring_good:.1f}  "
-            f"<span style='color:{orange}'>●</span> ≤{ring_acceptable:.1f}  "
-            f"<span style='color:{red}'>●</span> fail (µm)"
+            f"<span style='color:{blue}'>⬤</span> ≤{ring_exceptional:.1f}  "
+            f"<span style='color:{dg}'>⬤</span> ≤{ring_excellent:.1f}  "
+            f"<span style='color:{green}'>⬤</span> ≤{ring_good:.1f}  "
+            f"<span style='color:{orange}'>⬤</span> ≤{ring_acceptable:.1f}  "
+            f"<span style='color:{red}'>⬤</span> fail (µm)"
         ),
         xref='paper', yref='paper',
         x=x, y=y,
         xanchor=xanchor, yanchor=yanchor,
         showarrow=False,
-        font=dict(size=9, color='#444444'),
-        bgcolor='rgba(255,255,255,0.90)',
-        bordercolor='#dddddd',
+        font=dict(size=font_size, color=txt_color),
+        bgcolor=bg_color,
+        bordercolor=bd_color,
         borderwidth=1,
-        borderpad=4,
+        borderpad=6,
     )
 
 
 def _stats_card_annotation(n: int, mean_v: float, median_v: float,
-                            std_v: float, pct_pass: float) -> dict:
-    """Return a Plotly annotation dict for the top-right summary stats card."""
-    pass_color = '#1e7e3a' if pct_pass == 100 else ('#e67e22' if pct_pass >= 75 else '#e74c3c')
+                            std_v: float, pct_pass: float,
+                            dark: bool = False) -> dict:
+    """Stats card placed *outside* the chart to the right.
+
+    Position: x=1.03 (past the right edge of the plot area), anchored left.
+    The calling chart must set margin.r ≥ 160 to give it space.
+    Shows n, Mean, Median, Std Dev, Pass%.
+    """
+    if dark:
+        pass_color = _DARK_ZONE['excellent'] if pct_pass == 100 else (
+            _DARK_ZONE['acceptable'] if pct_pass >= 75 else _DARK_ZONE['fail'])
+        txt_color = _DARK_TEXT
+        bg_color  = _DARK_CARD_BG
+        bd_color  = _DARK_CARD_BD
+        font_size = 11
+    else:
+        pass_color = '#1e7e3a' if pct_pass == 100 else ('#e67e22' if pct_pass >= 75 else '#e74c3c')
+        txt_color = '#222222'
+        bg_color  = 'rgba(255,255,255,0.93)'
+        bd_color  = '#cccccc'
+        font_size = 10
     return dict(
         text=(
-            f"<b>n</b>       {n}<br>"
-            f"<b>Mean</b>   {mean_v:.2f} µm<br>"
-            f"<b>Median</b> {median_v:.2f} µm<br>"
-            f"<b>Std Dev</b>{std_v:.2f} µm<br>"
-            f"<b style='color:{pass_color}'>Pass</b>     {pct_pass:.0f}%"
+            f"<b>n</b>         {n}<br>"
+            f"<b>Mean</b>    {mean_v:.2f} µm<br>"
+            f"<b>Median</b>  {median_v:.2f} µm<br>"
+            f"<b>Std Dev</b> {std_v:.2f} µm<br>"
+            f"<b style='color:{pass_color}'>Pass</b>      {pct_pass:.0f}%"
         ),
         xref='paper', yref='paper',
-        x=0.99, y=0.99,
-        xanchor='right', yanchor='top',
+        x=1.03, y=0.98,            # outside chart to the right
+        xanchor='left', yanchor='top',
         showarrow=False,
         align='left',
-        font=dict(size=10, color='#222222', family='monospace'),
-        bgcolor='rgba(255,255,255,0.93)',
-        bordercolor='#cccccc',
+        font=dict(size=font_size, color=txt_color, family='monospace'),
+        bgcolor=bg_color,
+        bordercolor=bd_color,
         borderwidth=1,
-        borderpad=6,
+        borderpad=8,
     )
 
 
 def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
     """Panel-level box plot: one 'All sites' box + four quarter boxes side-by-side.
 
-    Layout:  All | UL  LL  LR  UR
-    Narrow boxes (width=0.35). Every site appears as a zone-coloured dot.
-    Stats card top-right. Zone legend bottom-left.
+    Dark theme. Layout:  All | UL  LL  LR  UR
+    Narrow, tall boxes (width=0.22, height=620). Bold zone-coloured dots (size=12).
+    Mean-only reference line. Stats card top-right. Zone legend bottom-left.
     """
-    col_names    = settings.get('COLUMN_NAMES', {})
-    chart_colors = settings.get('CHART_COLORS', {})
-    vtp_cfg      = settings.get('VTP_REGISTRATION', {})
-    q_colors     = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
+    col_names = settings.get('COLUMN_NAMES', {})
+    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
 
     sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
     grid_col = col_names.get('grid_id', 'Grid ID')
@@ -573,9 +670,15 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
         df_plot['grid_str'] = '??'
         df_plot['quarter']  = None
 
+    # Zone colours for dark bg
     df_plot['color'] = df_plot['sc_um'].apply(
-        lambda v: _traffic_light_color(
-            v, ring_exceptional, ring_excellent, ring_good, ring_acceptable, chart_colors)
+        lambda v: (
+            _DARK_ZONE['exceptional'] if v <= ring_exceptional else
+            _DARK_ZONE['excellent']   if v <= ring_excellent   else
+            _DARK_ZONE['good']        if v <= ring_good        else
+            _DARK_ZONE['acceptable']  if v <= ring_acceptable  else
+            _DARK_ZONE['fail']
+        )
     )
 
     sc       = df_plot['sc_um']
@@ -586,14 +689,14 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
     n_fail   = int((sc > ring_acceptable).sum())
     pct_pass = 100.0 * (1 - n_fail / n) if n else 100.0
 
-    rng = np.random.default_rng(42)   # fixed seed → stable jitter every render
+    rng = np.random.default_rng(42)
 
     fig = go.Figure()
 
     _x_order = ['All'] + _QUARTER_ORDER
     _x_pos   = {label: i for i, label in enumerate(_x_order)}
 
-    # ---- Helper: narrow box + jitter dots -----------------------------------
+    # ---- Helper: narrow box + bold jitter dots ------------------------------
     def _add_box_and_dots(x_label: str, values: np.ndarray, colors: list,
                           hover_texts: list, fill: str, border: str) -> None:
         fig.add_trace(go.Box(
@@ -601,22 +704,21 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
             y=values,
             name=x_label,
             boxpoints=False,
-            width=0.35,
+            width=0.22,
             fillcolor=fill,
-            line=dict(color=border, width=1.5),
+            line=dict(color=border, width=1.8),
             marker_color=border,
             showlegend=False,
             hoverinfo='skip',
         ))
-        # Numeric overlay axis for jitter
         pos    = _x_pos[x_label]
-        jitter = rng.uniform(-0.14, 0.14, size=len(values))
+        jitter = rng.uniform(-0.13, 0.13, size=len(values))
         fig.add_trace(go.Scatter(
             x=pos + jitter,
             y=values,
             mode='markers',
-            marker=dict(color=colors, size=9,
-                        line=dict(width=1, color='rgba(0,0,0,0.30)')),
+            marker=dict(color=colors, size=12,
+                        line=dict(width=0)),   # no border → colour pops on dark
             text=hover_texts,
             hovertemplate='%{text}<extra></extra>',
             showlegend=False,
@@ -632,72 +734,73 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
 
     hover_all = [_hover(row) for _, row in df_plot.iterrows()]
 
-    # "All" box
+    # "All" box — glass effect: barely-there fill, clean bright border
     _add_box_and_dots('All', sc.values, df_plot['color'].tolist(), hover_all,
-                      fill='rgba(200,200,200,0.22)', border='#555555')
+                      fill='rgba(255,255,255,0.07)', border='rgba(255,255,255,0.50)')
 
-    # Quarter boxes
+    # Quarter boxes — each uses its bright dark-theme colour
     for q in _QUARTER_ORDER:
         qdf = df_plot[df_plot['quarter'] == q]
         if qdf.empty:
             continue
-        hx = q_colors.get(q, '#888888').lstrip('#')
+        hx = _DARK_QUARTER_COLORS[q].lstrip('#')
         ri, gi, bi = int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)
         _add_box_and_dots(
             q, qdf['sc_um'].values, qdf['color'].tolist(),
             [_hover(row) for _, row in qdf.iterrows()],
             fill=f'rgba({ri},{gi},{bi},0.13)',
-            border=q_colors.get(q, '#888888'),
+            border=_DARK_QUARTER_COLORS[q],
         )
 
     # ---- Reference lines ----------------------------------------------------
-    # USL — labelled top left so it doesn't clash with stats card
+    # USL — bright red, top left
     fig.add_hline(
         y=ring_acceptable,
         line_dash='dash',
-        line_color=chart_colors.get('traffic_light_red', '#e74c3c'),
-        line_width=2,
+        line_color=_DARK_ZONE['fail'],
+        line_width=2.5,
         annotation_text=f'  USL {ring_acceptable:.1f} µm',
         annotation_position='top left',
-        annotation_font_size=10,
-        annotation_font_color=chart_colors.get('traffic_light_red', '#e74c3c'),
+        annotation_font_size=11,
+        annotation_font_color=_DARK_ZONE['fail'],
     )
-    # Mean (dotted) and Median (solid) — thin, no text label (card shows values)
-    fig.add_hline(y=mean_v,   line_dash='dot',   line_color='#888888', line_width=1.2)
-    fig.add_hline(y=median_v, line_dash='solid', line_color='#aaaaaa', line_width=1.0)
+    # Mean — white dotted, labelled subtly at right edge
+    fig.add_hline(y=mean_v, line_dash='dot',
+                  line_color='rgba(255,255,255,0.55)', line_width=1.5)
+    fig.add_annotation(
+        text='<i>mean</i>',
+        xref='paper', yref='y',
+        x=0.985, y=mean_v,
+        xanchor='right', yanchor='bottom',
+        showarrow=False,
+        font=dict(size=9, color=_DARK_SUB),
+    )
 
-    # Separator between "All" and the quarter boxes
-    fig.add_vline(x=0.5, line_color='rgba(160,160,160,0.45)',
-                  line_width=1, line_dash='dot')
+    # Vertical separator between "All" and the four quarters
+    fig.add_vline(x=0.5, line_color=_DARK_SEP, line_width=1, line_dash='dot')
 
     # ---- Annotations --------------------------------------------------------
-    fig.add_annotation(**_stats_card_annotation(n, mean_v, median_v, std_v, pct_pass))
+    fig.add_annotation(**_stats_card_annotation(
+        n, mean_v, median_v, std_v, pct_pass, dark=True))
     fig.add_annotation(**_zone_legend_annotation(
-        chart_colors, ring_exceptional, ring_excellent, ring_good, ring_acceptable))
-
-    # Subtle mean/median label at far right of each line
-    for val, label in [(mean_v, 'mean'), (median_v, 'median')]:
-        fig.add_annotation(
-            text=f'<i>{label}</i>',
-            xref='paper', yref='y',
-            x=0.99, y=val,
-            xanchor='right', yanchor='bottom',
-            showarrow=False,
-            font=dict(size=8, color='#999999'),
-        )
+        {}, ring_exceptional, ring_excellent, ring_good, ring_acceptable, dark=True))
 
     # ---- Layout -------------------------------------------------------------
     n_cats = len(_x_order)
     fig.update_layout(
-        title=dict(text='SC Distribution — Panel Overview by Quarter',
-                   font=dict(size=14), x=0.5, xanchor='center'),
+        title=dict(
+            text='SC Distribution — Panel Overview by Quarter',
+            font=dict(size=15, color=_DARK_TEXT),
+            x=0.5, xanchor='center',
+        ),
         xaxis=dict(
             type='category',
             categoryorder='array',
             categoryarray=_x_order,
             title='',
-            tickfont=dict(size=12),
+            tickfont=dict(size=13, color=_DARK_TEXT),
             showgrid=False,
+            linecolor=_DARK_SEP,
         ),
         xaxis2=dict(
             overlaying='x',
@@ -705,34 +808,29 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
             visible=False,
         ),
         yaxis=dict(
-            title='VtP Distance SC (µm)',
+            title=dict(text='VtP Distance SC (µm)', font=dict(color=_DARK_TEXT)),
             zeroline=False,
-            showgrid=True,
-            gridcolor='rgba(200,200,200,0.5)',
-            gridwidth=1,
+            showgrid=False,
+            tickfont=dict(color=_DARK_TEXT),
         ),
-        plot_bgcolor='#f8f8f8',
-        paper_bgcolor='white',
+        plot_bgcolor=_DARK_PLOT,
+        paper_bgcolor=_DARK_PAPER,
         hovermode='closest',
-        height=520,
-        margin=dict(t=60, b=40, l=65, r=110),
+        height=640,
+        margin=dict(t=65, b=80, l=70, r=175),
         boxmode='group',
     )
     return fig
 
 
 def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
-    """Strip chart of SC by quarter: IQR box + every site as a jittered, labelled dot.
+    """Strip chart of SC by quarter: IQR box + bold jittered dots labelled with Grid ID.
 
-    Honest alternative to a violin for small N (4 points per quarter). Every
-    measurement is visible with its Grid ID, coloured by the 5-zone traffic-light
-    palette. IQR box adds statistical context without inventing smooth curves.
-    Stats card top-right. Zone legend bottom-left. Same information level as box plot.
+    Dark theme. Same information level as the box plot: stats card, mean line,
+    USL, zone legend. Points are bigger and bolder on dark for impact.
     """
-    col_names    = settings.get('COLUMN_NAMES', {})
-    chart_colors = settings.get('CHART_COLORS', {})
-    vtp_cfg      = settings.get('VTP_REGISTRATION', {})
-    q_colors     = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
+    col_names = settings.get('COLUMN_NAMES', {})
+    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
 
     sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
     grid_col = col_names.get('grid_id', 'Grid ID')
@@ -754,12 +852,17 @@ def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
         df_plot['quarter']  = None
     df_plot = df_plot.dropna(subset=['sc_um', 'quarter'])
 
+    # Zone colours for dark bg
     df_plot['color'] = df_plot['sc_um'].apply(
-        lambda v: _traffic_light_color(
-            v, ring_exceptional, ring_excellent, ring_good, ring_acceptable, chart_colors)
+        lambda v: (
+            _DARK_ZONE['exceptional'] if v <= ring_exceptional else
+            _DARK_ZONE['excellent']   if v <= ring_excellent   else
+            _DARK_ZONE['good']        if v <= ring_good        else
+            _DARK_ZONE['acceptable']  if v <= ring_acceptable  else
+            _DARK_ZONE['fail']
+        )
     )
 
-    # Panel-level stats (same as box plot)
     sc       = df_plot['sc_um']
     n        = len(sc)
     mean_v   = float(sc.mean())   if n else 0.0
@@ -768,11 +871,10 @@ def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
     n_fail   = int((sc > ring_acceptable).sum())
     pct_pass = 100.0 * (1 - n_fail / n) if n else 100.0
 
-    rng = np.random.default_rng(7)   # fixed seed → stable jitter
+    rng = np.random.default_rng(7)
 
     fig = go.Figure()
 
-    # Integer positions for each quarter (used for jitter on numeric overlay axis)
     _q_pos = {q: i for i, q in enumerate(_QUARTER_ORDER)}
 
     for quarter in _QUARTER_ORDER:
@@ -780,38 +882,36 @@ def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
         if qdf.empty:
             continue
 
-        hx = q_colors.get(quarter, '#888888').lstrip('#')
+        hx = _DARK_QUARTER_COLORS[quarter].lstrip('#')
         ri, gi, bi = int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)
 
-        # IQR box — no points, thin styled border
+        # IQR box — subtle fill, bright border
         fig.add_trace(go.Box(
             y=qdf['sc_um'].values,
             x0=quarter,
             name=quarter,
             boxpoints=False,
-            marker_color=q_colors.get(quarter, '#888888'),
-            line_color=q_colors.get(quarter, '#888888'),
-            fillcolor=f'rgba({ri},{gi},{bi},0.10)',
-            width=0.30,
+            marker_color=_DARK_QUARTER_COLORS[quarter],
+            line_color=_DARK_QUARTER_COLORS[quarter],
+            line=dict(color=_DARK_QUARTER_COLORS[quarter], width=1.8),
+            fillcolor=f'rgba({ri},{gi},{bi},0.12)',
+            width=0.25,
             showlegend=False,
             hoverinfo='skip',
         ))
 
-        # Jittered dots on numeric overlay axis
+        # Bold jittered dots on numeric overlay axis
         pos    = _q_pos[quarter]
-        jitter = rng.uniform(-0.13, 0.13, size=len(qdf))
+        jitter = rng.uniform(-0.14, 0.14, size=len(qdf))
         fig.add_trace(go.Scatter(
             x=pos + jitter,
             y=qdf['sc_um'].values,
             mode='markers+text',
-            marker=dict(
-                color=qdf['color'].values,
-                size=11,
-                line=dict(width=1, color='rgba(0,0,0,0.30)'),
-            ),
+            marker=dict(color=qdf['color'].values, size=13,
+                        line=dict(width=0)),  # no border → bold pop on dark
             text=qdf['grid_str'].values,
             textposition='middle right',
-            textfont=dict(size=8, color='#555555'),
+            textfont=dict(size=11, color=_DARK_TEXT),
             customdata=qdf[['grid_str', 'sc_um']].values,
             hovertemplate='Grid %{customdata[0]} — %{customdata[1]:.2f} µm<extra></extra>',
             showlegend=False,
@@ -819,29 +919,28 @@ def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
         ))
 
     # ---- Reference lines ----------------------------------------------------
-    # USL — top left (stats card is top right)
     fig.add_hline(
         y=ring_acceptable,
         line_dash='dash',
-        line_color=chart_colors.get('traffic_light_red', '#e74c3c'),
-        line_width=2,
+        line_color=_DARK_ZONE['fail'],
+        line_width=2.5,
         annotation_text=f'  USL {ring_acceptable:.1f} µm',
         annotation_position='top left',
-        annotation_font_size=10,
-        annotation_font_color=chart_colors.get('traffic_light_red', '#e74c3c'),
+        annotation_font_size=11,
+        annotation_font_color=_DARK_ZONE['fail'],
     )
-    # Panel mean — thin dotted
-    fig.add_hline(y=mean_v, line_dash='dot', line_color='#888888', line_width=1.2)
+    fig.add_hline(y=mean_v, line_dash='dot',
+                  line_color='rgba(255,255,255,0.55)', line_width=1.5)
     fig.add_annotation(
         text='<i>mean</i>',
         xref='paper', yref='y',
-        x=0.99, y=mean_v,
+        x=0.985, y=mean_v,
         xanchor='right', yanchor='bottom',
         showarrow=False,
-        font=dict(size=8, color='#999999'),
+        font=dict(size=9, color=_DARK_SUB),
     )
 
-    # ---- Per-quarter mean ± std as compact column headers -------------------
+    # Per-quarter mean ± std labels above each column
     for quarter in _QUARTER_ORDER:
         qsc = df_plot.loc[df_plot['quarter'] == quarter, 'sc_um']
         if qsc.empty:
@@ -849,28 +948,32 @@ def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
         fig.add_annotation(
             text=f"<b>{qsc.mean():.1f}</b> ± {qsc.std():.1f}",
             xref='x', yref='paper',
-            x=quarter, y=1.02,
+            x=quarter, y=1.03,
             xanchor='center', yanchor='bottom',
             showarrow=False,
-            font=dict(size=9, color='#555555'),
+            font=dict(size=10, color=_DARK_TEXT),
         )
 
     # ---- Annotations --------------------------------------------------------
-    fig.add_annotation(**_stats_card_annotation(n, mean_v, median_v, std_v, pct_pass))
+    fig.add_annotation(**_stats_card_annotation(
+        n, mean_v, median_v, std_v, pct_pass, dark=True))
     fig.add_annotation(**_zone_legend_annotation(
-        chart_colors, ring_exceptional, ring_excellent, ring_good, ring_acceptable))
+        {}, ring_exceptional, ring_excellent, ring_good, ring_acceptable, dark=True))
 
     # ---- Layout -------------------------------------------------------------
     n_cats = len(_QUARTER_ORDER)
     fig.update_layout(
-        title=dict(text='SC Distribution by Quarter — Strip Chart',
-                   font=dict(size=14), x=0.5, xanchor='center'),
+        title=dict(
+            text='SC Distribution by Quarter — Strip Chart',
+            font=dict(size=15, color=_DARK_TEXT),
+            x=0.5, xanchor='center',
+        ),
         xaxis=dict(
             type='category',
             categoryorder='array',
             categoryarray=_QUARTER_ORDER,
-            title='Quarter',
-            tickfont=dict(size=12),
+            title='',                          # "Quarter" label removed
+            tickfont=dict(size=13, color=_DARK_TEXT),
             showgrid=False,
         ),
         xaxis2=dict(
@@ -879,17 +982,16 @@ def plot_vtp_strip(df: pd.DataFrame, settings: dict) -> go.Figure:
             visible=False,
         ),
         yaxis=dict(
-            title='VtP Distance SC (µm)',
+            title=dict(text='VtP Distance SC (µm)', font=dict(color=_DARK_TEXT)),
             zeroline=False,
-            showgrid=True,
-            gridcolor='rgba(200,200,200,0.5)',
-            gridwidth=1,
+            showgrid=False,
+            tickfont=dict(color=_DARK_TEXT),
         ),
-        plot_bgcolor='#f8f8f8',
-        paper_bgcolor='white',
+        plot_bgcolor=_DARK_PLOT,
+        paper_bgcolor=_DARK_PAPER,
         hovermode='closest',
-        height=520,
-        margin=dict(t=60, b=40, l=65, r=110),
+        height=640,
+        margin=dict(t=70, b=80, l=70, r=175),
         boxmode='overlay',
     )
     return fig

@@ -117,8 +117,6 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
         SpatialHeatmapView(settings).render(filtered_df)
 
-    elif sub_view == "Registration Scatter":
-        RegistrationScatterView(settings).render(filtered_df)
 
 
 def main() -> None:
@@ -221,7 +219,7 @@ def main() -> None:
 
         sub_view = render_nav_buttons(
             ["Quality Control", "Analytics",
-             "2D Spatial Heatmap (Laser Scan Field)", "Registration Scatter"],
+             "2D Spatial Heatmap (Laser Scan Field)"],
             state_key="ptv_sub_view",
             default="Quality Control",
         )

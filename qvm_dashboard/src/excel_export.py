@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from openpyxl.drawing.image import Image as XLImage
 
-from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars
+from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_vtp_strip
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,39 @@ def _embed_charts(ws, df_raw: pd.DataFrame, settings: dict,
     _add_bar_chart(ws, df_raw, settings, label, data_row_count)
 
 
+def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
+                          settings: dict) -> None:
+    """Create an 'Analytics' sheet with the Box Plot and Strip Chart side by side.
+
+    Layout:
+        A1  — title label
+        A3  — Box Plot PNG  (700 × 580)
+        M3  — Strip Chart PNG  (700 × 580)
+    """
+    try:
+        ws = writer.book.create_sheet('Analytics')
+
+        # Header label
+        ws['A1'] = 'SC Distribution — Box Plot (left)  |  Strip Chart by Quarter (right)'
+        ws['A1'].font = __import__('openpyxl').styles.Font(bold=True, size=12)
+
+        # Render both charts as PNGs (narrower width fits two side-by-side)
+        fig_box   = plot_vtp_box(df, settings)
+        fig_strip = plot_vtp_strip(df, settings)
+        xl_box   = _fig_to_xl_image(fig_box,   width_px=680, height_px=580)
+        xl_strip = _fig_to_xl_image(fig_strip, width_px=680, height_px=580)
+
+        ws.add_image(xl_box,   'A3')   # Box plot starts at column A
+        ws.add_image(xl_strip, 'M3')   # Strip chart starts at column M (~700 px right)
+
+    except ImportError as exc:
+        logger.warning('Analytics sheet skipped — kaleido missing: %s', exc)
+        st.sidebar.warning('⚠️ Analytics sheet not embedded: `kaleido` required.')
+    except Exception as exc:
+        logger.warning('Analytics sheet embed failed: %s', exc, exc_info=True)
+        st.sidebar.warning(f'⚠️ Analytics sheet not embedded: {exc}')
+
+
 # ---------------------------------------------------------------------------
 # Sheet builders
 # ---------------------------------------------------------------------------
@@ -188,3 +221,6 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
         _embed_charts(ws, filtered_df, settings, 'Via to Pad', len(display_df))
         _report_sheet(display_df, side_series, grid_id_col, meta, settings).to_excel(
             writer, sheet_name='Report', index=False)
+
+    # Analytics sheet — Box Plot + Strip Chart side by side
+    _add_analytics_sheet(writer, filtered_df, settings)
