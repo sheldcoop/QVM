@@ -3,5 +3,6 @@ streamlit
 pyyaml
 plotly
 matplotlib
+kaleido==0.2.1
 pytest
 openpyxl
