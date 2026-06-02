@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from openpyxl.drawing.image import Image as XLImage
 
-from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_vtp_strip
+from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box
 
 logger = logging.getLogger(__name__)
 
@@ -111,36 +111,35 @@ def _embed_charts(ws, df_raw: pd.DataFrame, settings: dict,
 
 
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
-                          settings: dict) -> None:
-    """Create an 'Analytics' sheet with the Box Plot and Strip Chart side by side.
+                          settings: dict,
+                          sheet_label: str = 'Analytics') -> None:
+    """Create an analytics sheet with the Box Plot chart.
 
     Layout:
-        A1  — title label
-        A3  — Box Plot PNG  (700 × 580)
-        M3  — Strip Chart PNG  (700 × 580)
+        A1  — title label (includes sheet_label for self-identification)
+        A3  — Box Plot PNG (700 × 640)
+
+    sheet_label is used as the worksheet name so that when both F and B sides
+    are uploaded, each side gets its own sheet ("Analytics - F", "Analytics - B").
     """
     try:
-        ws = writer.book.create_sheet('Analytics')
+        import openpyxl  # noqa: F401
+        ws = writer.book.create_sheet(sheet_label)
 
-        # Header label
-        ws['A1'] = 'SC Distribution — Box Plot (left)  |  Strip Chart by Quarter (right)'
-        ws['A1'].font = __import__('openpyxl').styles.Font(bold=True, size=12)
+        ws['A1'] = f'SC Distribution — {sheet_label}'
+        ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
 
-        # Render both charts as PNGs (narrower width fits two side-by-side)
-        fig_box   = plot_vtp_box(df, settings)
-        fig_strip = plot_vtp_strip(df, settings)
-        xl_box   = _fig_to_xl_image(fig_box,   width_px=680, height_px=580)
-        xl_strip = _fig_to_xl_image(fig_strip, width_px=680, height_px=580)
-
-        ws.add_image(xl_box,   'A3')   # Box plot starts at column A
-        ws.add_image(xl_strip, 'M3')   # Strip chart starts at column M (~700 px right)
+        fig_box = plot_vtp_box(df, settings)
+        xl_box  = _fig_to_xl_image(fig_box, width_px=700, height_px=640)
+        ws.add_image(xl_box, 'A3')
 
     except ImportError as exc:
         logger.warning('Analytics sheet skipped — kaleido missing: %s', exc)
         st.sidebar.warning('⚠️ Analytics sheet not embedded: `kaleido` required.')
     except Exception as exc:
-        logger.warning('Analytics sheet embed failed: %s', exc, exc_info=True)
-        st.sidebar.warning(f'⚠️ Analytics sheet not embedded: {exc}')
+        logger.warning('Analytics sheet embed failed for %s: %s',
+                       sheet_label, exc, exc_info=True)
+        st.sidebar.warning(f'⚠️ Analytics sheet "{sheet_label}" not embedded: {exc}')
 
 
 # ---------------------------------------------------------------------------
@@ -222,5 +221,11 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
         _report_sheet(display_df, side_series, grid_id_col, meta, settings).to_excel(
             writer, sheet_name='Report', index=False)
 
-    # Analytics sheet — Box Plot + Strip Chart side by side
-    _add_analytics_sheet(writer, filtered_df, settings)
+    # Analytics sheet — one per side when both F and B are present, otherwise one combined
+    if len(sides) > 1:
+        for side in sorted(sides):
+            mask = filtered_df['Side'] == side
+            _add_analytics_sheet(writer, filtered_df[mask].copy(), settings,
+                                  sheet_label=f'Analytics - {side}')
+    else:
+        _add_analytics_sheet(writer, filtered_df, settings, sheet_label='Analytics')
