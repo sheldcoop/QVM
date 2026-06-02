@@ -10,11 +10,9 @@ from io import BytesIO
 import openpyxl
 from openpyxl.styles import PatternFill
 from openpyxl.drawing.image import Image as XLImage
-from PIL import Image as PILImage
 
 from src.views.base import BaseView
 from src.utils import convert_to_microns
-from src.visuals import plot_vtp_bullseye
 
 
 logger = logging.getLogger(__name__)
@@ -131,47 +129,217 @@ class QualityControlView(BaseView):
                 if is_via_to_pad:
                     _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
-                    def _fig_to_xl_image(fig, width_px: int = 700, height_px: int = 700) -> XLImage:
-                        """Convert a plotly figure to an openpyxl Image.
+                    # ----------------------------------------------------------
+                    # Matplotlib-based chart helpers (no kaleido / no subprocess)
+                    # ----------------------------------------------------------
+                    import matplotlib
+                    matplotlib.use('Agg')   # non-interactive backend — safe in server env
+                    import matplotlib.pyplot as plt
+                    import matplotlib.patches as mpatches
+                    import numpy as _np
 
-                        Square 700×700 matches the bullseye's 1:1 aspect ratio so it
-                        doesn't squish horizontally in Excel. Requires `kaleido`.
-                        """
-                        img_bytes = fig.to_image(format='png', width=width_px, height=height_px, scale=2)
-                        img_buf = BytesIO(img_bytes)
-                        pil_img = PILImage.open(img_buf)
-                        out_buf = BytesIO()
-                        pil_img.save(out_buf, format='PNG')
-                        out_buf.seek(0)
-                        xl_img = XLImage(out_buf)
-                        xl_img.width = width_px
+                    _GRID_POS = {
+                        '11': (1, 4), '12': (1, 3), '13': (2, 3), '14': (2, 4),
+                        '21': (1, 2), '22': (1, 1), '23': (2, 1), '24': (2, 2),
+                        '31': (3, 2), '32': (3, 1), '33': (4, 1), '34': (4, 2),
+                        '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
+                    }
+
+                    def _buf_to_xl_image(buf: BytesIO, width_px: int, height_px: int) -> XLImage:
+                        xl_img = XLImage(buf)
+                        xl_img.width  = width_px
                         xl_img.height = height_px
                         return xl_img
 
-                    def _add_chart_to_sheet(ws, df_for_chart, settings, sheet_label: str):
-                        """Generate scatter plot and embed it below the data table.
+                    def _mpl_bullseye(df_chart, settings, size_in: float = 6.5) -> XLImage:
+                        """DX vs DY scatter with concentric tolerance rings (matplotlib)."""
+                        col_names = settings.get('COLUMN_NAMES', {})
+                        vtp_cfg   = settings.get('VTP_REGISTRATION', {})
+                        dx_col = col_names.get('x_distance', 'Shift (DX)')
+                        dy_col = col_names.get('y_distance', 'Shift (DY)')
+                        sc_col = col_names.get('ptv_distance', 'PtV Distance')
+                        grid_col = col_names.get('grid_id', 'Grid ID')
 
-                        Anchor row is computed from data length (header + rows + 2 row gap)
-                        so the chart never overlaps the table. Failures surface as
-                        sidebar warnings + a log entry instead of being swallowed.
-                        """
+                        r_exc  = float(vtp_cfg.get('ring_exceptional_um', 2.5))
+                        r_xll  = float(vtp_cfg.get('ring_excellent_um',   5.0))
+                        r_good = float(vtp_cfg.get('ring_good_um',        7.5))
+                        r_acc  = float(vtp_cfg.get('ring_acceptable_um', 10.0))
+
+                        work = df_chart[[dx_col, dy_col, sc_col, grid_col]].dropna().copy()
+                        work['dx_um'] = work[dx_col] * 1000
+                        work['dy_um'] = work[dy_col] * 1000
+                        work['sc_um'] = work[sc_col] * 1000
+
+                        def _color(v):
+                            if v <= r_exc:  return '#3498db'
+                            if v <= r_xll:  return '#1e7e3a'
+                            if v <= r_good: return '#2ecc71'
+                            if v <= r_acc:  return '#e67e22'
+                            return '#e74c3c'
+
+                        work['c'] = work['sc_um'].apply(_color)
+
+                        fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=120)
+                        ax.set_facecolor('#f8f8f8')
+                        fig.patch.set_facecolor('white')
+
+                        spread = r_acc + 2.0
+                        for r, lc, ls in [
+                            (r_exc,  '#3498db', '-'),
+                            (r_xll,  '#1e7e3a', '--'),
+                            (r_good, '#2ecc71', '--'),
+                            (r_acc,  '#e74c3c', ':'),
+                        ]:
+                            ax.add_patch(mpatches.Circle((0, 0), r, fill=False,
+                                                          edgecolor=lc, linestyle=ls, linewidth=1.5, zorder=2))
+                        ax.axhline(0, color='gray', linewidth=0.8, zorder=1)
+                        ax.axvline(0, color='gray', linewidth=0.8, zorder=1)
+
+                        ax.scatter(work['dx_um'], work['dy_um'],
+                                   c=work['c'], s=80, zorder=5, edgecolors='#333', linewidths=0.5)
+                        for _, row in work.iterrows():
+                            ax.annotate(str(int(row[grid_col])),
+                                        (row['dx_um'], row['dy_um']),
+                                        textcoords='offset points', xytext=(4, 4),
+                                        fontsize=7, color='#222')
+
+                        ax.set_xlim(-spread, spread)
+                        ax.set_ylim(-spread, spread)
+                        ax.set_aspect('equal')
+                        ax.set_xlabel('DX (µm)', fontsize=9)
+                        ax.set_ylabel('DY (µm)', fontsize=9)
+                        ax.set_title('DX vs DY Registration (SC tolerance rings)', fontsize=10, fontweight='bold')
+
+                        legend_els = [
+                            mpatches.Patch(color='#3498db', label=f'≤{r_exc} µm exceptional'),
+                            mpatches.Patch(color='#1e7e3a', label=f'≤{r_xll} µm excellent'),
+                            mpatches.Patch(color='#2ecc71', label=f'≤{r_good} µm good'),
+                            mpatches.Patch(color='#e67e22', label=f'≤{r_acc} µm acceptable'),
+                            mpatches.Patch(color='#e74c3c', label=f'>{r_acc} µm fail'),
+                        ]
+                        ax.legend(handles=legend_els, fontsize=7, loc='upper right',
+                                  framealpha=0.85, edgecolor='#aaa')
+
+                        px = int(size_in * 120)
+                        buf = BytesIO()
+                        fig.savefig(buf, format='png', dpi=120, bbox_inches='tight')
+                        plt.close(fig)
+                        buf.seek(0)
+                        return _buf_to_xl_image(buf, px, px)
+
+                    def _mpl_quiver(df_chart, settings, multiplier: float = 100,
+                                    size_in: float = 6.5) -> XLImage:
+                        """Quiver/vector plot with pattern-colour arrows (matplotlib)."""
+                        col_names = settings.get('COLUMN_NAMES', {})
+                        dx_col   = col_names.get('x_distance', 'Shift (DX)')
+                        dy_col   = col_names.get('y_distance', 'Shift (DY)')
+                        grid_col = col_names.get('grid_id', 'Grid ID')
+
+                        MIN_LEN = 0.05
+                        EXP_THR = 0.5
+                        TWI_DOT = 0.2
+                        TWI_MAG = 10.0
+
+                        df_q = df_chart.dropna(subset=[grid_col, dx_col, dy_col]).copy()
+                        df_q[grid_col] = df_q[grid_col].astype(int).astype(str)
+
+                        fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=120)
+                        ax.set_facecolor('#f8f8f8')
+                        fig.patch.set_facecolor('white')
+
+                        # Draw grid lines
+                        for v in [1.5, 2.5, 3.5]:
+                            ax.axhline(v, color='#cccccc', linewidth=0.6)
+                            ax.axvline(v, color='#cccccc', linewidth=0.6)
+
+                        for _, row in df_q.iterrows():
+                            gid = str(row[grid_col])
+                            pos = _GRID_POS.get(gid)
+                            if pos is None:
+                                continue
+                            x, y = pos
+                            dx_um = float(row[dx_col]) * 1000
+                            dy_um = float(row[dy_col]) * 1000
+                            mag   = _np.sqrt(dx_um**2 + dy_um**2)
+                            dx_s  = dx_um * multiplier * 0.001
+                            dy_s  = dy_um * multiplier * 0.001
+                            arr   = _np.sqrt(dx_s**2 + dy_s**2)
+                            if arr > 0 and arr < MIN_LEN:
+                                sc = MIN_LEN / arr
+                                dx_s *= sc; dy_s *= sc
+
+                            pos_x = x - 2.5; pos_y = y - 2.5
+                            pos_m = _np.sqrt(pos_x**2 + pos_y**2)
+                            if pos_m > 0:
+                                pxn, pyn = pos_x / pos_m, pos_y / pos_m
+                            else:
+                                pxn, pyn = 0.0, 0.0
+                            em = _np.sqrt(dx_s**2 + dy_s**2)
+                            exn = dx_s / em if em > 0 else 0
+                            eyn = dy_s / em if em > 0 else 0
+                            dot = exn * pxn + eyn * pyn
+
+                            if abs(dot) > EXP_THR:
+                                color = '#ff5000' if dot > 0 else '#00d2d2'
+                            elif abs(dot) < TWI_DOT and mag > TWI_MAG:
+                                color = '#ffd700'
+                            else:
+                                color = '#6496ff'
+
+                            ax.annotate('', xy=(x + dx_s, y + dy_s), xytext=(x, y),
+                                        arrowprops=dict(arrowstyle='->', color=color,
+                                                        lw=2.0, mutation_scale=15))
+                            ax.text(x, y, gid, fontsize=7, ha='center', va='center',
+                                    color='#333', zorder=10)
+
+                        ax.set_xlim(0.5, 4.5)
+                        ax.set_ylim(0.5, 4.5)
+                        ax.set_aspect('equal')
+                        ax.set_xticks([1, 2, 3, 4])
+                        ax.set_yticks([1, 2, 3, 4])
+                        ax.set_xticklabels(['Col 1', 'Col 2', 'Col 3', 'Col 4'], fontsize=8)
+                        ax.set_yticklabels(['Row 1', 'Row 2', 'Row 3', 'Row 4'], fontsize=8)
+                        ax.set_title(f'Registration Quiver Plot (×{multiplier} magnification)',
+                                     fontsize=10, fontweight='bold')
+
+                        legend_els = [
+                            mpatches.Patch(color='#ff5000', label='Expansion'),
+                            mpatches.Patch(color='#00d2d2', label='Contraction'),
+                            mpatches.Patch(color='#ffd700', label='Twist'),
+                            mpatches.Patch(color='#6496ff', label='Offset'),
+                        ]
+                        ax.legend(handles=legend_els, fontsize=8, loc='upper right',
+                                  framealpha=0.85, edgecolor='#aaa')
+
+                        px = int(size_in * 120)
+                        buf = BytesIO()
+                        fig.savefig(buf, format='png', dpi=120, bbox_inches='tight')
+                        plt.close(fig)
+                        buf.seek(0)
+                        return _buf_to_xl_image(buf, px, px)
+
+                    # ----------------------------------------------------------
+                    def _add_chart_to_sheet(ws, df_for_chart, settings, sheet_label: str):
+                        """Embed bullseye scatter below data table."""
                         anchor = f'A{len(df_for_chart) + 4}'
                         try:
-                            fig = plot_vtp_bullseye(df_for_chart, settings)
-                            xl_img = _fig_to_xl_image(fig)
+                            xl_img = _mpl_bullseye(df_for_chart, settings)
                             ws.add_image(xl_img, anchor)
-                        except ImportError as e:
-                            logger.warning("Chart embed skipped for %s: %s", sheet_label, e)
-                            st.sidebar.warning(
-                                f"⚠️ Could not embed scatter in '{sheet_label}': "
-                                f"`kaleido` is required for PNG export. Run "
-                                f"`pip install kaleido` and re-export."
-                            )
                         except Exception as e:
-                            logger.warning("Chart embed failed for %s: %s", sheet_label, e, exc_info=True)
-                            st.sidebar.warning(
-                                f"⚠️ Could not embed scatter in '{sheet_label}': {e}"
-                            )
+                            logger.warning("Bullseye embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(f"⚠️ Could not embed scatter in '{sheet_label}': {e}")
+
+                    def _add_quiver_to_sheet(ws, df_for_chart, settings, sheet_label: str,
+                                            scatter_height_px: int = 700):
+                        """Embed quiver plot to the right of the scatter (column J)."""
+                        anchor_row = len(df_for_chart) + 4
+                        anchor = f'J{anchor_row}'
+                        try:
+                            xl_img = _mpl_quiver(df_for_chart, settings, multiplier=100)
+                            ws.add_image(xl_img, anchor)
+                        except Exception as e:
+                            logger.warning("Quiver embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(f"⚠️ Could not embed quiver in '{sheet_label}': {e}")
 
                     def _make_measurement_sheet(df_in, side_vals):
                         """Grid ID + measurements, no metadata."""
@@ -212,6 +380,7 @@ class QualityControlView(BaseView):
                                 writer, sheet_name=sheet_name, index=False)
                             ws = writer.sheets[sheet_name]
                             _add_chart_to_sheet(ws, side_df_raw, self.settings, sheet_name)
+                            _add_quiver_to_sheet(ws, side_df_raw, self.settings, sheet_name)
                             report_frames.append(_make_report_sheet(side_display, side_vals))
                         # Combined Report sheet
                         report_df = pd.concat(report_frames, ignore_index=True)
@@ -222,6 +391,7 @@ class QualityControlView(BaseView):
                             writer, sheet_name='Via to Pad', index=False)
                         ws = writer.sheets['Via to Pad']
                         _add_chart_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
+                        _add_quiver_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
                         _make_report_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Report', index=False)
                 else:
