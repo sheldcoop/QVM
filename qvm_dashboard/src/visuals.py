@@ -738,12 +738,20 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
 
     hover_all = [_hover(row) for _, row in df_plot.iterrows()]
 
-    # "All" box — glass effect + all 16 Grid ID labels on dots
+    # "All" box — glass effect + Grid ID labels + mean±std near USL
     _add_box_and_dots('All', sc.values, df_plot['color'].tolist(),
                       hover_all, df_plot['grid_str'].tolist(),
                       fill='rgba(255,255,255,0.07)', border='rgba(255,255,255,0.50)')
+    fig.add_annotation(
+        text=f"<b>{mean_v:.1f}</b> ± {std_v:.1f}",
+        xref='x', yref='y',
+        x='All', y=ring_acceptable * 1.08,
+        xanchor='center', yanchor='bottom',
+        showarrow=False,
+        font=dict(size=13, color='rgba(205,214,244,0.80)'),
+    )
 
-    # Quarter boxes — coloured dots with Grid IDs + mean±std header
+    # Quarter boxes — coloured dots + mean±std near USL in each quarter's colour
     for q in _QUARTER_ORDER:
         qdf = df_plot[df_plot['quarter'] == q]
         if qdf.empty:
@@ -757,14 +765,14 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
             fill=f'rgba({ri},{gi},{bi},0.13)',
             border=_DARK_QUARTER_COLORS[q],
         )
-        # Mean ± std compact header above each quarter column
+        # Mean ± std anchored near USL in the quarter's own bright colour
         fig.add_annotation(
             text=f"<b>{qdf['sc_um'].mean():.1f}</b> ± {qdf['sc_um'].std():.1f}",
-            xref='x', yref='paper',
-            x=q, y=1.03,
+            xref='x', yref='y',
+            x=q, y=ring_acceptable * 1.08,
             xanchor='center', yanchor='bottom',
             showarrow=False,
-            font=dict(size=10, color=_DARK_TEXT),
+            font=dict(size=13, color=_DARK_QUARTER_COLORS[q]),
         )
 
     # ---- Reference lines ----------------------------------------------------
