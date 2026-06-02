@@ -44,7 +44,8 @@ def _load_panel_map_image(settings: dict) -> XLImage | None:
     """
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path   = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
-    panel_px   = int(export_cfg.get('panel_image_px', 454))
+    panel_cm   = float(export_cfg.get('panel_image_cm', 8.5))
+    panel_px   = int(panel_cm / 2.54 * 96)  # cm → px at 96 dpi
 
     # Resolve relative to the qvm_dashboard package root
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -123,8 +124,6 @@ def _report_sheet(df: pd.DataFrame, side_vals, grid_id_col: str,
     """Full report frame: metadata prepended, USL columns appended."""
     vtp_cfg = settings.get('VTP_REGISTRATION', {})
     vtp_usl = float(vtp_cfg.get('vtp_usl_um', 10.0))
-    x_usl   = float(vtp_cfg.get('x_usl_um',   10.0))
-    y_usl   = float(vtp_cfg.get('y_usl_um',   10.0))
 
     s = df.copy()
     grid_str = s[grid_id_col].astype(str).str.zfill(2)
@@ -140,10 +139,10 @@ def _report_sheet(df: pd.DataFrame, side_vals, grid_id_col: str,
     s.insert(0, 'Project_Name', meta.get('project_name', ''))
     s = s.drop(columns=[grid_id_col])
 
-    # Append USL reference columns
+    # Append USL reference columns (X/Y USL intentionally left blank)
     s['VtP_USL'] = vtp_usl
-    s['X_USL']   = x_usl
-    s['Y_USL']   = y_usl
+    s['X_USL']   = None
+    s['Y_USL']   = None
 
     return s
 
