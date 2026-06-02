@@ -6,6 +6,7 @@ Diagnostic computations live in src/diagnostics.py.
 
 import os
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from typing import Dict, Tuple
@@ -468,4 +469,76 @@ def plot_heatmap(df: pd.DataFrame, settings: Dict) -> go.Figure:
         width=800, height=800,
         plot_bgcolor=chart_colors.get('chart_background', '#FFFFFF'),
     )
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Distribution charts — Box plot and Violin
+# ---------------------------------------------------------------------------
+
+_QUARTER_MAP = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
+_QUARTER_ORDER = ['UL', 'LL', 'LR', 'UR']
+_DEFAULT_QUARTER_COLORS = {
+    'UL': '#1f77b4', 'LL': '#ff7f0e', 'LR': '#2ca02c', 'UR': '#d62728'
+}
+
+
+def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
+    """Box plot of VtP Distance SC grouped by Grid ID, coloured by quarter."""
+    col_names = settings.get('COLUMN_NAMES', {})
+    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
+    q_colors  = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
+
+    sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
+    grid_col = col_names.get('grid_id', 'Grid ID')
+    usl      = float(vtp_cfg.get('vtp_usl_um', 10.0))
+
+    df_plot = df.dropna(subset=[grid_col, sc_col]).copy()
+    df_plot['sc_um']    = pd.to_numeric(df_plot[sc_col],   errors='coerce') * 1000
+    df_plot['grid_str'] = pd.to_numeric(df_plot[grid_col], errors='coerce') \
+                            .astype(int).astype(str).str.zfill(2)
+    df_plot['quarter']  = df_plot['grid_str'].str[0].map(_QUARTER_MAP)
+    df_plot = df_plot.dropna(subset=['sc_um', 'quarter'])
+
+    grid_order = sorted(df_plot['grid_str'].unique(), key=int)
+    fig = px.box(
+        df_plot, x='grid_str', y='sc_um', color='quarter',
+        color_discrete_map=q_colors,
+        category_orders={'grid_str': grid_order},
+        labels={'grid_str': 'Grid ID', 'sc_um': 'VtP Distance SC (µm)', 'quarter': 'Quarter'},
+        title='VtP Distance Distribution by Position',
+    )
+    fig.add_hline(y=usl, line_dash='dash', line_color='red',
+                  annotation_text=f'USL {usl} µm', annotation_position='top right')
+    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white')
+    return fig
+
+
+def plot_vtp_violin(df: pd.DataFrame, settings: dict) -> go.Figure:
+    """Violin of VtP Distance SC grouped by quarter, with inner box and jitter overlay."""
+    col_names = settings.get('COLUMN_NAMES', {})
+    vtp_cfg   = settings.get('VTP_REGISTRATION', {})
+    q_colors  = settings.get('QUARTER_COLORS', _DEFAULT_QUARTER_COLORS)
+
+    sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
+    grid_col = col_names.get('grid_id', 'Grid ID')
+    usl      = float(vtp_cfg.get('vtp_usl_um', 10.0))
+
+    df_plot = df.dropna(subset=[grid_col, sc_col]).copy()
+    df_plot['sc_um']   = pd.to_numeric(df_plot[sc_col],   errors='coerce') * 1000
+    df_plot['quarter'] = pd.to_numeric(df_plot[grid_col], errors='coerce') \
+                           .astype(int).astype(str).str.zfill(2).str[0].map(_QUARTER_MAP)
+    df_plot = df_plot.dropna(subset=['sc_um', 'quarter'])
+
+    fig = px.violin(
+        df_plot, x='quarter', y='sc_um', color='quarter',
+        color_discrete_map=q_colors,
+        category_orders={'quarter': _QUARTER_ORDER},
+        box=True, points='all',
+        labels={'quarter': 'Quarter', 'sc_um': 'VtP Distance SC (µm)'},
+        title='VtP Distance Distribution by Quarter',
+    )
+    fig.add_hline(y=usl, line_dash='dash', line_color='red',
+                  annotation_text=f'USL {usl} µm', annotation_position='top right')
+    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white')
     return fig
