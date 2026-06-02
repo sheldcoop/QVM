@@ -125,8 +125,22 @@ class QualityControlView(BaseView):
                 st.write(f"Highlighting rows where {annular_col} < {threshold}")
         with col_right:
             buffer = BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                if is_via_to_pad:
+            # Guard: skip the writer entirely if there is nothing to export.
+            # An empty workbook causes openpyxl to raise IndexError on close.
+            _has_data = filtered_df is not None and not filtered_df.empty
+            if not _has_data:
+                st.download_button(
+                    label="📥 Export to Excel",
+                    data=buffer,
+                    file_name="QVM_Quality_Report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    disabled=True,
+                )
+            else:
+              with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                try:
+                  if is_via_to_pad:
                     _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
                     # ----------------------------------------------------------
@@ -410,14 +424,25 @@ class QualityControlView(BaseView):
                                 for col_idx in range(1, len(display_df_export.columns) + 1):
                                     worksheet.cell(row=row_idx, column=col_idx).fill = red_fill
 
-            buffer.seek(0)
-            st.download_button(
-                label="📥 Export to Excel",
-                data=buffer,
-                file_name=f"QVM_Quality_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
+                except Exception as _exc:
+                    # If anything went wrong before a sheet was written, add a
+                    # fallback sheet so openpyxl can close cleanly (no IndexError).
+                    logger.warning("Excel export error — writing fallback sheet: %s", _exc, exc_info=True)
+                    try:
+                        filtered_df.to_excel(writer, sheet_name='Data', index=False)
+                    except Exception:
+                        pd.DataFrame({'error': [str(_exc)]}).to_excel(
+                            writer, sheet_name='Data', index=False)
+                    st.warning(f"⚠️ Excel export encountered an issue: {_exc}")
+
+              buffer.seek(0)
+              st.download_button(
+                  label="📥 Export to Excel",
+                  data=buffer,
+                  file_name=f"QVM_Quality_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                  mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  type="primary"
+              )
         
         # Add clarification about Grid ID
         st.info(
