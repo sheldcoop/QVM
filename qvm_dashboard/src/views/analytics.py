@@ -8,7 +8,7 @@ import pandas as pd
 
 from src.views.base import BaseView
 from src.views.registration_scatter import RegistrationScatterView
-from src.visuals import (plot_quiver, plot_heatmap, plot_vtp_box, plot_vtp_strip)
+from src.visuals import (plot_quiver, plot_heatmap, plot_vtp_box)
 from src.diagnostics import diagnose_root_cause_confidence, calculate_cam_compensation_summary, _get_valid_grid_ids
 
 
@@ -98,7 +98,6 @@ class AnalyticsView(BaseView):
             "Select Plot Type",
             ["Quiver/Vector Plot", "Heatmap",
              "Box Plot — Overall SC Distribution",
-             "Strip Chart — SC by Quarter",
              "Registration Scatter"]
         )
         
@@ -131,10 +130,6 @@ class AnalyticsView(BaseView):
 
         elif plot_type == "Box Plot — Overall SC Distribution":
             fig = plot_vtp_box(filtered_df, settings)
-            st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
-
-        elif plot_type == "Strip Chart — SC by Quarter":
-            fig = plot_vtp_strip(filtered_df, settings)
             st.plotly_chart(fig, use_container_width=True, height=chart_heights.get('analytics_plot', 600))
 
         elif plot_type == "Registration Scatter":

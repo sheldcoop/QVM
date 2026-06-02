@@ -698,7 +698,9 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
 
     # ---- Helper: narrow box + bold jitter dots ------------------------------
     def _add_box_and_dots(x_label: str, values: np.ndarray, colors: list,
-                          hover_texts: list, fill: str, border: str) -> None:
+                          hover_texts: list, labels: list,
+                          fill: str, border: str) -> None:
+        """Narrow box + jittered dots with Grid ID text labels."""
         fig.add_trace(go.Box(
             x=[x_label] * len(values),
             y=values,
@@ -716,11 +718,13 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
         fig.add_trace(go.Scatter(
             x=pos + jitter,
             y=values,
-            mode='markers',
-            marker=dict(color=colors, size=12,
-                        line=dict(width=0)),   # no border → colour pops on dark
-            text=hover_texts,
-            hovertemplate='%{text}<extra></extra>',
+            mode='markers+text',
+            marker=dict(color=colors, size=11, line=dict(width=0)),
+            text=labels,
+            textposition='top center',
+            textfont=dict(size=9, color=_DARK_TEXT),
+            customdata=hover_texts,
+            hovertemplate='%{customdata}<extra></extra>',
             showlegend=False,
             xaxis='x2',
         ))
@@ -734,11 +738,12 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
 
     hover_all = [_hover(row) for _, row in df_plot.iterrows()]
 
-    # "All" box — glass effect: barely-there fill, clean bright border
-    _add_box_and_dots('All', sc.values, df_plot['color'].tolist(), hover_all,
+    # "All" box — glass effect + all 16 Grid ID labels on dots
+    _add_box_and_dots('All', sc.values, df_plot['color'].tolist(),
+                      hover_all, df_plot['grid_str'].tolist(),
                       fill='rgba(255,255,255,0.07)', border='rgba(255,255,255,0.50)')
 
-    # Quarter boxes — each uses its bright dark-theme colour
+    # Quarter boxes — coloured dots with Grid IDs + mean±std header
     for q in _QUARTER_ORDER:
         qdf = df_plot[df_plot['quarter'] == q]
         if qdf.empty:
@@ -748,8 +753,18 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
         _add_box_and_dots(
             q, qdf['sc_um'].values, qdf['color'].tolist(),
             [_hover(row) for _, row in qdf.iterrows()],
+            qdf['grid_str'].tolist(),
             fill=f'rgba({ri},{gi},{bi},0.13)',
             border=_DARK_QUARTER_COLORS[q],
+        )
+        # Mean ± std compact header above each quarter column
+        fig.add_annotation(
+            text=f"<b>{qdf['sc_um'].mean():.1f}</b> ± {qdf['sc_um'].std():.1f}",
+            xref='x', yref='paper',
+            x=q, y=1.03,
+            xanchor='center', yanchor='bottom',
+            showarrow=False,
+            font=dict(size=10, color=_DARK_TEXT),
         )
 
     # ---- Reference lines ----------------------------------------------------
