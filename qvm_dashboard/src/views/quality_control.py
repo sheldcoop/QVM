@@ -408,7 +408,7 @@ class QualityControlView(BaseView):
                         _add_quiver_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
                         _make_report_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Report', index=False)
-                else:
+                  else:
                     # Pad-to-Via: full export with conditional red highlighting
                     display_df_export = display_df.dropna(axis=1, how='all').copy()
                     display_df_export.to_excel(writer, sheet_name='QVM Data', index=False)
