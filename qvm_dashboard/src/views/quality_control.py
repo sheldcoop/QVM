@@ -159,6 +159,9 @@ class QualityControlView(BaseView):
                         '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
                     }
 
+                    # 12 cm at 96 dpi = 12/2.54 * 96 ≈ 454 px
+                    _PANEL_PX = 454
+
                     def _buf_to_xl_image(buf: BytesIO, width_px: int, height_px: int) -> XLImage:
                         xl_img = XLImage(buf)
                         xl_img.width  = width_px
@@ -332,6 +335,121 @@ class QualityControlView(BaseView):
                         buf.seek(0)
                         return _buf_to_xl_image(buf, px, px)
 
+                    def _mpl_panel_map(df_chart, settings) -> XLImage:
+                        """Draw the 4×4 panel location map with Grid IDs and quarter labels.
+
+                        Each cell shows its Grid ID. Quarter regions (UL/LL/LR/UR) are
+                        colour-banded. Points are coloured by SC value using the same
+                        traffic-light palette as the bullseye. Size: 12 cm × 12 cm.
+                        """
+                        col_names = settings.get('COLUMN_NAMES', {})
+                        vtp_cfg   = settings.get('VTP_REGISTRATION', {})
+                        sc_col    = col_names.get('ptv_distance', 'PtV Distance')
+                        grid_col  = col_names.get('grid_id', 'Grid ID')
+
+                        r_exc  = float(vtp_cfg.get('ring_exceptional_um', 2.5))
+                        r_xll  = float(vtp_cfg.get('ring_excellent_um',   5.0))
+                        r_good = float(vtp_cfg.get('ring_good_um',        7.5))
+                        r_acc  = float(vtp_cfg.get('ring_acceptable_um', 10.0))
+
+                        def _dot_color(v):
+                            if v <= r_exc:  return '#3498db'
+                            if v <= r_xll:  return '#1e7e3a'
+                            if v <= r_good: return '#2ecc71'
+                            if v <= r_acc:  return '#e67e22'
+                            return '#e74c3c'
+
+                        # Build lookup: grid_id → sc_um
+                        sc_map = {}
+                        if sc_col in df_chart.columns and grid_col in df_chart.columns:
+                            for _, row in df_chart[[grid_col, sc_col]].dropna().iterrows():
+                                sc_map[str(int(row[grid_col]))] = float(row[sc_col]) * 1000
+
+                        # Quarter background colours (very light)
+                        _quarter_bg = {
+                            '1': '#e8f4f8',  # UL — light blue
+                            '2': '#fef9e7',  # LL — light yellow
+                            '3': '#eafaf1',  # LR — light green
+                            '4': '#fdf2f8',  # UR — light pink
+                        }
+                        _quarter_label = {
+                            '1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'
+                        }
+
+                        size_in = _PANEL_PX / 96  # convert px → inches for dpi=96
+                        fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=96)
+                        fig.patch.set_facecolor('white')
+                        ax.set_facecolor('white')
+                        ax.set_xlim(0.5, 4.5)
+                        ax.set_ylim(0.5, 4.5)
+                        ax.set_aspect('equal')
+                        ax.invert_yaxis()   # row 1 at top
+
+                        # Draw quarter background rectangles
+                        _quarter_extents = {
+                            '1': (0.5, 0.5, 2, 2),  # UL: x0,y0,w,h  (plot coords after invert)
+                            '4': (2.5, 0.5, 2, 2),  # UR
+                            '2': (0.5, 2.5, 2, 2),  # LL
+                            '3': (2.5, 2.5, 2, 2),  # LR
+                        }
+                        for q, (x0, y0, w, h) in _quarter_extents.items():
+                            ax.add_patch(mpatches.FancyBboxPatch(
+                                (x0, y0), w, h,
+                                boxstyle='square,pad=0',
+                                facecolor=_quarter_bg[q],
+                                edgecolor='#999999', linewidth=0.8,
+                                zorder=1
+                            ))
+                            ax.text(x0 + w / 2, y0 + h / 2,
+                                    _quarter_label[q],
+                                    ha='center', va='center',
+                                    fontsize=22, fontweight='bold',
+                                    color='#cccccc', zorder=2)
+
+                        # Draw grid lines
+                        for v in [1.5, 2.5, 3.5]:
+                            ax.axhline(v, color='#aaaaaa', linewidth=0.6, zorder=3)
+                            ax.axvline(v, color='#aaaaaa', linewidth=0.6, zorder=3)
+
+                        # Draw each site: coloured dot + Grid ID label
+                        for gid, (px_x, px_y) in _GRID_POS.items():
+                            sc_val = sc_map.get(gid)
+                            dot_c  = _dot_color(sc_val) if sc_val is not None else '#dddddd'
+                            ax.scatter(px_x, px_y, s=220, c=dot_c,
+                                       edgecolors='#333333', linewidths=0.8, zorder=5)
+                            ax.text(px_x, px_y, gid,
+                                    ha='center', va='center',
+                                    fontsize=8, fontweight='bold',
+                                    color='white', zorder=6)
+
+                        # Axis labels
+                        ax.set_xticks([1, 2, 3, 4])
+                        ax.set_yticks([1, 2, 3, 4])
+                        ax.set_xticklabels(['Col 1', 'Col 2', 'Col 3', 'Col 4'], fontsize=7)
+                        ax.set_yticklabels(['Row 1', 'Row 2', 'Row 3', 'Row 4'], fontsize=7)
+                        ax.set_title('Panel Location Map', fontsize=9, fontweight='bold', pad=6)
+                        ax.tick_params(length=0)
+                        for spine in ax.spines.values():
+                            spine.set_edgecolor('#999999')
+
+                        # Legend
+                        legend_els = [
+                            mpatches.Patch(color='#3498db', label=f'≤{r_exc} µm'),
+                            mpatches.Patch(color='#1e7e3a', label=f'≤{r_xll} µm'),
+                            mpatches.Patch(color='#2ecc71', label=f'≤{r_good} µm'),
+                            mpatches.Patch(color='#e67e22', label=f'≤{r_acc} µm'),
+                            mpatches.Patch(color='#e74c3c', label=f'>{r_acc} µm'),
+                            mpatches.Patch(color='#dddddd', label='No data'),
+                        ]
+                        ax.legend(handles=legend_els, fontsize=6, loc='lower right',
+                                  framealpha=0.9, edgecolor='#aaa', title='SC', title_fontsize=6)
+
+                        buf = BytesIO()
+                        fig.savefig(buf, format='png', dpi=96, bbox_inches='tight')
+                        plt.close(fig)
+                        buf.seek(0)
+                        return _buf_to_xl_image(buf, _PANEL_PX, _PANEL_PX)
+
                     # ----------------------------------------------------------
                     def _add_chart_to_sheet(ws, df_for_chart, settings, sheet_label: str):
                         """Embed bullseye scatter below data table."""
@@ -342,6 +460,15 @@ class QualityControlView(BaseView):
                         except Exception as e:
                             logger.warning("Bullseye embed failed for %s: %s", sheet_label, e, exc_info=True)
                             st.sidebar.warning(f"⚠️ Could not embed scatter in '{sheet_label}': {e}")
+
+                    def _add_panel_map_to_sheet(ws, df_for_chart, settings, sheet_label: str):
+                        """Embed panel map at top-right of data table (column H, row 1)."""
+                        try:
+                            xl_img = _mpl_panel_map(df_for_chart, settings)
+                            ws.add_image(xl_img, 'H1')
+                        except Exception as e:
+                            logger.warning("Panel map embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(f"⚠️ Could not embed panel map in '{sheet_label}': {e}")
 
                     def _add_quiver_to_sheet(ws, df_for_chart, settings, sheet_label: str,
                                             scatter_height_px: int = 700):
@@ -393,6 +520,7 @@ class QualityControlView(BaseView):
                             _make_measurement_sheet(side_display, side_vals).to_excel(
                                 writer, sheet_name=sheet_name, index=False)
                             ws = writer.sheets[sheet_name]
+                            _add_panel_map_to_sheet(ws, side_df_raw, self.settings, sheet_name)
                             _add_chart_to_sheet(ws, side_df_raw, self.settings, sheet_name)
                             _add_quiver_to_sheet(ws, side_df_raw, self.settings, sheet_name)
                             report_frames.append(_make_report_sheet(side_display, side_vals))
@@ -404,6 +532,7 @@ class QualityControlView(BaseView):
                         _make_measurement_sheet(display_df, _side_series).to_excel(
                             writer, sheet_name='Via to Pad', index=False)
                         ws = writer.sheets['Via to Pad']
+                        _add_panel_map_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
                         _add_chart_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
                         _add_quiver_to_sheet(ws, filtered_df, self.settings, 'Via to Pad')
                         _make_report_sheet(display_df, _side_series).to_excel(
