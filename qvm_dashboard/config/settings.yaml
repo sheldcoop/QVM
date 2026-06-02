@@ -71,6 +71,12 @@ DIAGNOSTICS:
   strength_scale_um: 12.0
   score_sharpening_alpha: 1.35
   offset_primary_penalty: 0.7
+  confidence_high: 0.72
+  confidence_medium: 0.45
+  quiver_min_arrow_length: 0.05
+  quiver_expansion_dot_threshold: 0.5
+  quiver_twist_dot_threshold: 0.2
+  quiver_twist_magnitude_um: 10.0
 
 PANEL_VIEW:
   frame_width: 510.0
@@ -138,5 +144,13 @@ VTP_REGISTRATION:
   via_nominal_um: 20.0     # Nominal via diameter for caption
   annular_ring_min_um: 50.0  # IPC minimum annular ring (caption only)
   ipc_standard: "IPC-6012 Class 2"
+  # USL values added to the Report sheet
+  vtp_usl_um: 10.0         # VtP Distance (SC) upper spec limit (µm)
+  x_usl_um: 10.0           # DX shift upper spec limit (µm)
+  y_usl_um: 10.0           # DY shift upper spec limit (µm)
+
+EXCEL_EXPORT:
+  panel_map_image: "assets/Panel_Map.png"   # path relative to qvm_dashboard/
+  panel_image_px: 454                        # embed size (width = height)
 
 

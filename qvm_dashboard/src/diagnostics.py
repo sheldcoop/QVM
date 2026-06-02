@@ -12,10 +12,6 @@ from typing import Dict, Any, Iterable
 PANEL_CENTER_X = 255.0  # 510 mm panel width / 2
 PANEL_CENTER_Y = 257.5  # 515 mm panel height / 2
 
-# Confidence-band cutoffs used by diagnose_root_cause_confidence
-CONFIDENCE_HIGH = 0.72
-CONFIDENCE_MEDIUM = 0.45
-
 
 def _coerce_numeric(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
     """In-place pd.to_numeric(errors='coerce') for each named column that exists."""
@@ -220,8 +216,11 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
         * data_quality * (0.6 + 0.4 * signal_quality),
         0.0, 1.0,
     ))
-    confidence_band = 'High' if confidence >= CONFIDENCE_HIGH else (
-        'Medium' if confidence >= CONFIDENCE_MEDIUM else 'Low')
+    diag_cfg = settings.get('DIAGNOSTICS', {})
+    confidence_high   = float(diag_cfg.get('confidence_high',   0.72))
+    confidence_medium = float(diag_cfg.get('confidence_medium', 0.45))
+    confidence_band = 'High' if confidence >= confidence_high else (
+        'Medium' if confidence >= confidence_medium else 'Low')
 
     reasons = [
         f"Top cause signal: {top_cause} ({top_probability * 100:.1f}%).",

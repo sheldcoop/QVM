@@ -11,15 +11,6 @@ import numpy as np
 from typing import Dict, Tuple
 
 # ---------------------------------------------------------------------------
-# Quiver rendering constants
-# ---------------------------------------------------------------------------
-
-MIN_ARROW_LENGTH_GRID_UNITS = 0.05
-EXPANSION_DOT_THRESHOLD = 0.5
-TWIST_DOT_THRESHOLD = 0.2
-TWIST_MAGNITUDE_THRESHOLD_UM = 10.0
-
-# ---------------------------------------------------------------------------
 # Grid layout — single source of truth shared by quiver + heatmap + diagnostics
 # ---------------------------------------------------------------------------
 
@@ -282,9 +273,13 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     grid_col    = col_names.get('grid_id', 'Grid ID')
     loc_col     = col_names.get('location', 'Location')
 
-    from src.diagnostics import PANEL_CENTER_X, PANEL_CENTER_Y
-    panel_center_x = PANEL_CENTER_X
-    panel_center_y = PANEL_CENTER_Y
+    diag_cfg = settings.get('DIAGNOSTICS', {})
+    panel_center_x = float(diag_cfg.get('panel_center_x', 255.0))
+    panel_center_y = float(diag_cfg.get('panel_center_y', 257.5))
+    min_arrow      = float(diag_cfg.get('quiver_min_arrow_length', 0.05))
+    expansion_thr  = float(diag_cfg.get('quiver_expansion_dot_threshold', 0.5))
+    twist_dot_thr  = float(diag_cfg.get('quiver_twist_dot_threshold', 0.2))
+    twist_mag_thr  = float(diag_cfg.get('quiver_twist_magnitude_um', 10.0))
 
     df_plot = df.dropna(subset=[grid_col]).copy()
     df_plot[grid_col] = df_plot[grid_col].astype(int).astype(str)
@@ -307,8 +302,8 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         dy_s  = dy_um * multiplier * 0.001
 
         arrow_len = np.sqrt(dx_s**2 + dy_s**2)
-        if arrow_len > 0 and arrow_len < MIN_ARROW_LENGTH_GRID_UNITS:
-            scale_up = MIN_ARROW_LENGTH_GRID_UNITS / arrow_len
+        if arrow_len > 0 and arrow_len < min_arrow:
+            scale_up = min_arrow / arrow_len
             dx_s *= scale_up
             dy_s *= scale_up
 
@@ -332,11 +327,11 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         eyn = (dy_s / em) if em > 0 else 0
         dot = exn * pxn + eyn * pyn
 
-        if abs(dot) > EXPANSION_DOT_THRESHOLD:
+        if abs(dot) > expansion_thr:
             arrow_color = 'rgb(255, 80, 0)' if dot > 0 else 'rgb(0, 210, 210)'
             pattern = 'Expansion' if dot > 0 else 'Contraction'
             expansion_count += 1
-        elif abs(dot) < TWIST_DOT_THRESHOLD and mag > TWIST_MAGNITUDE_THRESHOLD_UM:
+        elif abs(dot) < twist_dot_thr and mag > twist_mag_thr:
             arrow_color = 'rgb(255, 215, 0)'
             pattern = 'Twist'
             twist_count += 1
