@@ -13,7 +13,7 @@ from openpyxl.drawing.image import Image as XLImage
 
 from src.views.base import BaseView
 from src.utils import convert_to_microns
-
+from src.visuals import plot_vtp_bullseye, plot_quiver
 
 logger = logging.getLogger(__name__)
 
@@ -144,12 +144,11 @@ class QualityControlView(BaseView):
                     _region_map = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
                     # ----------------------------------------------------------
-                    # Matplotlib-based chart helpers (no kaleido / no subprocess)
+                    # Kaleido-based chart helpers (plotly → PNG → openpyxl Image)
+                    # kaleido==0.2.1 bundles its own Chromium — no system Chrome needed.
+                    # On Streamlit Cloud this works out of the box.
+                    # Locally: may be blocked by group policy (use matplotlib fallback).
                     # ----------------------------------------------------------
-                    import matplotlib
-                    matplotlib.use('Agg')   # non-interactive backend — safe in server env
-                    import matplotlib.pyplot as plt
-                    import matplotlib.patches as mpatches
                     import numpy as _np
 
                     _GRID_POS = {
@@ -159,16 +158,136 @@ class QualityControlView(BaseView):
                         '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
                     }
 
-                    # 12 cm at 96 dpi = 12/2.54 * 96 ≈ 454 px
+                    # 12 cm at 96 dpi ≈ 454 px
                     _PANEL_PX = 454
 
-                    def _buf_to_xl_image(buf: BytesIO, width_px: int, height_px: int) -> XLImage:
-                        xl_img = XLImage(buf)
-                        xl_img.width  = width_px
-                        xl_img.height = height_px
-                        return xl_img
+                    def _fig_to_xl_image(fig, width_px: int = 700,
+                                         height_px: int = 700) -> XLImage:
+                        """Render a Plotly figure to PNG via kaleido and wrap as XLImage."""
+                        img_bytes = fig.to_image(format='png',
+                                                  width=width_px, height=height_px, scale=2)
+                        buf = BytesIO(img_bytes)
+                        xl = XLImage(buf)
+                        xl.width  = width_px
+                        xl.height = height_px
+                        return xl
 
-                    def _mpl_bullseye(df_chart, settings, size_in: float = 6.5) -> XLImage:
+                    def _add_chart_to_sheet(ws, df_for_chart, settings, sheet_label: str):
+                        """Embed bullseye scatter below the data table."""
+                        anchor = f'A{len(df_for_chart) + 4}'
+                        try:
+                            fig = plot_vtp_bullseye(df_for_chart, settings)
+                            ws.add_image(_fig_to_xl_image(fig), anchor)
+                        except Exception as e:
+                            logger.warning("Bullseye embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(f"⚠️ Scatter not embedded in '{sheet_label}': {e}")
+
+                    def _add_quiver_to_sheet(ws, df_for_chart, settings, sheet_label: str,
+                                             scatter_height_px: int = 700):
+                        """Embed quiver plot to the right of the scatter (column J)."""
+                        anchor_row = len(df_for_chart) + 4
+                        try:
+                            fig = plot_quiver(df_for_chart, settings, multiplier=100)
+                            ws.add_image(_fig_to_xl_image(fig), f'J{anchor_row}')
+                        except Exception as e:
+                            logger.warning("Quiver embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(f"⚠️ Quiver not embedded in '{sheet_label}': {e}")
+
+                    def _add_panel_map_to_sheet(ws, df_for_chart, settings, sheet_label: str):
+                        """Embed panel map at top-right of the data table (column H, row 1).
+
+                        Builds a simple Plotly figure — 4×4 grid with coloured dots per
+                        Grid ID using the same traffic-light palette as the bullseye.
+                        Size: 12 cm × 12 cm (≈ 454 px at 96 dpi).
+                        """
+                        import plotly.graph_objects as go
+
+                        col_names = settings.get('COLUMN_NAMES', {})
+                        vtp_cfg   = settings.get('VTP_REGISTRATION', {})
+                        sc_col    = col_names.get('ptv_distance', 'PtV Distance')
+                        grid_col  = col_names.get('grid_id', 'Grid ID')
+
+                        r_exc  = float(vtp_cfg.get('ring_exceptional_um',  2.5))
+                        r_xll  = float(vtp_cfg.get('ring_excellent_um',    5.0))
+                        r_good = float(vtp_cfg.get('ring_good_um',         7.5))
+                        r_acc  = float(vtp_cfg.get('ring_acceptable_um',  10.0))
+
+                        def _dot_color(v):
+                            if v is None:       return '#cccccc'
+                            if v <= r_exc:      return '#3498db'
+                            if v <= r_xll:      return '#1e7e3a'
+                            if v <= r_good:     return '#2ecc71'
+                            if v <= r_acc:      return '#e67e22'
+                            return '#e74c3c'
+
+                        sc_map = {}
+                        if sc_col in df_for_chart.columns and grid_col in df_for_chart.columns:
+                            for _, row in df_for_chart[[grid_col, sc_col]].dropna().iterrows():
+                                sc_map[str(int(row[grid_col]))] = float(row[sc_col]) * 1000
+
+                        fig = go.Figure()
+
+                        # Quarter background rectangles
+                        _quarters = {
+                            'UL': (0.5, 2.5, 0.5, 2.5, '#e8f4f8'),
+                            'LL': (0.5, 2.5, 2.5, 4.5, '#fef9e7'),
+                            'LR': (2.5, 4.5, 2.5, 4.5, '#eafaf1'),
+                            'UR': (2.5, 4.5, 0.5, 2.5, '#fdf2f8'),
+                        }
+                        for label, (x0, x1, y0, y1, bg) in _quarters.items():
+                            fig.add_shape(type='rect', x0=x0, x1=x1, y0=y0, y1=y1,
+                                          fillcolor=bg, line=dict(color='#aaaaaa', width=1),
+                                          layer='below')
+                            fig.add_annotation(x=(x0+x1)/2, y=(y0+y1)/2, text=label,
+                                               font=dict(size=28, color='rgba(180,180,180,0.6)'),
+                                               showarrow=False)
+
+                        # Grid lines
+                        for v in [1.5, 2.5, 3.5]:
+                            fig.add_hline(y=v, line=dict(color='#bbbbbb', width=0.8))
+                            fig.add_vline(x=v, line=dict(color='#bbbbbb', width=0.8))
+
+                        # Site dots + labels
+                        xs, ys, texts, colours, hovers = [], [], [], [], []
+                        for gid, (px_x, px_y) in _GRID_POS.items():
+                            sc_val = sc_map.get(gid)
+                            xs.append(px_x)
+                            ys.append(px_y)
+                            texts.append(gid)
+                            colours.append(_dot_color(sc_val))
+                            hovers.append(
+                                f"Grid {gid}<br>SC: {sc_val:.2f} µm" if sc_val is not None
+                                else f"Grid {gid}<br>No data"
+                            )
+
+                        fig.add_trace(go.Scatter(
+                            x=xs, y=ys, mode='markers+text',
+                            marker=dict(size=30, color=colours,
+                                        line=dict(width=1, color='#333333')),
+                            text=texts, textposition='middle center',
+                            textfont=dict(size=10, color='white'),
+                            hovertext=hovers, hoverinfo='text',
+                            showlegend=False,
+                        ))
+
+                        fig.update_layout(
+                            title=dict(text='Panel Location Map', font=dict(size=13)),
+                            xaxis=dict(range=[0.5, 4.5], tickvals=[1,2,3,4],
+                                       ticktext=['Col 1','Col 2','Col 3','Col 4'],
+                                       showgrid=False, zeroline=False),
+                            yaxis=dict(range=[0.5, 4.5], tickvals=[1,2,3,4],
+                                       ticktext=['Row 1','Row 2','Row 3','Row 4'],
+                                       showgrid=False, zeroline=False, autorange='reversed'),
+                            plot_bgcolor='white', paper_bgcolor='white',
+                            margin=dict(l=40, r=20, t=40, b=40),
+                            width=_PANEL_PX, height=_PANEL_PX,
+                        )
+
+                        try:
+                            ws.add_image(_fig_to_xl_image(fig, _PANEL_PX, _PANEL_PX), 'H1')
+                        except Exception as e:
+                            logger.warning("Panel map embed failed for %s: %s", sheet_label, e, exc_info=True)
+                            st.sidebar.warning(f"⚠️ Panel map not embedded in '{sheet_label}': {e}")
                         """DX vs DY scatter with concentric tolerance rings (matplotlib)."""
                         col_names = settings.get('COLUMN_NAMES', {})
                         vtp_cfg   = settings.get('VTP_REGISTRATION', {})
