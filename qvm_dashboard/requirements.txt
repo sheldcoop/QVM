@@ -2,7 +2,6 @@ pandas
 streamlit
 pyyaml
 plotly
-kaleido
-pillow
+matplotlib
 pytest
 openpyxl
