@@ -1,3 +1,4 @@
+import logging
 import streamlit as st
 import pandas as pd
 import os
@@ -13,6 +14,8 @@ from ui.sidebar import render_sidebar, render_nav_buttons
 from src.panel_mapping import create_four_quarters_view
 
 pd.options.mode.copy_on_write = True
+
+logger = logging.getLogger(__name__)
 
 def load_css(file_path: str, settings: dict = None) -> None:
     try:
@@ -36,7 +39,7 @@ def load_css(file_path: str, settings: dict = None) -> None:
     except FileNotFoundError:
         pass
 
-def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
+def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> pd.DataFrame:
     """Render panel/side scope filters and return filtered DataFrame."""
     with st.expander("Analysis Scope", expanded=True):
         col1, col2 = st.columns(2)
@@ -64,7 +67,7 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str):
 
 
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
-                      is_via_to_pad: bool = False, meta: dict = None):
+                      is_via_to_pad: bool = False, meta: dict = None) -> None:
     """Render whichever sub-view is active.
 
     Views pull their own settings slices from `self.settings` via BaseView, so
@@ -109,7 +112,7 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
         RegistrationScatterView(settings).render(filtered_df)
 
 
-def main():
+def main() -> None:
     settings = load_settings()
     ui_strings = settings.get('UI_STRINGS', {})
 
@@ -136,14 +139,20 @@ def main():
     all_data = []
     if uploaded_files:
         for file in uploaded_files:
+            logger.info('Parsing file: %s', file.name)
             try:
                 filename_info = parse_filename(file.name)
                 content = file.getvalue().decode('utf-8')
                 df = parse_qvm_content(content, settings)
+                logger.info('Parsed %s: %d rows, process=%s',
+                            file.name, len(df),
+                            df['Process'].iloc[0] if not df.empty else 'unknown')
             except QVMParseError as e:
+                logger.warning('Parse failed for %s: %s', file.name, e)
                 st.sidebar.error(f"❌ `{file.name}`: {e}")
                 continue
             except UnicodeDecodeError as e:
+                logger.warning('Decode failed for %s: %s', file.name, e)
                 st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
                 continue
 

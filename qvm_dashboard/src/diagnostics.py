@@ -8,10 +8,6 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Any, Iterable
 
-# Panel geometry defaults (mm). Overridable from settings['DIAGNOSTICS'].
-PANEL_CENTER_X = 255.0  # 510 mm panel width / 2
-PANEL_CENTER_Y = 257.5  # 515 mm panel height / 2
-
 
 def _coerce_numeric(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
     """In-place pd.to_numeric(errors='coerce') for each named column that exists."""
@@ -93,8 +89,8 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
                 'reasons': ['All rows were missing required fields or had invalid Grid IDs.'],
                 'stats': {**_empty['stats'], **_stats_base, 'valid_points': 0}}
 
-    panel_center_x = float(diagnostics.get('panel_center_x', PANEL_CENTER_X))
-    panel_center_y = float(diagnostics.get('panel_center_y', PANEL_CENTER_Y))
+    panel_center_x = float(diagnostics.get('panel_center_x', 255.0))
+    panel_center_y = float(diagnostics.get('panel_center_y', 257.5))
     min_signal_um = float(diagnostics.get('min_signal_um', 2.0))
     strength_scale_um = float(diagnostics.get('strength_scale_um', 12.0))
     score_sharpening_alpha = float(diagnostics.get('score_sharpening_alpha', 1.35))
@@ -267,8 +263,8 @@ def calculate_cam_compensation_summary(df: pd.DataFrame, settings: Dict) -> Dict
 
     diagnostics = settings.get('DIAGNOSTICS', {})
     cam_cfg = settings.get('CAM_COMPENSATION', {})
-    panel_center_x = float(diagnostics.get('panel_center_x', PANEL_CENTER_X))
-    panel_center_y = float(diagnostics.get('panel_center_y', PANEL_CENTER_Y))
+    panel_center_x = float(diagnostics.get('panel_center_x', 255.0))
+    panel_center_y = float(diagnostics.get('panel_center_y', 257.5))
 
     required_cols = [x_col, y_col, coord_x_col, coord_y_col]
     missing_cols = [col for col in required_cols if col not in df.columns]

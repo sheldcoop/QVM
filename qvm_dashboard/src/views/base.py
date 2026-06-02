@@ -60,15 +60,14 @@ class BaseView(ABC):
         """Get chart height for specific type."""
         return self.chart_heights.get(chart_type, 600)
     
-    def format_to_3_decimals(self, val):
+    def format_to_3_decimals(self, val) -> str:
         """Format value to 3 decimals without trailing zeros."""
-        import pandas as pd
         if pd.isna(val):
             return ''
         try:
             formatted = f'{float(val):.3f}'.rstrip('0').rstrip('.')
             return formatted
-        except:
+        except (ValueError, TypeError):
             return str(val)
     
     def log_render_start(self, message: str = None) -> None:
