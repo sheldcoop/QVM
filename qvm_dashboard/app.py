@@ -4,7 +4,7 @@ import pandas as pd
 import os
 from pathlib import Path
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
-from src.visuals import plot_quiver, plot_heatmap, plot_vtp_box, plot_vtp_violin
+from src.visuals import plot_quiver, plot_heatmap, plot_vtp_box, plot_vtp_strip
 from src.utils import load_settings, calculate_annular_ring
 from src.views.quality_control import QualityControlView
 from src.views.analytics import AnalyticsView
@@ -109,7 +109,7 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                 fig = plot_vtp_box(filtered_df, settings)
                 st.plotly_chart(fig, use_container_width=True)
             with tab4:
-                fig = plot_vtp_violin(filtered_df, settings)
+                fig = plot_vtp_strip(filtered_df, settings)
                 st.plotly_chart(fig, use_container_width=True)
         else:
             AnalyticsView(settings).render(filtered_df)
