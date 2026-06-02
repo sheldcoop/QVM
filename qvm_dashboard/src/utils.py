@@ -5,6 +5,17 @@ import yaml
 import pandas as pd
 from typing import Dict, Iterable, List
 
+_REQUIRED_SETTINGS_KEYS = [
+    'COLUMN_NAMES', 'POSITIONAL_MAPPING', 'GRID_MAPPING',
+    'VTP_REGISTRATION', 'EXCEL_EXPORT', 'DIAGNOSTICS',
+]
+
+
+def _validate_settings(settings: dict) -> None:
+    missing = [k for k in _REQUIRED_SETTINGS_KEYS if k not in settings]
+    if missing:
+        raise ValueError(f"settings.yaml is missing required sections: {missing}")
+
 
 def load_settings() -> dict:
     """Load and return the project settings.yaml as a dict.
@@ -17,8 +28,15 @@ def load_settings() -> dict:
         'config',
         'settings.yaml',
     )
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+    if not os.path.isfile(config_path):
+        raise ValueError(f"settings.yaml not found at {config_path}")
+    try:
+        with open(config_path, 'r') as f:
+            settings = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ValueError(f"Invalid YAML in settings.yaml: {e}") from e
+    _validate_settings(settings)
+    return settings
 
 
 def convert_to_microns(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:

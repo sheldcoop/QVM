@@ -119,7 +119,7 @@ def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
     return df.copy().rename(columns={grid_id_col: 'Grid ID'})
 
 
-def _report_sheet(df: pd.DataFrame, side_vals, grid_id_col: str,
+def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: str,
                   meta: dict, settings: dict) -> pd.DataFrame:
     """Full report frame: metadata prepended, USL columns appended."""
     vtp_cfg = settings.get('VTP_REGISTRATION', {})
