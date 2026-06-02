@@ -86,6 +86,35 @@ class QualityControlView(BaseView):
             'All measurements in **microns (µm)**.'
         )
 
+        # --- Magnitude explanation expander ---
+        if is_via_to_pad:
+            with st.expander("ℹ️ How are SC magnitude and Quiver magnitude calculated?"):
+                st.markdown("""
+**VtP Distance (SC)** — shown in the data table above — is read directly from the
+QVM instrument. It is the measured centre-to-centre distance between the Via circle
+and the Pad circle.
+
+> **Formula:** Instrument scalar (no calculation) — converted from mm to µm for display.
+
+---
+
+**Quiver magnitude** — used to colour and scale arrows in the Pattern Hunter (Analytics tab)
+— is reconstructed from the two shift components:
+
+> **Formula:** magnitude (µm) = √(DX² + DY²) × 1,000
+
+| Symbol | Column | Meaning |
+|--------|--------|---------|
+| DX | Shift (DX) | Horizontal displacement of Via from Pad centre (mm) |
+| DY | Shift (DY) | Vertical displacement of Via from Pad centre (mm) |
+
+---
+
+Both quantities represent the same physical shift. Small differences can appear because
+SC is the hardware measurement while the quiver magnitude is derived from the X/Y
+component breakdown.
+                """)
+
         # --- Interactive dataframe ---
         styled = display_df.style.apply(
             self._highlight_annular_ring, col_name=annular_col,
