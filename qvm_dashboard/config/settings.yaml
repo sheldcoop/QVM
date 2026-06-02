@@ -144,13 +144,11 @@ VTP_REGISTRATION:
   via_nominal_um: 20.0     # Nominal via diameter for caption
   annular_ring_min_um: 50.0  # IPC minimum annular ring (caption only)
   ipc_standard: "IPC-6012 Class 2"
-  # USL values added to the Report sheet
+  # USL values added to the Report sheet (X/Y USL are left blank)
   vtp_usl_um: 10.0         # VtP Distance (SC) upper spec limit (µm)
-  x_usl_um: 10.0           # DX shift upper spec limit (µm)
-  y_usl_um: 10.0           # DY shift upper spec limit (µm)
 
 EXCEL_EXPORT:
   panel_map_image: "assets/Panel_Map.png"   # path relative to qvm_dashboard/
-  panel_image_px: 454                        # embed size (width = height)
+  panel_image_cm: 8.5                        # embed size in cm (width = height)
 
 
