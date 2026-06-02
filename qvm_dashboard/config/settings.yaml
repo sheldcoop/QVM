@@ -116,6 +116,12 @@ CHART_COLORS:
   chart_background: "#FFFFFF"         # Pure white
   chart_gridlines_visible: false
 
+QUARTER_COLORS:
+  UL: "#1f77b4"   # blue
+  LL: "#ff7f0e"   # orange
+  LR: "#2ca02c"   # green
+  UR: "#d62728"   # red
+
 CHART_HEIGHTS:
   health_status: 550                  # Via/Pad health bar charts
   comparison_plot: 400                # Pad vs Via comparison
