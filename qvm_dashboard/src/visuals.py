@@ -289,13 +289,17 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
 
 def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figure:
-    """Pattern Hunter: Quiver/vector plot with ABF distortion pattern detection.
+    """Pattern Hunter: ABF distortion quiver — Catppuccin Mocha dark theme.
 
-    Colors:
-    - Orange-red: Expansion (shift away from centre)
-    - Cyan: Shrinkage (shift toward centre)
-    - Gold: Twist (perpendicular)
-    - Blue: Offset (uniform)
+    Matches the visual language of `plot_vtp_bullseye` and `plot_vtp_site_bars`:
+    small zone-coloured site dots, Grid ID labels above, summary card top-left,
+    pattern legend bottom-centre, subtle quadrant crosshairs.
+
+    Arrow palette (sourced from `_DARK_ARROW`):
+        Expansion   — red    (#f38ba8)
+        Contraction — sky    (#89dceb)
+        Twist       — yellow (#f9e2af)
+        Offset      — blue   (#89b4fa)
     """
     col_names = settings.get('COLUMN_NAMES', {})
     x_col       = col_names.get('x_distance', 'Shift (DX)')
@@ -324,7 +328,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
 
     fig = go.Figure()
     expansion_count = twist_count = offset_count = 0
-    scatter_x, scatter_y, scatter_text, scatter_hover = [], [], [], []
+    scatter_x, scatter_y, scatter_text, scatter_hover, scatter_color = [], [], [], [], []
 
     for _, row in df_plot.iterrows():
         x, y = row['plot_x'], row['plot_y']
@@ -360,15 +364,19 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
         dot = exn * pxn + eyn * pyn
 
         if abs(dot) > expansion_thr:
-            arrow_color = 'rgb(255, 80, 0)' if dot > 0 else 'rgb(0, 210, 210)'
-            pattern = 'Expansion' if dot > 0 else 'Contraction'
+            if dot > 0:
+                arrow_color = _DARK_ARROW['expansion']
+                pattern = 'Expansion'
+            else:
+                arrow_color = _DARK_ARROW['contraction']
+                pattern = 'Contraction'
             expansion_count += 1
         elif abs(dot) < twist_dot_thr and mag > twist_mag_thr:
-            arrow_color = 'rgb(255, 215, 0)'
+            arrow_color = _DARK_ARROW['twist']
             pattern = 'Twist'
             twist_count += 1
         else:
-            arrow_color = 'rgb(100, 150, 255)'
+            arrow_color = _DARK_ARROW['offset']
             pattern = 'Offset'
             offset_count += 1
 
@@ -376,77 +384,94 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             x=x + dx_s, y=y + dy_s, ax=x, ay=y,
             xref='x', yref='y', axref='x', ayref='y',
             text='', showarrow=True,
-            arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
-            arrowcolor=arrow_color, opacity=0.9,
+            arrowhead=2, arrowsize=1.4, arrowwidth=2.4,
+            arrowcolor=arrow_color, opacity=0.95,
         )
         scatter_x.append(x)
         scatter_y.append(y)
         scatter_text.append(str(row[grid_col]))
+        scatter_color.append(arrow_color)
         loc_name = row[loc_col] if loc_col in row.index else row[grid_col]
         scatter_hover.append(
             f"<b>{loc_name}</b><br>Grid: {row[grid_col]}<br>Pattern: {pattern}<br>"
-            f"DX: {dx_um:.2f} µm<br>DY: {dy_um:.2f} µm<br>Magnitude: {mag:.2f} µm<br>"
-            f"<extra></extra>"
+            f"DX: {dx_um:.2f} µm<br>DY: {dy_um:.2f} µm<br>Mag: {mag:.2f} µm"
         )
 
+    # Subtle quadrant crosshairs (matching bullseye)
+    crosshair = dict(color='rgba(205,214,244,0.25)', width=1.2)
+    fig.add_hline(y=2.5, line=crosshair)
+    fig.add_vline(x=2.5, line=crosshair)
+
+    # Site dots — bullseye-style: small, zone-coloured, label above
     fig.add_trace(go.Scatter(
         x=scatter_x, y=scatter_y, mode='markers+text',
-        marker=dict(color='#333333', size=14, line=dict(color='#FFFF00', width=2)),
-        text=scatter_text, textposition='top center',
-        textfont=dict(size=11, color='#FFFF00', family='Arial Black'),
-        hovertemplate=scatter_hover, showlegend=False,
+        marker=dict(size=14, color=scatter_color, line=dict(width=0)),
+        text=scatter_text,
+        textposition='top center',
+        textfont=dict(size=10, color=_DARK_TEXT),
+        customdata=scatter_hover,
+        hovertemplate='%{customdata}<extra></extra>',
+        showlegend=False,
     ))
 
+    total = expansion_count + twist_count + offset_count
+    # Summary card — top-left, matches bullseye stats card
     fig.add_annotation(
-        x=2.5, y=0.2,
         text=(
-            f"<b>Pattern Detection Summary</b><br>"
-            f"🔴 <b>Expansion</b>: arrows pointing away from centre<br>"
-            f"🩵 <b>Contraction</b>: arrows pointing toward centre<br>"
-            f"🟡 <b>Twist</b>: perpendicular arrows<br>"
-            f"🔵 <b>Offset</b>: uniform shift<br><br>"
-            f"Expansion/Contraction: {expansion_count} &nbsp; "
-            f"Twist: {twist_count} &nbsp; Offset: {offset_count}"
+            f"<b>n</b> {total}  •  "
+            f"<b>Exp/Con</b> {expansion_count}  •  "
+            f"<b>Twist</b> {twist_count}  •  "
+            f"<b>Offset</b> {offset_count}"
         ),
-        showarrow=False,
-        bgcolor='rgba(26, 26, 26, 0.8)', bordercolor='#666666', borderwidth=1,
-        font=dict(color='#E8E8E8', size=11), align='left',
-        xref='x', yref='y',
+        xref='paper', yref='paper', x=0.02, y=0.98,
+        xanchor='left', yanchor='top', showarrow=False, align='left',
+        font=dict(size=11, color=_DARK_TEXT),
+        bgcolor=_DARK_CARD_BG, bordercolor=_DARK_CARD_BD,
+        borderwidth=1, borderpad=5,
     )
 
-    chart_colors = settings.get('CHART_COLORS', {})
+    # Pattern legend — bottom-centre, matches bullseye zone legend
+    _a = _DARK_ARROW
+    fig.add_annotation(
+        text=(
+            f"<span style='color:{_a['expansion']}'>⬤</span> Expansion  "
+            f"<span style='color:{_a['contraction']}'>⬤</span> Contraction  "
+            f"<span style='color:{_a['twist']}'>⬤</span> Twist  "
+            f"<span style='color:{_a['offset']}'>⬤</span> Offset"
+        ),
+        xref='paper', yref='paper', x=0.5, y=-0.08,
+        xanchor='center', yanchor='top', showarrow=False,
+        font=dict(size=10, color=_DARK_TEXT),
+        bgcolor=_DARK_CARD_BG, bordercolor=_DARK_CARD_BD,
+        borderwidth=1, borderpad=5,
+    )
+
     fig.update_xaxes(
         range=[0.5, 4.5], dtick=1,
-        showgrid=chart_colors.get('chart_gridlines_visible', False),
-        gridcolor='#444444', title=dict(text='Column', font=dict(color='#E8E8E8')),
+        showgrid=False, zeroline=False, showticklabels=False,
+        title=dict(text='Panel X (Grid Column)',
+                   font=dict(color=_DARK_TEXT)),
     )
     fig.update_yaxes(
         range=[0.5, 4.5], dtick=1,
-        showgrid=chart_colors.get('chart_gridlines_visible', False),
-        gridcolor='#444444', title=dict(text='Row', font=dict(color='#E8E8E8')),
+        showgrid=False, zeroline=False, showticklabels=False,
+        scaleanchor='x', scaleratio=1,
+        title=dict(text='Panel Y (Grid Row)',
+                   font=dict(color=_DARK_TEXT)),
     )
     fig.update_layout(
         title=dict(
-            text=f'Pattern Hunter: ABF Distortion Map | {multiplier}x Sensitivity',
-            font=dict(color='#E8E8E8', size=14),
+            text=f'ABF Distortion Map  ·  {multiplier}× Sensitivity',
+            font=dict(size=14, color=_DARK_TEXT),
+            x=0.5, xanchor='center',
         ),
-        width=700, height=700,
-        plot_bgcolor='#1a1a1a', paper_bgcolor='#1a1a1a',
-        font=dict(color='#B0B0B0', size=11),
+        height=600,
+        plot_bgcolor=_DARK_PLOT,
+        paper_bgcolor=_DARK_PAPER,
+        font=dict(color=_DARK_TEXT, size=11),
         hovermode='closest',
+        margin=dict(t=55, b=70, l=60, r=60),
     )
-
-    panel_image_path = get_panel_image_path()
-    try:
-        fig.add_layout_image(
-            source=panel_image_path,
-            xref='x', yref='y',
-            x=0.5, y=4.5, sizex=4, sizey=4,
-            sizing='stretch', opacity=0.25, layer='below',
-        )
-    except Exception:
-        pass
-
     return fig
 
 
@@ -536,6 +561,14 @@ _DARK_ZONE = {
     'good':        '#94e2d5',  # Catppuccin "teal"
     'acceptable':  '#fab387',  # Catppuccin "peach"
     'fail':        '#f38ba8',  # Catppuccin "red"
+}
+
+# --- Quiver pattern colours (sourced from Catppuccin Mocha palette) --------
+_DARK_ARROW = {
+    'expansion':   '#f38ba8',  # Catppuccin "red"    — moving outward
+    'contraction': '#89dceb',  # Catppuccin "sky"    — moving inward
+    'twist':       '#f9e2af',  # Catppuccin "yellow" — tangential
+    'offset':      '#89b4fa',  # Catppuccin "blue"   — unaligned
 }
 
 # --- Quarter box colours (bright against dark bg) --------------------------
