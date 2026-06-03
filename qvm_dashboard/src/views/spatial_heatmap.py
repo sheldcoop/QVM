@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
+from src import theme
 from src.utils import convert_to_microns
 from src.views.base import BaseView
 
@@ -34,16 +35,15 @@ class SpatialHeatmapView(BaseView):
         st.write("Visualize the physical panel layout with spatial drilling distortion patterns. Color gradient reveals laser galvo-scanner field distortion.")
 
         col_names = self.col_names
-        chart_colors = self.chart_colors
 
         plot_df = self._prepare_heatmap_data(filtered_df, col_names)
-        
+
         if plot_df.empty:
             st.warning("No Via coordinate data available for spatial heatmap analysis")
             return
-        
+
         # Create spatial heatmap
-        self._render_heatmap(plot_df, col_names, chart_colors)
+        self._render_heatmap(plot_df, col_names, self.settings.get('SPATIAL_HEATMAP', {}))
         
         # Add diagnostic guide
         self._render_diagnostic_guide()
@@ -77,7 +77,7 @@ class SpatialHeatmapView(BaseView):
         return plot_df
     
     @staticmethod
-    def _render_heatmap(plot_df: pd.DataFrame, col_names: dict, chart_colors: dict) -> None:
+    def _render_heatmap(plot_df: pd.DataFrame, col_names: dict, spatial_cfg: dict) -> None:
         """Render the 2D spatial heatmap with absolute coordinates."""
         location_col = col_names.get('location', 'Location')
         coord_x_col = col_names.get('coord_x', 'Coord. X')
@@ -123,36 +123,39 @@ class SpatialHeatmapView(BaseView):
             )
         )
         
-        # Update layout for true-to-life scaling
+        # Update layout for true-to-life scaling (Catppuccin Mocha dark theme)
+        axis_max  = spatial_cfg.get('axis_max_mm', 600)
+        axis_dtick = spatial_cfg.get('axis_dtick_mm', 50)
         fig.update_layout(
             xaxis=dict(
-                title=dict(text='X Position (mm)', font=dict(color='#E8E8E8', size=12)),
+                title=dict(text='X Position (mm)', font=dict(color=theme.TEXT, size=12)),
                 showgrid=False,
                 zeroline=False,
                 scaleanchor='y',
                 scaleratio=1,
-                range=[0, 600],
-                dtick=50
+                range=[0, axis_max],
+                dtick=axis_dtick
             ),
             yaxis=dict(
-                title=dict(text='Y Position (mm)', font=dict(color='#E8E8E8', size=12)),
+                title=dict(text='Y Position (mm)', font=dict(color=theme.TEXT, size=12)),
                 showgrid=False,
                 zeroline=False,
                 scaleanchor='x',
                 scaleratio=1,
-                range=[0, 600],
-                dtick=50
+                range=[0, axis_max],
+                dtick=axis_dtick
             ),
-            plot_bgcolor='#1a1a1a',
-            paper_bgcolor='#1a1a1a',
-            font=dict(color='#B0B0B0', size=11),
-            title=dict(text='2D Spatial Heatmap: Laser Drilling Distortion Pattern', font=dict(color='#E8E8E8', size=16)),
+            plot_bgcolor=theme.PLOT_BG,
+            paper_bgcolor=theme.PAPER_BG,
+            font=dict(color=theme.TEXT_MUTED, size=11),
+            title=dict(text='2D Spatial Heatmap: Laser Drilling Distortion Pattern',
+                       font=dict(color=theme.TEXT, size=16)),
             hovermode='closest',
-            height=800,
-            width=900,
+            height=spatial_cfg.get('height', 800),
+            width=spatial_cfg.get('width', 900),
             margin=dict(l=80, r=150, t=80, b=80)
         )
-        
+
         st.plotly_chart(fig, use_container_width=False)
     
     @staticmethod

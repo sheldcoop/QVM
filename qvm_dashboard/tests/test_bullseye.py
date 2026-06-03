@@ -86,8 +86,9 @@ def test_bullseye_has_summary_and_legend_annotations():
 
 
 def test_bullseye_point_colors_match_dark_zone_palette():
-    """Regression: point colours use the Catppuccin Mocha _DARK_ZONE palette."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye, _DARK_ZONE
+    """Regression: point colours use the Catppuccin Mocha theme.ZONE palette."""
+    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+    from qvm_dashboard.src.theme import ZONE
 
     df = _fixture_df()
     fig = plot_vtp_bullseye(df, _SETTINGS)
@@ -96,11 +97,11 @@ def test_bullseye_point_colors_match_dark_zone_palette():
     sc_um = df['PtV Distance'].values * 1000
 
     expected = [
-        (_DARK_ZONE['exceptional'] if v <= 2.5 else
-         _DARK_ZONE['excellent']   if v <= 5.0 else
-         _DARK_ZONE['good']        if v <= 7.5 else
-         _DARK_ZONE['acceptable']  if v <= 10.0 else
-         _DARK_ZONE['fail'])
+        (ZONE['exceptional'] if v <= 2.5 else
+         ZONE['excellent']   if v <= 5.0 else
+         ZONE['good']        if v <= 7.5 else
+         ZONE['acceptable']  if v <= 10.0 else
+         ZONE['fail'])
         for v in sc_um
     ]
     assert colors == expected

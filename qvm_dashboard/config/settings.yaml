@@ -77,6 +77,8 @@ DIAGNOSTICS:
   quiver_expansion_dot_threshold: 0.5
   quiver_twist_dot_threshold: 0.2
   quiver_twist_magnitude_um: 10.0
+  sample_quality_full_points: 10.0   # valid-point count that yields full sample-quality score
+  signal_quality_full_um: 8.0        # mean error (µm) that yields full signal-quality score
 
 PANEL_VIEW:
   frame_width: 510.0
@@ -108,6 +110,7 @@ FIGURE_SETTINGS:
   point_text_size: 14
 
 CHART_COLORS:
+  traffic_light_blue: "#3498db"       # Exceptional — innermost pass band
   traffic_light_dark_green: "#1e7e3a" # Excellent — inner pass band
   traffic_light_green: "#2ecc71"      # Good — outer pass band
   traffic_light_orange: "#f39c12"     # (legacy, no longer used by the bullseye)
@@ -125,7 +128,18 @@ QUARTER_COLORS:
 CHART_HEIGHTS:
   health_status: 550                  # Via/Pad health bar charts
   comparison_plot: 400                # Pad vs Via comparison
-  analytics_plot: 600                 # Bullseye, Quiver, Heatmap
+  analytics_plot: 600                 # Pad-to-Via analytics container height
+  bullseye: 580                       # DX/DY registration bullseye
+  site_bars: 450                      # Per-site SC bar chart
+  quiver: 600                         # ABF distortion quiver map
+  box: 640                            # SC distribution box plot
+  heatmap: 800                        # PtV distance heatmap (square)
+
+SPATIAL_HEATMAP:
+  axis_max_mm: 600                    # X/Y axis upper bound (mm)
+  axis_dtick_mm: 50                   # axis tick spacing (mm)
+  height: 800
+  width: 900
 
 CAM_COMPENSATION:
   monitor_ppm: 50.0

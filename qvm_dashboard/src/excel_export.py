@@ -14,7 +14,9 @@ import plotly.graph_objects as go
 import streamlit as st
 from openpyxl.drawing.image import Image as XLImage
 
-from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box
+from src.visuals import (
+    plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,33 +115,47 @@ def _embed_charts(ws, df_raw: pd.DataFrame, settings: dict,
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
                           settings: dict,
                           sheet_label: str = 'Analytics') -> None:
-    """Create an analytics sheet with the Box Plot chart.
+    """Create an analytics sheet with all four Via-to-Pad charts in a 2×2 grid.
 
     Layout:
-        A1  — title label (includes sheet_label for self-identification)
-        A3  — Box Plot PNG (700 × 640)
+        A1   — title label (includes sheet_label for self-identification)
+        A3   — Bullseye scatter (DX/DY)      K3   — Per-site SC bars
+        A35  — Box plot (SC distribution)    K35  — Quiver (ABF distortion map)
 
     sheet_label is used as the worksheet name so that when both F and B sides
     are uploaded, each side gets its own sheet ("Analytics - F", "Analytics - B").
+
+    Each chart is embedded independently so one failed render (or missing
+    kaleido) never aborts the rest of the sheet or the workbook.
     """
     try:
         import openpyxl  # noqa: F401
-        ws = writer.book.create_sheet(sheet_label)
-
-        ws['A1'] = f'SC Distribution — {sheet_label}'
-        ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
-
-        fig_box = plot_vtp_box(df, settings)
-        xl_box  = _fig_to_xl_image(fig_box, width_px=700, height_px=640)
-        ws.add_image(xl_box, 'A3')
-
     except ImportError as exc:
-        logger.warning('Analytics sheet skipped — kaleido missing: %s', exc)
-        st.sidebar.warning('⚠️ Analytics sheet not embedded: `kaleido` required.')
-    except Exception as exc:
-        logger.warning('Analytics sheet embed failed for %s: %s',
-                       sheet_label, exc, exc_info=True)
-        st.sidebar.warning(f'⚠️ Analytics sheet "{sheet_label}" not embedded: {exc}')
+        logger.warning('Analytics sheet skipped — openpyxl missing: %s', exc)
+        st.sidebar.warning('⚠️ Analytics sheet not embedded: `openpyxl` required.')
+        return
+
+    ws = writer.book.create_sheet(sheet_label)
+    ws['A1'] = f'Registration Analytics — {sheet_label}'
+    ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
+
+    multiplier = settings.get('PLOT_SETTINGS', {}).get('vector_multiplier_default', 50)
+
+    # (anchor, chart name, figure factory, width, height)
+    charts = [
+        ('A3',  'Bullseye',  lambda: plot_vtp_bullseye(df, settings),    700, 580),
+        ('K3',  'Site bars', lambda: plot_vtp_site_bars(df, settings),   700, 450),
+        ('A35', 'Box plot',  lambda: plot_vtp_box(df, settings),         700, 640),
+        ('K35', 'Quiver',    lambda: plot_quiver(df, settings, multiplier), 700, 600),
+    ]
+    for anchor, name, make_fig, w, h in charts:
+        try:
+            ws.add_image(_fig_to_xl_image(make_fig(), width_px=w, height_px=h), anchor)
+        except Exception as exc:
+            logger.warning('%s chart embed failed for %s: %s',
+                           name, sheet_label, exc, exc_info=True)
+            st.sidebar.warning(
+                f'⚠️ {name} not embedded in "{sheet_label}": {exc}')
 
 
 # ---------------------------------------------------------------------------
