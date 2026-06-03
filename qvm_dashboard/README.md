@@ -202,33 +202,42 @@ Thresholds for color-coding optical edge confidence point counts.
 
 ## Architecture
 
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for module dependency + data-flow
+diagrams and a "where do I change X?" guide.
+
 ```
 qvm_dashboard/
-├── app.py                              # Entry point: navigation, data ingestion, view dispatch
-├── panel_mapping.py                    # Panel map figure builder (4-quarter Plotly layout)
+├── app.py                          # Entry point: navigation, data ingestion, view dispatch
+├── ARCHITECTURE.md                 # Diagrams + where-to-change-what guide
 ├── requirements.txt
 ├── config/
-│   └── settings.yaml                   # All thresholds, limits, colors, column names, mappings
+│   └── settings.yaml               # Runtime config: thresholds, limits, column names, mappings, heights
 ├── assets/
-│   └── styles.css                      # Custom CSS for dark theme and nav button styling
+│   └── styles.css                  # Custom CSS for dark theme and nav button styling
 ├── ui/
-│   └── sidebar.py                      # Sidebar: file upload, process limits, nav button renderer
+│   └── sidebar.py                  # Sidebar: file upload, process limits, nav button renderer
 ├── src/
-│   ├── parser.py                       # QVM text log parser (state machine, auto-detects PtV vs VtP)
-│   ├── calculations.py                 # Annular ring and CAM compensation calculations
-│   ├── data_processor.py               # Shared DataFrame transformations (filters, stats)
-│   ├── utils.py                        # convert_to_microns() shared utility
-│   ├── visuals.py                      # Plotly figure builders: quiver, heatmap, bullseye scatter
+│   ├── parser.py                   # QVM text log parser (auto-detects PtV vs VtP)
+│   ├── diagnostics.py              # Root-cause confidence + CAM compensation (pure computation)
+│   ├── panel_mapping.py            # Panel map figure builder (4-quarter Plotly layout)
+│   ├── excel_export.py             # Via-to-Pad Excel report with embedded charts
+│   ├── utils.py                    # load_settings, convert_to_microns, resolve_columns, annular ring
+│   ├── theme.py                    # ONE home for design tokens (Catppuccin palette, grid geometry)
+│   ├── chart_helpers.py            # Reusable chart logic (rings, zone colours, dark layout, cards)
+│   ├── visuals/                    # Plotly figure builders (package)
+│   │   ├── bullseye.py             #   plot_vtp_bullseye, plot_vtp_site_bars
+│   │   ├── quiver.py               #   plot_quiver (ABF distortion map)
+│   │   ├── distribution.py         #   plot_vtp_box (SC distribution by quarter)
+│   │   ├── heatmap.py              #   plot_heatmap (PtV distance grid)
+│   │   └── panel_image.py          #   get_panel_image_path
 │   └── views/
-│       ├── base.py                     # BaseView: shared chart helpers (height, background, grid)
-│       ├── quality_control.py          # QC table with pass/fail coloring and Excel export
-│       ├── analytics.py                # Quiver/vector plot and heatmap with root cause engine
-│       ├── optical_edge_confidence.py  # Optical edge point count bar charts
-│       ├── process_stability.py        # Via/Pad diameter control charts
-│       ├── polar_drift.py              # Polar registration error drift chart
-│       └── spatial_heatmap.py          # 2D spatial heatmap of error magnitude
+│       ├── base.py                 # BaseView: shared chart helpers (height, background, grid)
+│       ├── quality_control.py      # QC table with pass/fail coloring and Excel export
+│       ├── analytics.py            # Quiver/vector plot and heatmap with root cause engine
+│       ├── registration_scatter.py # Via-to-Pad bullseye + per-site SC bars
+│       └── spatial_heatmap.py      # 2D spatial heatmap of error magnitude
 └── tests/
-    └── ...                             # pytest test suite
+    └── ...                         # pytest test suite
 ```
 
 ---

@@ -69,23 +69,27 @@ def resolve_columns(settings: dict, keys: Iterable[str]) -> dict:
     """Resolve a set of column-name aliases from settings['COLUMN_NAMES'].
 
     Returns a {key: column_name} dict, falling back to a sensible default
-    when a key is missing from settings.
+    when a key is missing from settings (e.g. partial settings in tests).
     """
-    defaults = {
-        'location': 'Location',
-        'grid_id': 'Grid ID',
-        'outer_diameter': 'Pad Diameter',
-        'inner_diameter': 'Via Parameter',
-        'coord_x': 'Coord. X',
-        'coord_y': 'Coord. Y',
-        'ptv_distance': 'PtV Distance',
-        'total_shift': 'SC',
-        'x_distance': 'Shift (DX)',
-        'y_distance': 'Shift (DY)',
-        'pad_pts': 'Pad Pts.',
-        'via_pts': 'Via Pts.',
-        'item_type': 'Type',
-        'annular_ring': 'Annular Ring',
-    }
     col_names = settings.get('COLUMN_NAMES', {})
-    return {k: col_names.get(k, defaults.get(k, k)) for k in keys}
+    return {k: col_names.get(k, _COLUMN_DEFAULTS.get(k, k)) for k in keys}
+
+
+# Code-level safety net for column names absent from a (possibly partial)
+# settings dict. config/settings.yaml remains the canonical source at runtime.
+_COLUMN_DEFAULTS = {
+    'location': 'Location',
+    'grid_id': 'Grid ID',
+    'outer_diameter': 'Pad Diameter',
+    'inner_diameter': 'Via Parameter',
+    'coord_x': 'Coord. X',
+    'coord_y': 'Coord. Y',
+    'ptv_distance': 'PtV Distance',
+    'total_shift': 'SC',
+    'x_distance': 'Shift (DX)',
+    'y_distance': 'Shift (DY)',
+    'pad_pts': 'Pad Pts.',
+    'via_pts': 'Via Pts.',
+    'item_type': 'Type',
+    'annular_ring': 'Annular Ring',
+}

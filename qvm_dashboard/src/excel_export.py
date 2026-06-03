@@ -14,7 +14,9 @@ import plotly.graph_objects as go
 import streamlit as st
 from openpyxl.drawing.image import Image as XLImage
 
-from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box
+from src.visuals import (
+    plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,68 +80,64 @@ def _add_panel_map(ws, settings: dict, label: str) -> None:
         st.sidebar.warning(f"⚠️ Panel map not embedded in '{label}': {exc}")
 
 
-def _add_bullseye(ws, df: pd.DataFrame, settings: dict, label: str,
-                  data_row_count: int) -> None:
-    """Embed the bullseye chart at column A below the data table."""
-    anchor = f'A{data_row_count + 4}'
-    try:
-        fig = plot_vtp_bullseye(df, settings)
-        ws.add_image(_fig_to_xl_image(fig), anchor)
-    except Exception as exc:
-        logger.warning('Bullseye embed failed for %s: %s', label, exc, exc_info=True)
-        st.sidebar.warning(f"⚠️ Bullseye not embedded in '{label}': {exc}")
+def _embed_charts(ws, settings: dict, label: str) -> None:
+    """Embed the reference Panel Map (PNG) into a measurement worksheet.
 
-
-def _add_bar_chart(ws, df: pd.DataFrame, settings: dict, label: str,
-                   data_row_count: int) -> None:
-    """Embed the SC-per-site bar chart at column J below the data table."""
-    anchor = f'J{data_row_count + 4}'
-    try:
-        fig = plot_vtp_site_bars(df, settings)
-        ws.add_image(_fig_to_xl_image(fig, width_px=700, height_px=450), anchor)
-    except Exception as exc:
-        logger.warning('Bar chart embed failed for %s: %s', label, exc, exc_info=True)
-        st.sidebar.warning(f"⚠️ Bar chart not embedded in '{label}': {exc}")
-
-
-def _embed_charts(ws, df_raw: pd.DataFrame, settings: dict,
-                  label: str, data_row_count: int) -> None:
-    """Embed panel map (PNG), bullseye, and bar chart into a worksheet."""
+    The bullseye, SC bars, box, and quiver charts now live solely on the
+    per-side Analytics sheet, so the measurement sheet keeps only the data
+    table and the Panel Map reference image.
+    """
     _add_panel_map(ws, settings, label)
-    _add_bullseye(ws, df_raw, settings, label, data_row_count)
-    _add_bar_chart(ws, df_raw, settings, label, data_row_count)
 
 
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
                           settings: dict,
                           sheet_label: str = 'Analytics') -> None:
-    """Create an analytics sheet with the Box Plot chart.
+    """Create an analytics sheet with all four Via-to-Pad charts in a 2×2 grid.
 
     Layout:
-        A1  — title label (includes sheet_label for self-identification)
-        A3  — Box Plot PNG (700 × 640)
+        A1   — title label (includes sheet_label for self-identification)
+        A3   — Bullseye scatter (DX/DY)      K3   — Per-site SC bars
+        A35  — Box plot (SC distribution)    K35  — Quiver (ABF distortion map)
 
     sheet_label is used as the worksheet name so that when both F and B sides
     are uploaded, each side gets its own sheet ("Analytics - F", "Analytics - B").
+
+    Each chart is embedded independently so one failed render (or missing
+    kaleido) never aborts the rest of the sheet or the workbook.
     """
     try:
         import openpyxl  # noqa: F401
-        ws = writer.book.create_sheet(sheet_label)
-
-        ws['A1'] = f'SC Distribution — {sheet_label}'
-        ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
-
-        fig_box = plot_vtp_box(df, settings)
-        xl_box  = _fig_to_xl_image(fig_box, width_px=700, height_px=640)
-        ws.add_image(xl_box, 'A3')
-
     except ImportError as exc:
-        logger.warning('Analytics sheet skipped — kaleido missing: %s', exc)
-        st.sidebar.warning('⚠️ Analytics sheet not embedded: `kaleido` required.')
-    except Exception as exc:
-        logger.warning('Analytics sheet embed failed for %s: %s',
-                       sheet_label, exc, exc_info=True)
-        st.sidebar.warning(f'⚠️ Analytics sheet "{sheet_label}" not embedded: {exc}')
+        logger.warning('Analytics sheet skipped — openpyxl missing: %s', exc)
+        st.sidebar.warning('⚠️ Analytics sheet not embedded: `openpyxl` required.')
+        return
+
+    ws = writer.book.create_sheet(sheet_label)
+    ws['A1'] = f'Registration Analytics — {sheet_label}'
+    ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
+
+    multiplier = settings.get('PLOT_SETTINGS', {}).get('vector_multiplier_default', 50)
+
+    # 2×2 grid. Each chart is 700px (~11 columns) wide, so the right column
+    # starts at N (col 14: cols L/M are the ~2-cell gap) and the bottom row at
+    # 38 (the top row spans ~29-32 rows from row 3, plus a gap) — keeping all
+    # four images clear of one another.
+    # (anchor, chart name, figure factory, width, height)
+    charts = [
+        ('A3',  'Bullseye',  lambda: plot_vtp_bullseye(df, settings),    700, 580),
+        ('N3',  'Site bars', lambda: plot_vtp_site_bars(df, settings),   700, 450),
+        ('A38', 'Box plot',  lambda: plot_vtp_box(df, settings),         700, 640),
+        ('N38', 'Quiver',    lambda: plot_quiver(df, settings, multiplier), 700, 600),
+    ]
+    for anchor, name, make_fig, w, h in charts:
+        try:
+            ws.add_image(_fig_to_xl_image(make_fig(), width_px=w, height_px=h), anchor)
+        except Exception as exc:
+            logger.warning('%s chart embed failed for %s: %s',
+                           name, sheet_label, exc, exc_info=True)
+            st.sidebar.warning(
+                f'⚠️ {name} not embedded in "{sheet_label}": {exc}')
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +187,9 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
     """Write Via-to-Pad data + embedded charts into the given ExcelWriter.
 
     Sheets written:
-    - 'Via to Pad' (or 'Via to Pad - F/B') — measurement data + panel map, bullseye, bar chart
+    - 'Via to Pad' (or 'Via to Pad - F/B') — measurement data + Panel Map reference
     - 'Report' — full metadata + measurements + USL reference columns
+    - 'Analytics' (or 'Analytics - F/B') — all four registration charts
     """
     sides       = filtered_df['Side'].unique() if 'Side' in filtered_df.columns else []
     side_series = filtered_df['Side'].values   if 'Side' in filtered_df.columns else None
@@ -200,14 +199,13 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
         for side in sorted(sides):
             mask       = filtered_df['Side'] == side
             side_disp  = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
-            side_raw   = filtered_df[mask].copy()
             side_vals  = filtered_df.loc[mask, 'Side'].values
             sheet_name = f'Via to Pad - {side}'
 
             _measurement_sheet(side_disp, grid_id_col).to_excel(
                 writer, sheet_name=sheet_name, index=False)
             ws = writer.sheets[sheet_name]
-            _embed_charts(ws, side_raw, settings, sheet_name, len(side_disp))
+            _embed_charts(ws, settings, sheet_name)
             report_frames.append(
                 _report_sheet(side_disp, side_vals, grid_id_col, meta, settings))
 
@@ -217,7 +215,7 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
         _measurement_sheet(display_df, grid_id_col).to_excel(
             writer, sheet_name='Via to Pad', index=False)
         ws = writer.sheets['Via to Pad']
-        _embed_charts(ws, filtered_df, settings, 'Via to Pad', len(display_df))
+        _embed_charts(ws, settings, 'Via to Pad')
         _report_sheet(display_df, side_series, grid_id_col, meta, settings).to_excel(
             writer, sheet_name='Report', index=False)
 
