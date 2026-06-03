@@ -96,7 +96,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
             f"<span style='color:{_z['acceptable']}'>⬤</span> ≤{rings.acceptable:.1f}  "
             f"<span style='color:{_z['fail']}'>⬤</span> fail (µm)"
         ),
-        xref='paper', yref='paper', x=0.5, y=-0.08,
+        xref='paper', yref='paper', x=0.5, y=-0.20,
         xanchor='center', yanchor='top', showarrow=False,
         font=dict(size=10, color=theme.TEXT),
         bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
@@ -116,7 +116,8 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
                    range=[-spread, spread],
                    tickfont=dict(color=theme.TEXT)),
         hovermode='closest',
-        margin=dict(t=55, b=70, l=60, r=60),
+        # extra bottom room so the zone legend sits clear of the DX axis title
+        margin=dict(t=55, b=105, l=60, r=60),
     )
     return fig
 

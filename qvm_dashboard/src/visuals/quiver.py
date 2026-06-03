@@ -158,7 +158,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             f"<span style='color:{_a['twist']}'>⬤</span> Twist  "
             f"<span style='color:{_a['offset']}'>⬤</span> Offset"
         ),
-        xref='paper', yref='paper', x=0.5, y=-0.08,
+        xref='paper', yref='paper', x=0.5, y=-0.20,
         xanchor='center', yanchor='top', showarrow=False,
         font=dict(size=10, color=theme.TEXT),
         bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
@@ -184,6 +184,7 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             x=0.5, xanchor='center',
         ),
         hovermode='closest',
-        margin=dict(t=55, b=70, l=60, r=60),
+        # extra bottom room so the pattern legend sits clear of the Panel X axis title
+        margin=dict(t=55, b=105, l=60, r=60),
     )
     return fig
