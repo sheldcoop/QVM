@@ -18,9 +18,9 @@ def _coerce_numeric(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
 
 
 def _get_valid_grid_ids(settings: Dict) -> set:
-    from src.visuals import _GRID_PLOT_POSITIONS
+    from src.theme import GRID_PLOT_POSITIONS
     configured = {str(v) for v in settings.get('GRID_MAPPING', {}).values()}
-    return configured or set(_GRID_PLOT_POSITIONS.keys())
+    return configured or set(GRID_PLOT_POSITIONS.keys())
 
 
 def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str, Any]:
@@ -95,6 +95,8 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
     strength_scale_um = float(diagnostics.get('strength_scale_um', 12.0))
     score_sharpening_alpha = float(diagnostics.get('score_sharpening_alpha', 1.35))
     offset_primary_penalty = float(diagnostics.get('offset_primary_penalty', 0.7))
+    sample_quality_full_points = float(diagnostics.get('sample_quality_full_points', 10.0))
+    signal_quality_full_um = float(diagnostics.get('signal_quality_full_um', 8.0))
 
     dx = df_work[x_col].to_numpy(dtype=float)
     dy = df_work[y_col].to_numpy(dtype=float)
@@ -202,9 +204,9 @@ def diagnose_root_cause_confidence(df: pd.DataFrame, settings: Dict) -> Dict[str
 
     valid_points = int(len(df_work))
     coverage = float(np.clip(valid_points / max(expected_points, 1), 0.0, 1.0))
-    sample_quality = float(np.clip(valid_points / 10.0, 0.0, 1.0))
+    sample_quality = float(np.clip(valid_points / sample_quality_full_points, 0.0, 1.0))
     unknown_penalty = 1.0 / (1.0 + 0.2 * len(unknown_grid_ids) + 0.08 * missing_grid_count)
-    signal_quality = float(np.clip(np.mean(err_mag_um[signal_mask]) / 8.0, 0.0, 1.0))
+    signal_quality = float(np.clip(np.mean(err_mag_um[signal_mask]) / signal_quality_full_um, 0.0, 1.0))
     data_quality = float(np.clip(coverage * sample_quality * unknown_penalty, 0.0, 1.0))
 
     confidence = float(np.clip(
