@@ -99,9 +99,14 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                     quiver_df = filtered_df[filtered_df['Side'] == chosen_side].copy()
                 else:
                     quiver_df = filtered_df.copy()
-                multiplier = st.slider("Vector Multiplier", min_value=1, max_value=500,
-                                       value=100, step=1,
-                                       help="Exaggerates arrow length for visibility")
+                plot_settings = settings.get('PLOT_SETTINGS', {})
+                multiplier = st.slider(
+                    "Vector Multiplier",
+                    min_value=plot_settings.get('vector_multiplier_min', 1),
+                    max_value=plot_settings.get('vector_multiplier_max', 100),
+                    value=plot_settings.get('vector_multiplier_default', 50),
+                    step=1,
+                    help="Exaggerates arrow length for visibility")
                 fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
                 st.plotly_chart(fig_q, use_container_width=True)
             with tab3:
