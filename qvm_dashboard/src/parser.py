@@ -207,54 +207,125 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _find_value(lines: list, label: str) -> Optional[float]:
+    """Return the number after '=' on the first body line whose text starts with
+    `label` (e.g. 'Diameter', 'SC', 'DX', 'DY'), or None if absent/malformed.
+
+    Label-based and forgiving by design: a missing or unparseable line yields
+    None rather than raising, so one omission can't abort the whole parse.
+    """
+    for line in lines:
+        s = line.strip()
+        if not s.startswith(label):
+            continue
+        # Guard against partial-word matches: the char after the label must be a
+        # separator, not more letters (so 'DX' never matches 'Diameter').
+        rest = s[len(label):]
+        if rest[:1] not in ('', ' ', '\t', '='):
+            continue
+        if '=' not in s:
+            return None
+        try:
+            return float(s.split('=', 1)[1].strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _location_from_marker(marker: str, kind_word: str) -> str:
+    """Extract the site location (e.g. 'LL_2') from a Circle marker line.
+
+    Lenient: returns '' when the location suffix is omitted (e.g. a bare
+    'Circle: Via(ID:1, ...)') instead of leaking the marker text.
+    """
+    head = marker.split('(', 1)[0].replace('Circle:', '').strip()  # 'Via_LL_2'
+    if head.startswith(kind_word):
+        head = head[len(kind_word):]
+    return head.lstrip('_').strip()
+
+
 def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
     """Parse a Via-to-Pad QVM log.
 
-    Per-block order in source: Via circle → Pad circle → Distance.
-    Via-to-Pad logs carry no absolute coordinates — only diameters and shifts.
-    """
-    rows: list = []
-    current: Dict[str, Any] = {}
-    block_index = 0
-    state = "IDLE"
+    Per-block order in source is guaranteed: Via circle → Pad circle → Distance.
+    The parser is order-driven and label-based: it segments the file by
+    'Circle:'/'Distance:' marker lines, then reads each value by its label. A
+    missing field (point count, location suffix, a diameter, or coordinates)
+    leaves that field blank instead of derailing the parse, and a block with no
+    SC/DX/DY measurement at all is skipped without disturbing its neighbours.
 
+    Note: Via-to-Pad logs do contain absolute Coord. X/Y lines, but they are
+    intentionally not captured here (the downstream VtP views work from shifts).
+    """
+    # --- Segment the file into marker-led blocks. ------------------------- #
+    # Each 'Circle:'/'Distance:' line opens a segment; the indented lines below
+    # it form that segment's body. Preamble/header lines are ignored naturally.
+    markers: list = []  # (kind, marker_line, body_lines)
+    body: Optional[list] = None
     for line in content.splitlines():
         s = line.strip()
+        if s.startswith("Circle:"):
+            kind = "via" if "Via" in s else "pad" if "Pad" in s else "circle"
+            body = []
+            markers.append((kind, s, body))
+        elif s.startswith("Distance:"):
+            body = []
+            markers.append(("distance", s, body))
+        elif body is not None:
+            body.append(line)
 
-        if state == "IDLE":
-            if s.startswith("Circle: Via_"):
-                pts_m = _PTS_RE.search(s)
-                current = {
-                    'location': s.split('(')[0].replace('Circle: Via_', '').strip(),
-                    'via_pts': int(pts_m.group(1)) if pts_m else None,
-                }
-                state = "VIA_DIAM"
+    # --- Assemble one row per Via-led block, in order. ------------------- #
+    rows: list = []
+    block_index = 0  # site ordinal; advances per Via block even when skipped
+    i, n = 0, len(markers)
+    while i < n:
+        kind, marker, via_body = markers[i]
+        if kind != "via":
+            i += 1
+            continue
 
-        elif state == "VIA_DIAM":
-            if 'Diameter' in s:
-                current['via_diameter'] = _parse_value(s)
-                state = "PAD_HEADER"
+        # Collect this site's pad + distance segments up to the next Via block.
+        pad_marker: Optional[str] = None
+        pad_body: Optional[list] = None
+        dist_body: Optional[list] = None
+        j = i + 1
+        while j < n and markers[j][0] != "via":
+            k2, m2, b2 = markers[j]
+            if k2 == "pad" and pad_body is None:
+                pad_marker, pad_body = m2, b2
+            elif k2 == "distance" and dist_body is None:
+                dist_body = b2
+            j += 1
 
-        elif state == "PAD_HEADER":
-            if s.startswith("Circle: Pad_"):
-                pts_m = _PTS_RE.search(s)
-                current['pad_pts'] = int(pts_m.group(1)) if pts_m else None
-                state = "PAD_DIAM"
+        sc = _find_value(dist_body, 'SC') if dist_body is not None else None
+        dx = _find_value(dist_body, 'DX') if dist_body is not None else None
+        dy = _find_value(dist_body, 'DY') if dist_body is not None else None
 
-        elif state == "PAD_DIAM":
-            if 'Diameter' in s:
-                current['pad_diameter'] = _parse_value(s)
-                state = "DIST_HEADER"
+        if sc is None and dx is None and dy is None:
+            logger.warning(
+                "Via-to-Pad block %d (%s) has no SC/DX/DY measurement; skipping it.",
+                block_index, _location_from_marker(marker, 'Via') or 'unknown',
+            )
+            block_index += 1
+            i = j
+            continue
 
-        else:
-            state, completed = _step_distance_tail(s, state, current)
-            if completed:
-                rows.append(_emit_row(current, block_index, settings))
-                block_index += 1
-                current = {}
+        via_pts_m = _PTS_RE.search(marker)
+        current: Dict[str, Any] = {
+            'location': _location_from_marker(marker, 'Via'),
+            'via_pts': int(via_pts_m.group(1)) if via_pts_m else None,
+            'via_diameter': _find_value(via_body, 'Diameter'),
+            'sc': sc, 'dx': dx, 'dy': dy,
+        }
+        if pad_marker is not None:
+            pad_pts_m = _PTS_RE.search(pad_marker)
+            current['pad_pts'] = int(pad_pts_m.group(1)) if pad_pts_m else None
+            current['pad_diameter'] = _find_value(pad_body, 'Diameter')
 
-    if state != "IDLE":
-        logger.warning("Via-to-Pad file ended mid-block in state %s; trailing data discarded.", state)
+        rows.append(_emit_row(current, block_index, settings))
+        block_index += 1
+        i = j
+
     if not rows:
         raise QVMParseError("No valid measurement blocks found in the file.")
     return pd.DataFrame(rows)
@@ -271,8 +342,10 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> pd.DataF
     """
     if settings is None:
         settings = load_settings()
-    first_via = content.find('Circle: Via_')
-    first_pad = content.find('Circle: Pad_')
+    # Underscore-agnostic so a circle missing its location suffix (e.g. a bare
+    # 'Circle: Via(ID:1, ...)') is still detected and routed correctly.
+    first_via = content.find('Circle: Via')
+    first_pad = content.find('Circle: Pad')
     via_first = first_via != -1 and (first_pad == -1 or first_via < first_pad)
     if via_first or 'VtP[' in content:
         df = _parse_via_to_pad(content, settings)
