@@ -87,18 +87,34 @@ _EMIT_KEYS = (
 )
 
 
+def _resolve_grid_id(location: str, block_index: int, settings: dict) -> Optional[int]:
+    """Resolve a site's Grid ID.
+
+    The location name is the source of truth: it maps directly to a Grid ID via
+    GRID_MAPPING and is recoverable from any of the Via/Pad/Distance lines, so
+    this survives an engineer stripping the suffix off some lines or the blocks
+    arriving out of order. POSITIONAL_MAPPING (block order) is the fallback used
+    only when no location could be read at all.
+    """
+    grid_mapping = settings.get('GRID_MAPPING', {})
+    if location and location in grid_mapping:
+        return int(grid_mapping[location])
+    positional_mapping = settings.get('POSITIONAL_MAPPING', [])
+    if block_index < len(positional_mapping):
+        return int(positional_mapping[block_index])
+    logger.warning(
+        "Location %r not in GRID_MAPPING and block index %d exceeds "
+        "POSITIONAL_MAPPING length %d; Grid ID will be None.",
+        location, block_index, len(positional_mapping),
+    )
+    return None
+
+
 def _emit_row(current: Dict[str, Any], block_index: int, settings: dict) -> dict:
     """Build a single output row dict from the accumulated parser state."""
     cols = resolve_columns(settings, _EMIT_KEYS)
-    positional_mapping = settings.get('POSITIONAL_MAPPING', [])
-    if block_index < len(positional_mapping):
-        grid_id: Optional[int] = int(positional_mapping[block_index])
-    else:
-        logger.warning(
-            "Block index %d exceeds POSITIONAL_MAPPING length %d; Grid ID will be None.",
-            block_index, len(positional_mapping),
-        )
-        grid_id = None
+    grid_id: Optional[int] = _resolve_grid_id(
+        current.get('location', ''), block_index, settings)
     return {
         cols['location']: current.get('location', ''),
         cols['grid_id']: grid_id,
@@ -207,124 +223,74 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _find_value(lines: list, label: str) -> Optional[float]:
-    """Return the number after '=' on the first body line whose text starts with
-    `label` (e.g. 'Diameter', 'SC', 'DX', 'DY'), or None if absent/malformed.
-
-    Label-based and forgiving by design: a missing or unparseable line yields
-    None rather than raising, so one omission can't abort the whole parse.
-    """
-    for line in lines:
-        s = line.strip()
-        if not s.startswith(label):
-            continue
-        # Guard against partial-word matches: the char after the label must be a
-        # separator, not more letters (so 'DX' never matches 'Diameter').
-        rest = s[len(label):]
-        if rest[:1] not in ('', ' ', '\t', '='):
-            continue
-        if '=' not in s:
-            return None
-        try:
-            return float(s.split('=', 1)[1].strip())
-        except ValueError:
-            return None
-    return None
-
-
-def _location_from_marker(marker: str, kind_word: str) -> str:
-    """Extract the site location (e.g. 'LL_2') from a Circle marker line.
-
-    Lenient: returns '' when the location suffix is omitted (e.g. a bare
-    'Circle: Via(ID:1, ...)') instead of leaking the marker text.
-    """
-    head = marker.split('(', 1)[0].replace('Circle:', '').strip()  # 'Via_LL_2'
-    if head.startswith(kind_word):
-        head = head[len(kind_word):]
-    return head.lstrip('_').strip()
+def _value_after_equals(s: str) -> Optional[float]:
+    """Parse the number after '=' on a measurement line, or None if malformed."""
+    try:
+        return float(s.split('=', 1)[1].strip())
+    except (IndexError, ValueError):
+        return None
 
 
 def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
-    """Parse a Via-to-Pad QVM log.
+    """Parse a Via-to-Pad QVM log purely by VALUE position — never by headers.
 
-    Per-block order in source is guaranteed: Via circle → Pad circle → Distance.
-    The parser is order-driven and label-based: it segments the file by
-    'Circle:'/'Distance:' marker lines, then reads each value by its label. A
-    missing field (point count, location suffix, a diameter, or coordinates)
-    leaves that field blank instead of derailing the parse, and a block with no
-    SC/DX/DY measurement at all is skipped without disturbing its neighbours.
+    The exporter is unreliable about header/label lines: the back-side files drop
+    the 'Circle: Pad' and 'Distance:' headers (and sometimes the 'Circle: Via'
+    header and the 'LL_*' location suffix) entirely. The measurement VALUES,
+    however, are always complete and always in the same order, so this parser
+    reads only the value lines and ignores every header, location, and ID:
 
-    Note: Via-to-Pad logs do contain absolute Coord. X/Y lines, but they are
-    intentionally not captured here (the downstream VtP views work from shifts).
+        per site, in order:   Diameter(via)  Diameter(pad)  SC  DX  DY
+
+    The first diameter belongs to the Via (inner), the second to the Pad (outer);
+    SC/DX/DY are that site's shift. Each DY closes a site, so a stray value can
+    only disturb its own site, not the ones after it. Site identity (Grid ID and
+    Location) comes from block order via POSITIONAL_MAPPING — site 0 is the first
+    grid in that list, site 1 the second, and so on.
+
+    Coord. X/Y lines are present in the file but intentionally not captured (the
+    downstream VtP views work from shifts). Point counts ('From N Pts.') are read
+    from Circle headers when present, on a best-effort basis.
     """
-    # --- Segment the file into marker-led blocks. ------------------------- #
-    # Each 'Circle:'/'Distance:' line opens a segment; the indented lines below
-    # it form that segment's body. Preamble/header lines are ignored naturally.
-    markers: list = []  # (kind, marker_line, body_lines)
-    body: Optional[list] = None
+    positional = settings.get('POSITIONAL_MAPPING', [])
+    # Reverse GRID_MAPPING so a positional Grid ID yields its location name, with
+    # no dependence on the (possibly missing) location label in the file.
+    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
+
+    rows: list = []
+    block_index = 0
+    diams: list = []          # diameters seen in the current site, in order
+    pending_pts: list = []    # 'From N Pts.' from Circle headers in the current site
+    sc = dx = dy = None
+
     for line in content.splitlines():
         s = line.strip()
         if s.startswith("Circle:"):
-            kind = "via" if "Via" in s else "pad" if "Pad" in s else "circle"
-            body = []
-            markers.append((kind, s, body))
-        elif s.startswith("Distance:"):
-            body = []
-            markers.append(("distance", s, body))
-        elif body is not None:
-            body.append(line)
-
-    # --- Assemble one row per Via-led block, in order. ------------------- #
-    rows: list = []
-    block_index = 0  # site ordinal; advances per Via block even when skipped
-    i, n = 0, len(markers)
-    while i < n:
-        kind, marker, via_body = markers[i]
-        if kind != "via":
-            i += 1
-            continue
-
-        # Collect this site's pad + distance segments up to the next Via block.
-        pad_marker: Optional[str] = None
-        pad_body: Optional[list] = None
-        dist_body: Optional[list] = None
-        j = i + 1
-        while j < n and markers[j][0] != "via":
-            k2, m2, b2 = markers[j]
-            if k2 == "pad" and pad_body is None:
-                pad_marker, pad_body = m2, b2
-            elif k2 == "distance" and dist_body is None:
-                dist_body = b2
-            j += 1
-
-        sc = _find_value(dist_body, 'SC') if dist_body is not None else None
-        dx = _find_value(dist_body, 'DX') if dist_body is not None else None
-        dy = _find_value(dist_body, 'DY') if dist_body is not None else None
-
-        if sc is None and dx is None and dy is None:
-            logger.warning(
-                "Via-to-Pad block %d (%s) has no SC/DX/DY measurement; skipping it.",
-                block_index, _location_from_marker(marker, 'Via') or 'unknown',
-            )
+            m = _PTS_RE.search(s)
+            pending_pts.append(int(m.group(1)) if m else None)
+        elif s.startswith("Diameter"):
+            diams.append(_value_after_equals(s))
+        elif s.startswith("SC"):
+            sc = _value_after_equals(s)
+        elif s.startswith("DX"):
+            dx = _value_after_equals(s)
+        elif s.startswith("DY"):
+            # DY is the last value of a site — close it out and emit.
+            dy = _value_after_equals(s)
+            grid_id = int(positional[block_index]) if block_index < len(positional) else None
+            current: Dict[str, Any] = {
+                'location': reverse_grid.get(grid_id, ''),
+                'via_diameter': diams[0] if len(diams) > 0 else None,
+                'pad_diameter': diams[1] if len(diams) > 1 else None,
+                'via_pts': pending_pts[0] if len(pending_pts) > 0 else None,
+                'pad_pts': pending_pts[1] if len(pending_pts) > 1 else None,
+                'sc': sc, 'dx': dx, 'dy': dy,
+            }
+            rows.append(_emit_row(current, block_index, settings))
             block_index += 1
-            i = j
-            continue
-
-        via_pts_m = _PTS_RE.search(marker)
-        current: Dict[str, Any] = {
-            'location': _location_from_marker(marker, 'Via'),
-            'via_pts': int(via_pts_m.group(1)) if via_pts_m else None,
-            'via_diameter': _find_value(via_body, 'Diameter'),
-            'sc': sc, 'dx': dx, 'dy': dy,
-        }
-        if pad_marker is not None:
-            pad_pts_m = _PTS_RE.search(pad_marker)
-            current['pad_pts'] = int(pad_pts_m.group(1)) if pad_pts_m else None
-            current['pad_diameter'] = _find_value(pad_body, 'Diameter')
-
-        rows.append(_emit_row(current, block_index, settings))
-        block_index += 1
-        i = j
+            diams = []
+            pending_pts = []
+            sc = dx = dy = None
 
     if not rows:
         raise QVMParseError("No valid measurement blocks found in the file.")
