@@ -274,59 +274,86 @@ Distance: VtP(ID:3) between Pad(ID:2) and Via(ID:1)
     assert row['X Distance'] == pytest.approx(-0.0004)
 
 
-def test_vtp_missing_diameter_still_emits_row():
-    """A block missing a Diameter line still emits — the diameter is just blank."""
-    content = """
-Circle: Via_LL_2(ID:1, From 70 Pts.)
-Circle: Pad_LL_2(ID:2, From 180 Pts.)
-     Diameter =         0.3089
-Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
-           SC =         0.0037
-           DX =         0.0006
-           DY =         0.0037
+# ---------------------------------------------------------------------------
+# Value-by-position parsing: identity and ownership come from ORDER, never from
+# the Circle/Distance/location headers (the back-side exporter drops those).
+# ---------------------------------------------------------------------------
+
+# Like _MOCK_SETTINGS but with GRID_MAPPING, so the location name is derived from
+# the positional Grid ID (Grid 22 → 'LL_2') with no dependence on file labels.
+_MOCK_SETTINGS_WITH_GRID = {
+    'COLUMN_NAMES': _MOCK_SETTINGS['COLUMN_NAMES'],
+    'POSITIONAL_MAPPING': ['22', '21'],   # site 0 → 22 (LL_2), site 1 → 21 (LL_1)
+    'GRID_MAPPING': {
+        'UL_1': 11, 'UL_2': 12, 'LL_1': 21, 'LL_2': 22, 'LL_3': 23,
+        'LR_1': 31, 'UR_1': 41,
+    },
+}
+
+# Back-side exporter style: the 'Circle: Pad' header and the 'Distance:' header
+# are GONE for site 0 (only the Via header survives), and site 1 has NO header at
+# all — yet every value is present, in order. A by-position parser must still get
+# both sites right.
+VTP_HEADERS_STRIPPED = """
+Circle: Via_LL_2(ID:1, From 105 Pts.)
+     Coord. X =        64.064752
+     Coord. Y =       103.555498
+     Diameter =         0.034249
+     Coord. X =        64.066150
+     Coord. Y =       103.554815
+     Diameter =         0.361774
+           SC =         0.001556
+           DX =        -0.001398
+           DY =         0.000683
+
+     Coord. X =        63.619628
+     Coord. Y =       297.545339
+     Diameter =         0.033642
+     Coord. X =        63.621626
+     Coord. Y =       297.548817
+     Diameter =         0.358952
+           SC =         0.004011
+           DX =        -0.001998
+           DY =        -0.003478
 """
-    df = parse_qvm_content(content, _MOCK_SETTINGS)
-    assert len(df) == 1
-    assert pd.isna(df.iloc[0]['Inner Diameter'])     # via diameter omitted (inner)
-    assert df.iloc[0]['Outer Diameter'] == pytest.approx(0.3089)  # pad diameter (outer)
-    assert df.iloc[0]['PtV Distance'] == pytest.approx(0.0037)
 
 
-def test_vtp_block_missing_measurement_is_skipped_without_shifting_grid_ids():
-    """A middle block with no SC/DX/DY is dropped, but the site ordinal still
-    advances so the surviving block after the gap keeps its correct Grid ID."""
-    settings = {
-        'COLUMN_NAMES': _MOCK_SETTINGS['COLUMN_NAMES'],
-        'POSITIONAL_MAPPING': ['22', '21', '23'],  # site0→22, site1→21, site2→23
-    }
-    content = """
-Circle: Via_LL_2(ID:1, From 70 Pts.)
-     Diameter =         0.0167
-Circle: Pad_LL_2(ID:2, From 180 Pts.)
-     Diameter =         0.3089
-Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
-           SC =         0.0037
-           DX =         0.0006
-           DY =         0.0037
-
-Circle: Via_LL_1(ID:4, From 70 Pts.)
-     Diameter =         0.0170
-Circle: Pad_LL_1(ID:5, From 180 Pts.)
-     Diameter =         0.3050
-
-Circle: Via_LL_3(ID:7, From 85 Pts.)
-     Diameter =         0.0344
-Circle: Pad_LL_3(ID:8, From 61 Pts.)
-     Diameter =         0.3688
-Distance: VtP_LL_3(ID:9) between Pad_LL_3(ID:8) and Via_LL_3(ID:7)
-           SC =         0.0009
-           DX =         0.0001
-           DY =        -0.0009
-"""
-    df = parse_qvm_content(content, settings)
-    # Middle site (LL_1) had no Distance block → skipped; two rows survive.
+def test_value_ownership_is_by_position():
+    """1st diameter → Via (inner), 2nd diameter → Pad (outer); SC/DX/DY → shift —
+    decided purely by order, with the headers present."""
+    df = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
-    assert df['Location'].tolist() == ['LL_2', 'LL_3']
-    # The survivor after the gap still maps to 23, proving the ordinal advanced
-    # across the skipped site instead of collapsing to 21.
-    assert df['Grid ID'].tolist() == [22, 23]
+    r = df.iloc[0]
+    assert r['Inner Diameter'] == pytest.approx(0.016742)   # 1st diameter = via
+    assert r['Outer Diameter'] == pytest.approx(0.308911)   # 2nd diameter = pad
+    assert r['PtV Distance'] == pytest.approx(0.003728)
+
+
+def test_grid_and_location_come_from_block_position():
+    """Grid ID is assigned by block order via POSITIONAL_MAPPING, and Location is
+    derived from that (Grid 22 → 'LL_2') — not read from the file's labels."""
+    df = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS_WITH_GRID)
+    assert df['Grid ID'].tolist() == [22, 21]
+    assert df['Location'].tolist() == ['LL_2', 'LL_1']
+
+
+def test_parses_when_pad_and_distance_headers_are_stripped():
+    """The crux: with the Pad/Distance headers removed (and one site fully
+    header-less), the values still parse by position into correct sites."""
+    df = parse_qvm_content(VTP_HEADERS_STRIPPED, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    assert (df['Process'] == 'Via to Pad').all()
+    # Identity still correct, taken from block position.
+    assert df['Grid ID'].tolist() == [22, 21]
+    assert df['Location'].tolist() == ['LL_2', 'LL_1']
+    # Ownership still correct: 1st diameter → via, 2nd → pad.
+    assert df.iloc[0]['Inner Diameter'] == pytest.approx(0.034249)
+    assert df.iloc[0]['Outer Diameter'] == pytest.approx(0.361774)
+    assert df.iloc[1]['Inner Diameter'] == pytest.approx(0.033642)
+    assert df.iloc[1]['Outer Diameter'] == pytest.approx(0.358952)
+    # Shifts mapped to the right site in order.
+    assert df['PtV Distance'].tolist() == pytest.approx([0.001556, 0.004011])
+    # Point counts are best-effort from whatever Circle headers survived: site 0
+    # kept its Via header (105 pts); site 1 had none.
+    assert df.iloc[0]['Via Pts.'] == 105
+    assert pd.isna(df.iloc[1]['Via Pts.'])
