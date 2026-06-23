@@ -244,23 +244,27 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
 
     The first diameter belongs to the Via (inner), the second to the Pad (outer);
     SC/DX/DY are that site's shift. Each DY closes a site, so a stray value can
-    only disturb its own site, not the ones after it. Site identity (Grid ID and
-    Location) comes from block order via POSITIONAL_MAPPING — site 0 is the first
-    grid in that list, site 1 the second, and so on.
+    only disturb its own site, not the ones after it.
+
+    When 'Circle: Via_<loc>' headers are present, the location suffix is extracted
+    and cross-checked against POSITIONAL_MAPPING. A warning is logged if the order
+    in the file differs from what POSITIONAL_MAPPING expects. When the suffix is
+    absent (back-side files), site identity falls back to block order as before.
 
     Coord. X/Y lines are present in the file but intentionally not captured (the
     downstream VtP views work from shifts). Point counts ('From N Pts.') are read
     from Circle headers when present, on a best-effort basis.
     """
     positional = settings.get('POSITIONAL_MAPPING', [])
-    # Reverse GRID_MAPPING so a positional Grid ID yields its location name, with
-    # no dependence on the (possibly missing) location label in the file.
-    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
+    grid_mapping = settings.get('GRID_MAPPING', {})
+    # Reverse GRID_MAPPING so a positional Grid ID yields its location name.
+    reverse_grid = {int(v): k for k, v in grid_mapping.items()}
 
     rows: list = []
     block_index = 0
     diams: list = []          # diameters seen in the current site, in order
     pending_pts: list = []    # 'From N Pts.' from Circle headers in the current site
+    header_location: Optional[str] = None   # location suffix from Circle: Via_ header
     sc = dx = dy = None
 
     for line in content.splitlines():
@@ -268,6 +272,11 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
         if s.startswith("Circle:"):
             m = _PTS_RE.search(s)
             pending_pts.append(int(m.group(1)) if m else None)
+            # Best-effort: extract location suffix from Via header when present.
+            if "Via_" in s:
+                loc = s.split('(')[0].replace('Circle: Via_', '').strip()
+                if loc:
+                    header_location = loc
         elif s.startswith("Diameter"):
             diams.append(_value_after_equals(s))
         elif s.startswith("SC"):
@@ -277,9 +286,21 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
         elif s.startswith("DY"):
             # DY is the last value of a site — close it out and emit.
             dy = _value_after_equals(s)
-            grid_id = int(positional[block_index]) if block_index < len(positional) else None
+            expected_grid_id = int(positional[block_index]) if block_index < len(positional) else None
+            expected_location = reverse_grid.get(expected_grid_id, '')
+            if header_location:
+                if header_location != expected_location:
+                    logger.warning(
+                        "Via-to-Pad block %d: header says %r but POSITIONAL_MAPPING "
+                        "expected %r — fiducial order may have changed. "
+                        "Using header-derived location.",
+                        block_index, header_location, expected_location,
+                    )
+                location = header_location
+            else:
+                location = expected_location
             current: Dict[str, Any] = {
-                'location': reverse_grid.get(grid_id, ''),
+                'location': location,
                 'via_diameter': diams[0] if len(diams) > 0 else None,
                 'pad_diameter': diams[1] if len(diams) > 1 else None,
                 'via_pts': pending_pts[0] if len(pending_pts) > 0 else None,
@@ -290,6 +311,7 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
             block_index += 1
             diams = []
             pending_pts = []
+            header_location = None
             sc = dx = dy = None
 
     if not rows:
