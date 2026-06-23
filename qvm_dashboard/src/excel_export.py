@@ -144,6 +144,33 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
 # Sheet builders
 # ---------------------------------------------------------------------------
 
+def _warnings_sheet(ws, warnings: list) -> None:
+    """Write parser warnings into a worksheet, one per row.
+
+    Header row is bold with a red background. If there are no warnings, a
+    placeholder 'No warnings for this file.' message is written.
+    """
+    try:
+        import openpyxl.styles as xl_styles
+    except ImportError:
+        return
+
+    header_fill = xl_styles.PatternFill(
+        fill_type='solid', fgColor='C00000')  # dark red
+    header_font = xl_styles.Font(bold=True, color='FFFFFF')
+
+    ws.column_dimensions['A'].width = 100
+    ws['A1'] = 'Warnings'
+    ws['A1'].fill = header_fill
+    ws['A1'].font = header_font
+
+    if not warnings:
+        ws['A2'] = 'No warnings for this file.'
+    else:
+        for i, msg in enumerate(warnings, start=2):
+            ws.cell(row=i, column=1, value=msg)
+
+
 def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
     """Measurement data frame ready to write (Grid ID column renamed)."""
     return df.copy().rename(columns={grid_id_col: 'Grid ID'})
@@ -188,13 +215,15 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: st
 def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
                             filtered_df: pd.DataFrame, settings: dict, meta: dict,
                             grid_id_col: str, sheet_base: str, usl_col_name: str,
-                            usl_value: float, include_xy_usl: bool) -> None:
+                            usl_value: float, include_xy_usl: bool,
+                            warnings: list = None) -> None:
     """Shared workbook builder for both Pad-to-Via and Via-to-Pad exports.
 
     Sheets written:
     - '<sheet_base>' (or '<sheet_base> - F/B') — measurement data + Panel Map reference
     - 'Report' — full metadata + measurements + USL reference column(s)
     - 'Analytics' (or 'Analytics - F/B') — all four registration charts
+    - 'Warnings' — parser warnings (empty message if none)
 
     `sheet_base` is 'Pad to Via' or 'Via to Pad'; `usl_col_name`/`usl_value`/
     `include_xy_usl` parametrise the Report sheet's spec-limit columns.
@@ -238,21 +267,27 @@ def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
     else:
         _add_analytics_sheet(writer, filtered_df, settings, sheet_label='Analytics')
 
+    # Warnings sheet — parser warnings from all uploaded files
+    ws_warn = writer.book.create_sheet('Warnings')
+    _warnings_sheet(ws_warn, warnings or [])
+
 
 def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
                     filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str) -> None:
+                    meta: dict, grid_id_col: str,
+                    warnings: list = None) -> None:
     """Write Via-to-Pad data + embedded charts into the given ExcelWriter."""
     usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
     _write_process_workbook(
         writer, display_df, filtered_df, settings, meta, grid_id_col,
         sheet_base='Via to Pad', usl_col_name='VtP_USL',
-        usl_value=usl, include_xy_usl=True)
+        usl_value=usl, include_xy_usl=True, warnings=warnings)
 
 
 def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
                     filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str) -> None:
+                    meta: dict, grid_id_col: str,
+                    warnings: list = None) -> None:
     """Write Pad-to-Via data + embedded charts into the given ExcelWriter.
 
     Mirrors the Via-to-Pad workbook structure (data + Report + Analytics charts),
@@ -262,4 +297,4 @@ def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
     _write_process_workbook(
         writer, display_df, filtered_df, settings, meta, grid_id_col,
         sheet_base='Pad to Via', usl_col_name='PtV_USL',
-        usl_value=usl, include_xy_usl=False)
+        usl_value=usl, include_xy_usl=False, warnings=warnings)

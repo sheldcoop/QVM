@@ -173,14 +173,17 @@ component breakdown.
             return
 
         import openpyxl  # noqa: F401 — ensure engine available
+        parse_warnings = st.session_state.get('parse_warnings', [])
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             try:
                 if is_via_to_pad:
                     write_vtp_excel(writer, display_df, filtered_df,
-                                    self.settings, meta, grid_id_col)
+                                    self.settings, meta, grid_id_col,
+                                    warnings=parse_warnings)
                 else:
                     write_ptv_excel(writer, display_df, filtered_df,
-                                    self.settings, meta, grid_id_col)
+                                    self.settings, meta, grid_id_col,
+                                    warnings=parse_warnings)
             except Exception as exc:
                 logger.warning('Excel export error — writing fallback sheet: %s',
                                exc, exc_info=True)

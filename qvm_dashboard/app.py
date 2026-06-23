@@ -72,6 +72,9 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
     Views pull their own settings slices from `self.settings` via BaseView, so
     only the per-render context (is_via_to_pad, meta) needs threading here.
     """
+    for w in st.session_state.get('parse_warnings', []):
+        st.warning(w)
+
     if sub_view == "Quality Control":
         QualityControlView(settings).render(
             filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
@@ -152,13 +155,15 @@ def main() -> None:
     # the file contents, not the filename. The filename only contributes Panel
     # and Side metadata, plus a hint we use to warn the user about mis-naming.
     all_data = []
+    all_warnings = []
     if uploaded_files:
         for file in uploaded_files:
             logger.info('Parsing file: %s', file.name)
             try:
                 filename_info = parse_filename(file.name)
                 content = file.getvalue().decode('utf-8')
-                df = parse_qvm_content(content, settings)
+                df, file_warnings = parse_qvm_content(content, settings)
+                all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),
                             df['Process'].iloc[0] if not df.empty else 'unknown')
@@ -188,6 +193,8 @@ def main() -> None:
                     f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
                     f"**{detected}**. Going with the content."
                 )
+
+    st.session_state['parse_warnings'] = all_warnings
 
     # --- Top-Level Navigation ---
     main_view = render_nav_buttons(
