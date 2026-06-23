@@ -72,7 +72,7 @@ def test_parse_qvm_content_valid(mock_settings):
         'POSITIONAL_MAPPING': ['22'],
     }
 
-    df = parse_qvm_content(VALID_CONTENT)
+    df, _ = parse_qvm_content(VALID_CONTENT)
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 1
 
@@ -184,7 +184,7 @@ _MOCK_SETTINGS = {
 
 
 def test_pad_to_via_multi_block():
-    df = parse_qvm_content(PTV_TWO_BLOCKS, _MOCK_SETTINGS)
+    df, _ = parse_qvm_content(PTV_TWO_BLOCKS, _MOCK_SETTINGS)
     assert len(df) == 2
     # Each row is tagged as Pad to Via via content sniffing.
     assert (df['Process'] == 'Pad to Via').all()
@@ -195,7 +195,7 @@ def test_pad_to_via_multi_block():
 
 
 def test_via_to_pad_multi_block():
-    df = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS)
+    df, _ = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS)
     assert len(df) == 2
     assert (df['Process'] == 'Via to Pad').all()
     assert df['Grid ID'].tolist() == [22, 21]
@@ -206,8 +206,8 @@ def test_via_to_pad_multi_block():
 
 def test_content_sniffing_tags_process_correctly():
     """Filename-agnostic routing: the parser tags Process from content order."""
-    ptv = parse_qvm_content(PTV_TWO_BLOCKS, _MOCK_SETTINGS)
-    vtp = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS)
+    ptv, _ = parse_qvm_content(PTV_TWO_BLOCKS, _MOCK_SETTINGS)
+    vtp, _ = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS)
     assert ptv['Process'].iloc[0] == 'Pad to Via'
     assert vtp['Process'].iloc[0] == 'Via to Pad'
 
@@ -244,7 +244,7 @@ Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
            DX =         0.0006
            DY =         0.0037
 """
-    df = parse_qvm_content(content, _MOCK_SETTINGS)
+    df, _ = parse_qvm_content(content, _MOCK_SETTINGS)
     assert len(df) == 1
     assert df.iloc[0]['Process'] == 'Via to Pad'
     assert pd.isna(df.iloc[0]['Via Pts.'])
@@ -265,7 +265,7 @@ Distance: VtP(ID:3) between Pad(ID:2) and Via(ID:1)
            DX =        -0.0004
            DY =         0.0005
 """
-    df = parse_qvm_content(content, _MOCK_SETTINGS)
+    df, _ = parse_qvm_content(content, _MOCK_SETTINGS)
     assert len(df) == 1
     row = df.iloc[0]
     assert row['Location'] == ''           # suffix absent → blank, not garbage
@@ -321,7 +321,7 @@ Circle: Via_LL_2(ID:1, From 105 Pts.)
 def test_value_ownership_is_by_position():
     """1st diameter → Via (inner), 2nd diameter → Pad (outer); SC/DX/DY → shift —
     decided purely by order, with the headers present."""
-    df = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS_WITH_GRID)
+    df, _ = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
     r = df.iloc[0]
     assert r['Inner Diameter'] == pytest.approx(0.016742)   # 1st diameter = via
@@ -332,7 +332,7 @@ def test_value_ownership_is_by_position():
 def test_grid_and_location_come_from_block_position():
     """Grid ID is assigned by block order via POSITIONAL_MAPPING, and Location is
     derived from that (Grid 22 → 'LL_2') — not read from the file's labels."""
-    df = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS_WITH_GRID)
+    df, _ = parse_qvm_content(VTP_TWO_BLOCKS, _MOCK_SETTINGS_WITH_GRID)
     assert df['Grid ID'].tolist() == [22, 21]
     assert df['Location'].tolist() == ['LL_2', 'LL_1']
 
@@ -340,7 +340,7 @@ def test_grid_and_location_come_from_block_position():
 def test_parses_when_pad_and_distance_headers_are_stripped():
     """The crux: with the Pad/Distance headers removed (and one site fully
     header-less), the values still parse by position into correct sites."""
-    df = parse_qvm_content(VTP_HEADERS_STRIPPED, _MOCK_SETTINGS_WITH_GRID)
+    df, _ = parse_qvm_content(VTP_HEADERS_STRIPPED, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
     assert (df['Process'] == 'Via to Pad').all()
     # Identity still correct, taken from block position.
@@ -357,3 +357,186 @@ def test_parses_when_pad_and_distance_headers_are_stripped():
     # kept its Via header (105 pts); site 1 had none.
     assert df.iloc[0]['Via Pts.'] == 105
     assert pd.isna(df.iloc[1]['Via Pts.'])
+
+
+# ---------------------------------------------------------------------------
+# Fiducial order cross-checking: header-derived location vs POSITIONAL_MAPPING
+# ---------------------------------------------------------------------------
+
+# Two-block content where headers say LL_2 first, then LL_1 — matching the
+# default POSITIONAL_MAPPING order [22 (LL_2), 21 (LL_1)].
+_VTP_ORDER_MATCHES = """
+Circle: Via_LL_2(ID:1, From 70 Pts.)
+     Diameter =         0.016742
+Circle: Pad_LL_2(ID:2, From 180 Pts.)
+     Diameter =         0.308911
+Distance: VtP_LL_2(ID:3) between Pad_LL_2 and Via_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+
+Circle: Via_LL_1(ID:4, From 70 Pts.)
+     Diameter =         0.0170
+Circle: Pad_LL_1(ID:5, From 180 Pts.)
+     Diameter =         0.3050
+Distance: VtP_LL_1(ID:6) between Pad_LL_1 and Via_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+"""
+
+# Same two blocks but with fiducial order SWAPPED: LL_1 first, then LL_2.
+# POSITIONAL_MAPPING still expects LL_2 first — this should trigger a warning.
+_VTP_ORDER_SWAPPED = """
+Circle: Via_LL_1(ID:1, From 70 Pts.)
+     Diameter =         0.0170
+Circle: Pad_LL_1(ID:2, From 180 Pts.)
+     Diameter =         0.3050
+Distance: VtP_LL_1(ID:3) between Pad_LL_1 and Via_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+
+Circle: Via_LL_2(ID:4, From 70 Pts.)
+     Diameter =         0.016742
+Circle: Pad_LL_2(ID:5, From 180 Pts.)
+     Diameter =         0.308911
+Distance: VtP_LL_2(ID:6) between Pad_LL_2 and Via_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def test_vtp_order_matches_no_warning(caplog):
+    """When header locations agree with POSITIONAL_MAPPING order, no warning is logged."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df, _ = parse_qvm_content(_VTP_ORDER_MATCHES, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    assert df['Location'].tolist() == ['LL_2', 'LL_1']
+    assert df['Grid ID'].tolist() == [22, 21]
+    assert not any('fiducial order' in r.message.lower() for r in caplog.records)
+
+
+def test_vtp_order_mismatch_warns_and_uses_header_location(caplog):
+    """When fiducials arrive in a different order than POSITIONAL_MAPPING, a warning
+    is logged and the header-derived location is used (not the positional one)."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df, _ = parse_qvm_content(_VTP_ORDER_SWAPPED, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    # Locations follow the headers (LL_1 arrived first in the file).
+    assert df['Location'].tolist() == ['LL_1', 'LL_2']
+    # At least one mismatch warning was emitted.
+    mismatch_warnings = [r for r in caplog.records if 'fiducial order' in r.message.lower()]
+    assert len(mismatch_warnings) >= 1
+
+
+def test_vtp_no_suffix_falls_back_to_positional_no_warning(caplog):
+    """Bare 'Circle: Via(...)' with no location suffix falls back to positional
+    mapping silently — no spurious mismatch warning should be raised."""
+    import logging
+    content = """
+Circle: Via(ID:1, From 65 Pts.)
+     Diameter =         0.0332
+Circle: Pad(ID:2, From 58 Pts.)
+     Diameter =         0.3680
+Distance: VtP(ID:3)
+           SC =         0.0007
+           DX =        -0.0004
+           DY =         0.0005
+"""
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df, _ = parse_qvm_content(content, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 1
+    assert df.iloc[0]['Grid ID'] == 22       # from POSITIONAL_MAPPING[0]
+    assert not any('fiducial order' in r.message.lower() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Pad-to-Via fiducial order cross-checking (mirrors the Via-to-Pad tests above)
+# ---------------------------------------------------------------------------
+
+# Pad-circle-first blocks; headers say LL_2 then LL_1 — matches POSITIONAL_MAPPING [22, 21].
+_PTV_ORDER_MATCHES = """
+Circle: Pad_LL_2(ID:1, From 180 Pts.)
+     Coord. X =        63.857203
+     Coord. Y =       104.634501
+     Diameter =         0.308911
+Circle: Via_LL_2(ID:2, From 70 Pts.)
+     Coord. X =        63.856611
+     Coord. Y =       104.630820
+     Diameter =         0.016742
+Distance: PtV_LL_2(ID:3) between Via_LL_2 and Pad_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+
+Circle: Pad_LL_1(ID:4, From 180 Pts.)
+     Coord. X =        63.10
+     Coord. Y =       104.10
+     Diameter =         0.3050
+Circle: Via_LL_1(ID:5, From 70 Pts.)
+     Coord. X =        63.11
+     Coord. Y =       104.12
+     Diameter =         0.0170
+Distance: PtV_LL_1(ID:6) between Via_LL_1 and Pad_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+"""
+
+# Same two blocks but fiducial order SWAPPED: LL_1 first, then LL_2.
+# POSITIONAL_MAPPING still expects LL_2 first — this should trigger a warning.
+_PTV_ORDER_SWAPPED = """
+Circle: Pad_LL_1(ID:1, From 180 Pts.)
+     Coord. X =        63.10
+     Coord. Y =       104.10
+     Diameter =         0.3050
+Circle: Via_LL_1(ID:2, From 70 Pts.)
+     Coord. X =        63.11
+     Coord. Y =       104.12
+     Diameter =         0.0170
+Distance: PtV_LL_1(ID:3) between Via_LL_1 and Pad_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+
+Circle: Pad_LL_2(ID:4, From 180 Pts.)
+     Coord. X =        63.857203
+     Coord. Y =       104.634501
+     Diameter =         0.308911
+Circle: Via_LL_2(ID:5, From 70 Pts.)
+     Coord. X =        63.856611
+     Coord. Y =       104.630820
+     Diameter =         0.016742
+Distance: PtV_LL_2(ID:6) between Via_LL_2 and Pad_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def test_ptv_order_matches_no_warning(caplog):
+    """Pad-to-Via: when header locations agree with POSITIONAL_MAPPING, no warning."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df, _ = parse_qvm_content(_PTV_ORDER_MATCHES, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    assert (df['Process'] == 'Pad to Via').all()
+    assert df['Location'].tolist() == ['LL_2', 'LL_1']
+    assert df['Grid ID'].tolist() == [22, 21]
+    assert not any('fiducial order' in r.message.lower() for r in caplog.records)
+
+
+def test_ptv_order_mismatch_warns_and_uses_header_location(caplog):
+    """Pad-to-Via: when fiducials arrive out of order, warn and follow the header label."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df, _ = parse_qvm_content(_PTV_ORDER_SWAPPED, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    # Locations follow the headers (LL_1 arrived first in the file).
+    assert df['Location'].tolist() == ['LL_1', 'LL_2']
+    mismatch_warnings = [r for r in caplog.records if 'fiducial order' in r.message.lower()]
+    assert len(mismatch_warnings) >= 1

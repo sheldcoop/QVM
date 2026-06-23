@@ -92,11 +92,14 @@ The top navigation bar has four tabs:
 ### Quality Control
 Table of all measurements with pass/fail color coding against tolerances defined in `settings.yaml`. Includes an Excel export button. The export drops entirely-null columns (e.g., `Coord. X` / `Coord. Y` are omitted for VtP files since those files have no coordinates).
 
-### Analytics (PtV only)
-Two plot types:
+### Analytics
+Pad-to-Via and Via-to-Pad share an identical 3-tab registration layout:
 
-- **Quiver/Vector Plot** — Directional error vectors at each fiducial site, color-coded by distortion class (red = expansion/shrinkage, gold = twist, blue = global offset). Includes a sensitivity slider to amplify small errors. Also shows the Root Cause Confidence Engine (Bayesian classifier scoring Expansion, Shrinkage, Twist, Offset) and CAM Compensation Estimate (net ppm shift guidance).
-- **Heatmap** — Color-coded grid showing measurement magnitude across the 4×4 fiducial grid.
+- **Registration Scatter** — DX/DY bullseye with concentric tolerance rings plus per-site SC bars.
+- **Quiver Plot** — Directional error vectors at each fiducial site, color-coded by distortion class (red = expansion/shrinkage, gold = twist, blue = global offset), with a sensitivity slider to amplify small errors.
+- **Box Plot** — Panel-level SC distribution with per-quarter boxes.
+
+Pad-to-Via additionally exposes the **2D Spatial Heatmap (Laser Scan Field)** sub-view, which needs the absolute coordinates only PtV files carry.
 
 ### Optical Edge Confidence
 Bar charts scoring how reliably the machine's optical system detected each hole edge. Low point counts (< 40 pts) indicate poor edge detection, often from copper exposure variation or debris. Shows separate charts for Vias and Pads.
@@ -218,9 +221,8 @@ qvm_dashboard/
 │   └── sidebar.py                  # Sidebar: file upload, process limits, nav button renderer
 ├── src/
 │   ├── parser.py                   # QVM text log parser (auto-detects PtV vs VtP)
-│   ├── diagnostics.py              # Root-cause confidence + CAM compensation (pure computation)
 │   ├── panel_mapping.py            # Panel map figure builder (4-quarter Plotly layout)
-│   ├── excel_export.py             # Via-to-Pad Excel report with embedded charts
+│   ├── excel_export.py             # PtV/VtP Excel reports with embedded charts
 │   ├── utils.py                    # load_settings, convert_to_microns, resolve_columns, annular ring
 │   ├── theme.py                    # ONE home for design tokens (Catppuccin palette, grid geometry)
 │   ├── chart_helpers.py            # Reusable chart logic (rings, zone colours, dark layout, cards)
@@ -233,9 +235,8 @@ qvm_dashboard/
 │   └── views/
 │       ├── base.py                 # BaseView: shared chart helpers (height, background, grid)
 │       ├── quality_control.py      # QC table with pass/fail coloring and Excel export
-│       ├── analytics.py            # Quiver/vector plot and heatmap with root cause engine
-│       ├── registration_scatter.py # Via-to-Pad bullseye + per-site SC bars
-│       └── spatial_heatmap.py      # 2D spatial heatmap of error magnitude
+│       ├── registration_scatter.py # Bullseye + per-site SC bars (shared PtV/VtP)
+│       └── spatial_heatmap.py      # 2D spatial heatmap of error magnitude (PtV only)
 └── tests/
     └── ...                         # pytest test suite
 ```

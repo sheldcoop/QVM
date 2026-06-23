@@ -4,11 +4,9 @@ import pandas as pd
 import os
 from pathlib import Path
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
-from src.visuals import plot_quiver, plot_heatmap, plot_vtp_box
+from src.visuals import plot_quiver, plot_vtp_box
 from src.utils import load_settings, calculate_annular_ring
 from src.views.quality_control import QualityControlView
-from src.views.analytics import AnalyticsView
-from src.views.spatial_heatmap import SpatialHeatmapView
 from src.views.registration_scatter import RegistrationScatterView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from src.panel_mapping import create_four_quarters_view
@@ -73,50 +71,62 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
     Views pull their own settings slices from `self.settings` via BaseView, so
     only the per-render context (is_via_to_pad, meta) needs threading here.
     """
+    warnings = st.session_state.get('parse_warnings', [])
+    if warnings:
+        with st.expander(f"⚠️ {len(warnings)} parsing warning(s)", expanded=False):
+            for w in warnings:
+                st.warning(w)
+
     if sub_view == "Quality Control":
         QualityControlView(settings).render(
             filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
 
     elif sub_view == "Analytics":
-        if is_via_to_pad:
-            tab1, tab2, tab3 = st.tabs([
-                "Registration Scatter", "Quiver Plot", "Box Plot",
-            ])
-            with tab1:
-                # Side selector for scatter when both sides uploaded
-                if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
-                    side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
-                    chosen_side_scatter = st.selectbox("Select Side", side_options, key="scatter_side")
-                    scatter_df = filtered_df if chosen_side_scatter == 'Both' else filtered_df[filtered_df['Side'] == chosen_side_scatter].copy()
-                else:
-                    scatter_df = filtered_df.copy()
-                RegistrationScatterView(settings).render(scatter_df)
-            with tab2:
-                # Side selector for quiver — must be single side (16 points only)
-                if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
-                    side_options = sorted(filtered_df['Side'].unique().tolist())
-                    chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")
-                    quiver_df = filtered_df[filtered_df['Side'] == chosen_side].copy()
-                else:
-                    quiver_df = filtered_df.copy()
-                plot_settings = settings.get('PLOT_SETTINGS', {})
-                multiplier = st.slider(
-                    "Vector Multiplier",
-                    min_value=plot_settings.get('vector_multiplier_min', 1),
-                    max_value=plot_settings.get('vector_multiplier_max', 100),
-                    value=plot_settings.get('vector_multiplier_default', 50),
-                    step=1,
-                    help="Exaggerates arrow length for visibility")
-                fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
-                st.plotly_chart(fig_q, use_container_width=True)
-            with tab3:
-                fig = plot_vtp_box(filtered_df, settings)
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            AnalyticsView(settings).render(filtered_df)
+        # Both processes share the same registration analytics layout.
+        _render_registration_analytics(filtered_df, settings)
 
-    elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
-        SpatialHeatmapView(settings).render(filtered_df)
+
+
+def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
+    """Render the shared 3-tab registration analytics used by both processes.
+
+    Tabs: Registration Scatter, Quiver Plot, Box Plot. (No regression
+    diagnostics or 4×4 heatmap — those were Pad-to-Via-only and removed so the
+    two processes present an identical analytics surface.)
+    """
+    tab1, tab2, tab3 = st.tabs([
+        "Registration Scatter", "Quiver Plot", "Box Plot",
+    ])
+    with tab1:
+        # Side selector for scatter when both sides uploaded
+        if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
+            side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
+            chosen_side_scatter = st.selectbox("Select Side", side_options, key="scatter_side")
+            scatter_df = filtered_df if chosen_side_scatter == 'Both' else filtered_df[filtered_df['Side'] == chosen_side_scatter].copy()
+        else:
+            scatter_df = filtered_df.copy()
+        RegistrationScatterView(settings).render(scatter_df)
+    with tab2:
+        # Side selector for quiver — must be single side (16 points only)
+        if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
+            side_options = sorted(filtered_df['Side'].unique().tolist())
+            chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")
+            quiver_df = filtered_df[filtered_df['Side'] == chosen_side].copy()
+        else:
+            quiver_df = filtered_df.copy()
+        plot_settings = settings.get('PLOT_SETTINGS', {})
+        multiplier = st.slider(
+            "Vector Multiplier",
+            min_value=plot_settings.get('vector_multiplier_min', 1),
+            max_value=plot_settings.get('vector_multiplier_max', 100),
+            value=plot_settings.get('vector_multiplier_default', 50),
+            step=1,
+            help="Exaggerates arrow length for visibility")
+        fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
+        st.plotly_chart(fig_q, use_container_width=True)
+    with tab3:
+        fig = plot_vtp_box(filtered_df, settings)
+        st.plotly_chart(fig, use_container_width=True)
 
 
 
@@ -145,13 +155,15 @@ def main() -> None:
     # the file contents, not the filename. The filename only contributes Panel
     # and Side metadata, plus a hint we use to warn the user about mis-naming.
     all_data = []
+    all_warnings = []
     if uploaded_files:
         for file in uploaded_files:
             logger.info('Parsing file: %s', file.name)
             try:
                 filename_info = parse_filename(file.name)
                 content = file.getvalue().decode('utf-8')
-                df = parse_qvm_content(content, settings)
+                df, file_warnings = parse_qvm_content(content, settings)
+                all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),
                             df['Process'].iloc[0] if not df.empty else 'unknown')
@@ -181,6 +193,8 @@ def main() -> None:
                     f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
                     f"**{detected}**. Going with the content."
                 )
+
+    st.session_state['parse_warnings'] = all_warnings
 
     # --- Top-Level Navigation ---
     main_view = render_nav_buttons(
@@ -219,8 +233,7 @@ def main() -> None:
         st.markdown("<br>", unsafe_allow_html=True)
 
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics",
-             "2D Spatial Heatmap (Laser Scan Field)"],
+            ["Quality Control", "Analytics"],
             state_key="ptv_sub_view",
             default="Quality Control",
         )

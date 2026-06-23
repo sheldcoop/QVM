@@ -28,8 +28,6 @@ class RegistrationScatterView(BaseView):
 
         vtp_cfg = self.settings.get('VTP_REGISTRATION', {})
         ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
-        ring_excellent = float(vtp_cfg.get('ring_excellent_um', 5.0))
-        ring_good = float(vtp_cfg.get('ring_good_um', 7.5))
         ring_acceptable = float(vtp_cfg.get('ring_acceptable_um', 10.0))
 
         sc_col = self.col_names.get('ptv_distance', 'PtV Distance')
@@ -68,10 +66,3 @@ class RegistrationScatterView(BaseView):
         with col_right:
             fig_bars = plot_vtp_site_bars(filtered_df, self.settings)
             st.plotly_chart(fig_bars, use_container_width=True)
-            st.caption(
-                f"Tolerance rings: blue ≤ {ring_exceptional:.1f} µm | "
-                f"green {ring_exceptional:.1f}–{ring_excellent:.1f} µm | "
-                f"green {ring_excellent:.1f}–{ring_good:.1f} µm | "
-                f"orange {ring_good:.1f}–{ring_acceptable:.0f} µm | "
-                f"red > {ring_acceptable:.0f} µm"
-            )
