@@ -144,17 +144,47 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
 # Sheet builders
 # ---------------------------------------------------------------------------
 
+def _warnings_sheet(ws, warnings: list) -> None:
+    """Write parser warnings into a worksheet, one per row.
+
+    Header row is bold with a red background. If there are no warnings, a
+    placeholder 'No warnings for this file.' message is written.
+    """
+    try:
+        import openpyxl.styles as xl_styles
+    except ImportError:
+        return
+
+    header_fill = xl_styles.PatternFill(
+        fill_type='solid', fgColor='C00000')  # dark red
+    header_font = xl_styles.Font(bold=True, color='FFFFFF')
+
+    ws.column_dimensions['A'].width = 100
+    ws['A1'] = 'Warnings'
+    ws['A1'].fill = header_fill
+    ws['A1'].font = header_font
+
+    if not warnings:
+        ws['A2'] = 'No warnings for this file.'
+    else:
+        for i, msg in enumerate(warnings, start=2):
+            ws.cell(row=i, column=1, value=msg)
+
+
 def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
     """Measurement data frame ready to write (Grid ID column renamed)."""
     return df.copy().rename(columns={grid_id_col: 'Grid ID'})
 
 
 def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: str,
-                  meta: dict, settings: dict) -> pd.DataFrame:
-    """Full report frame: metadata prepended, USL columns appended."""
-    vtp_cfg = settings.get('VTP_REGISTRATION', {})
-    vtp_usl = float(vtp_cfg.get('vtp_usl_um', 10.0))
+                  meta: dict, usl_col_name: str, usl_value: float,
+                  include_xy_usl: bool = False) -> pd.DataFrame:
+    """Full report frame: metadata prepended, USL reference column(s) appended.
 
+    `usl_col_name`/`usl_value` name the process-specific spec-limit column
+    ('VtP_USL' for Via-to-Pad, 'PtV_USL' for Pad-to-Via). When `include_xy_usl`
+    is set, blank X/Y USL columns are appended too (Via-to-Pad only).
+    """
     s = df.copy()
     grid_str = s[grid_id_col].astype(str).str.zfill(2)
     s.insert(0, 'Fiducial_Number', grid_str.str[1].astype(int))
@@ -169,10 +199,11 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: st
     s.insert(0, 'Project_Name', meta.get('project_name', ''))
     s = s.drop(columns=[grid_id_col])
 
-    # Append USL reference columns (X/Y USL intentionally left blank)
-    s['VtP_USL'] = vtp_usl
-    s['X_USL']   = None
-    s['Y_USL']   = None
+    # Append USL reference column(s) (X/Y USL intentionally left blank)
+    s[usl_col_name] = usl_value
+    if include_xy_usl:
+        s['X_USL'] = None
+        s['Y_USL'] = None
 
     return s
 
@@ -181,15 +212,21 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: st
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                    filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str) -> None:
-    """Write Via-to-Pad data + embedded charts into the given ExcelWriter.
+def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
+                            filtered_df: pd.DataFrame, settings: dict, meta: dict,
+                            grid_id_col: str, sheet_base: str, usl_col_name: str,
+                            usl_value: float, include_xy_usl: bool,
+                            warnings: list = None) -> None:
+    """Shared workbook builder for both Pad-to-Via and Via-to-Pad exports.
 
     Sheets written:
-    - 'Via to Pad' (or 'Via to Pad - F/B') — measurement data + Panel Map reference
-    - 'Report' — full metadata + measurements + USL reference columns
+    - '<sheet_base>' (or '<sheet_base> - F/B') — measurement data + Panel Map reference
+    - 'Report' — full metadata + measurements + USL reference column(s)
     - 'Analytics' (or 'Analytics - F/B') — all four registration charts
+    - 'Warnings' — parser warnings (empty message if none)
+
+    `sheet_base` is 'Pad to Via' or 'Via to Pad'; `usl_col_name`/`usl_value`/
+    `include_xy_usl` parametrise the Report sheet's spec-limit columns.
     """
     sides       = filtered_df['Side'].unique() if 'Side' in filtered_df.columns else []
     side_series = filtered_df['Side'].values   if 'Side' in filtered_df.columns else None
@@ -200,23 +237,25 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
             mask       = filtered_df['Side'] == side
             side_disp  = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
             side_vals  = filtered_df.loc[mask, 'Side'].values
-            sheet_name = f'Via to Pad - {side}'
+            sheet_name = f'{sheet_base} - {side}'
 
             _measurement_sheet(side_disp, grid_id_col).to_excel(
                 writer, sheet_name=sheet_name, index=False)
             ws = writer.sheets[sheet_name]
             _embed_charts(ws, settings, sheet_name)
             report_frames.append(
-                _report_sheet(side_disp, side_vals, grid_id_col, meta, settings))
+                _report_sheet(side_disp, side_vals, grid_id_col, meta,
+                              usl_col_name, usl_value, include_xy_usl))
 
         pd.concat(report_frames, ignore_index=True).to_excel(
             writer, sheet_name='Report', index=False)
     else:
         _measurement_sheet(display_df, grid_id_col).to_excel(
-            writer, sheet_name='Via to Pad', index=False)
-        ws = writer.sheets['Via to Pad']
-        _embed_charts(ws, settings, 'Via to Pad')
-        _report_sheet(display_df, side_series, grid_id_col, meta, settings).to_excel(
+            writer, sheet_name=sheet_base, index=False)
+        ws = writer.sheets[sheet_base]
+        _embed_charts(ws, settings, sheet_base)
+        _report_sheet(display_df, side_series, grid_id_col, meta,
+                      usl_col_name, usl_value, include_xy_usl).to_excel(
             writer, sheet_name='Report', index=False)
 
     # Analytics sheet — one per side when both F and B are present, otherwise one combined
@@ -227,3 +266,35 @@ def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
                                   sheet_label=f'Analytics - {side}')
     else:
         _add_analytics_sheet(writer, filtered_df, settings, sheet_label='Analytics')
+
+    # Warnings sheet — parser warnings from all uploaded files
+    ws_warn = writer.book.create_sheet('Warnings')
+    _warnings_sheet(ws_warn, warnings or [])
+
+
+def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
+                    filtered_df: pd.DataFrame, settings: dict,
+                    meta: dict, grid_id_col: str,
+                    warnings: list = None) -> None:
+    """Write Via-to-Pad data + embedded charts into the given ExcelWriter."""
+    usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
+    _write_process_workbook(
+        writer, display_df, filtered_df, settings, meta, grid_id_col,
+        sheet_base='Via to Pad', usl_col_name='VtP_USL',
+        usl_value=usl, include_xy_usl=True, warnings=warnings)
+
+
+def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
+                    filtered_df: pd.DataFrame, settings: dict,
+                    meta: dict, grid_id_col: str,
+                    warnings: list = None) -> None:
+    """Write Pad-to-Via data + embedded charts into the given ExcelWriter.
+
+    Mirrors the Via-to-Pad workbook structure (data + Report + Analytics charts),
+    keyed on PtV Distance with a configurable PtV USL reference column.
+    """
+    usl = float(settings.get('PTV_REGISTRATION', {}).get('ptv_usl_um', 10.0))
+    _write_process_workbook(
+        writer, display_df, filtered_df, settings, meta, grid_id_col,
+        sheet_base='Pad to Via', usl_col_name='PtV_USL',
+        usl_value=usl, include_xy_usl=False, warnings=warnings)

@@ -87,7 +87,8 @@ _EMIT_KEYS = (
 )
 
 
-def _resolve_grid_id(location: str, block_index: int, settings: dict) -> Optional[int]:
+def _resolve_grid_id(location: str, block_index: int, settings: dict,
+                     warnings: list = None) -> Optional[int]:
     """Resolve a site's Grid ID.
 
     The location name is the source of truth: it maps directly to a Grid ID via
@@ -102,19 +103,53 @@ def _resolve_grid_id(location: str, block_index: int, settings: dict) -> Optiona
     positional_mapping = settings.get('POSITIONAL_MAPPING', [])
     if block_index < len(positional_mapping):
         return int(positional_mapping[block_index])
-    logger.warning(
+    msg = (
         "Location %r not in GRID_MAPPING and block index %d exceeds "
-        "POSITIONAL_MAPPING length %d; Grid ID will be None.",
-        location, block_index, len(positional_mapping),
+        "POSITIONAL_MAPPING length %d; Grid ID will be None."
+        % (location, block_index, len(positional_mapping))
     )
+    logger.warning(msg)
+    if warnings is not None:
+        warnings.append(msg)
     return None
 
 
-def _emit_row(current: Dict[str, Any], block_index: int, settings: dict) -> dict:
+def _resolve_location_with_order_check(header_location: Optional[str],
+                                       block_index: int, settings: dict,
+                                       process_label: str,
+                                       warnings: list = None) -> str:
+    """Resolve a site's location, label-first, warning if the order changed.
+
+    The location read from the file's header label is the source of truth. It is
+    cross-checked against the location POSITIONAL_MAPPING expects for this block
+    position; if they disagree, the fiducials likely arrived out of order, so a
+    warning is logged and the header-derived location is used. When no header
+    label is present, the positional (expected) location is used as a fallback.
+    """
+    positional = settings.get('POSITIONAL_MAPPING', [])
+    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
+    expected_grid_id = int(positional[block_index]) if block_index < len(positional) else None
+    expected_location = reverse_grid.get(expected_grid_id, '')
+    if header_location:
+        if header_location != expected_location:
+            msg = (
+                "%s block %d: header says %r but POSITIONAL_MAPPING expected %r — "
+                "fiducial order may have changed. Using header-derived location."
+                % (process_label, block_index, header_location, expected_location)
+            )
+            logger.warning(msg)
+            if warnings is not None:
+                warnings.append(msg)
+        return header_location
+    return expected_location
+
+
+def _emit_row(current: Dict[str, Any], block_index: int, settings: dict,
+              warnings: list = None) -> dict:
     """Build a single output row dict from the accumulated parser state."""
     cols = resolve_columns(settings, _EMIT_KEYS)
     grid_id: Optional[int] = _resolve_grid_id(
-        current.get('location', ''), block_index, settings)
+        current.get('location', ''), block_index, settings, warnings)
     return {
         cols['location']: current.get('location', ''),
         cols['grid_id']: grid_id,
@@ -151,7 +186,7 @@ def _step_distance_tail(s: str, state: str, current: Dict[str, Any]):
     return state, False
 
 
-def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
+def _parse_pad_to_via(content: str, settings: dict, warnings: list) -> pd.DataFrame:
     """Parse a Pad-to-Via QVM log.
 
     Per-block order in source: Pad circle → Via circle → Distance.
@@ -212,12 +247,18 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
         else:
             state, completed = _step_distance_tail(s, state, current)
             if completed:
-                rows.append(_emit_row(current, block_index, settings))
+                # Label-first identity with a warning if the file's fiducial
+                # order disagrees with POSITIONAL_MAPPING (mirrors Via-to-Pad).
+                current['location'] = _resolve_location_with_order_check(
+                    current.get('location', ''), block_index, settings, "Pad-to-Via", warnings)
+                rows.append(_emit_row(current, block_index, settings, warnings))
                 block_index += 1
                 current = {}
 
     if state != "IDLE":
-        logger.warning("Pad-to-Via file ended mid-block in state %s; trailing data discarded.", state)
+        msg = f"Pad-to-Via file ended mid-block in state {state}; trailing data discarded."
+        logger.warning(msg)
+        warnings.append(msg)
     if not rows:
         raise QVMParseError("No valid measurement blocks found in the file.")
     return pd.DataFrame(rows)
@@ -231,7 +272,7 @@ def _value_after_equals(s: str) -> Optional[float]:
         return None
 
 
-def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
+def _parse_via_to_pad(content: str, settings: dict, warnings: list) -> pd.DataFrame:
     """Parse a Via-to-Pad QVM log purely by VALUE position — never by headers.
 
     The exporter is unreliable about header/label lines: the back-side files drop
@@ -244,23 +285,22 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
 
     The first diameter belongs to the Via (inner), the second to the Pad (outer);
     SC/DX/DY are that site's shift. Each DY closes a site, so a stray value can
-    only disturb its own site, not the ones after it. Site identity (Grid ID and
-    Location) comes from block order via POSITIONAL_MAPPING — site 0 is the first
-    grid in that list, site 1 the second, and so on.
+    only disturb its own site, not the ones after it.
+
+    When 'Circle: Via_<loc>' headers are present, the location suffix is extracted
+    and cross-checked against POSITIONAL_MAPPING. A warning is logged if the order
+    in the file differs from what POSITIONAL_MAPPING expects. When the suffix is
+    absent (back-side files), site identity falls back to block order as before.
 
     Coord. X/Y lines are present in the file but intentionally not captured (the
     downstream VtP views work from shifts). Point counts ('From N Pts.') are read
     from Circle headers when present, on a best-effort basis.
     """
-    positional = settings.get('POSITIONAL_MAPPING', [])
-    # Reverse GRID_MAPPING so a positional Grid ID yields its location name, with
-    # no dependence on the (possibly missing) location label in the file.
-    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
-
     rows: list = []
     block_index = 0
     diams: list = []          # diameters seen in the current site, in order
     pending_pts: list = []    # 'From N Pts.' from Circle headers in the current site
+    header_location: Optional[str] = None   # location suffix from Circle: Via_ header
     sc = dx = dy = None
 
     for line in content.splitlines():
@@ -268,6 +308,11 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
         if s.startswith("Circle:"):
             m = _PTS_RE.search(s)
             pending_pts.append(int(m.group(1)) if m else None)
+            # Best-effort: extract location suffix from Via header when present.
+            if "Via_" in s:
+                loc = s.split('(')[0].replace('Circle: Via_', '').strip()
+                if loc:
+                    header_location = loc
         elif s.startswith("Diameter"):
             diams.append(_value_after_equals(s))
         elif s.startswith("SC"):
@@ -277,19 +322,21 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
         elif s.startswith("DY"):
             # DY is the last value of a site — close it out and emit.
             dy = _value_after_equals(s)
-            grid_id = int(positional[block_index]) if block_index < len(positional) else None
+            location = _resolve_location_with_order_check(
+                header_location, block_index, settings, "Via-to-Pad", warnings)
             current: Dict[str, Any] = {
-                'location': reverse_grid.get(grid_id, ''),
+                'location': location,
                 'via_diameter': diams[0] if len(diams) > 0 else None,
                 'pad_diameter': diams[1] if len(diams) > 1 else None,
                 'via_pts': pending_pts[0] if len(pending_pts) > 0 else None,
                 'pad_pts': pending_pts[1] if len(pending_pts) > 1 else None,
                 'sc': sc, 'dx': dx, 'dy': dy,
             }
-            rows.append(_emit_row(current, block_index, settings))
+            rows.append(_emit_row(current, block_index, settings, warnings))
             block_index += 1
             diams = []
             pending_pts = []
+            header_location = None
             sc = dx = dy = None
 
     if not rows:
@@ -297,33 +344,73 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def parse_qvm_content(content: str, settings: Optional[dict] = None) -> pd.DataFrame:
-    """Parse raw QVM text log content into a Pandas DataFrame.
+def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
+    """Parse raw QVM text log content into a DataFrame plus a list of warnings.
 
     Auto-detects format by checking whether the first 'Circle: Via_' marker
     appears before any 'Circle: Pad_' marker (Via-to-Pad) or after one
     (Pad-to-Via). The resulting DataFrame carries a 'Process' column tagged
     'Via to Pad' or 'Pad to Via' — this is the source of truth for routing,
     regardless of what the user named the file.
+
+    Returns:
+        (df, warnings) where warnings is a list of human-readable warning strings
+        covering: fiducial order mismatches, unresolvable Grid IDs, missing sites,
+        outlier SC distances, and mid-block file truncation.
     """
     if settings is None:
         settings = load_settings()
+    warnings: list = []
     # Underscore-agnostic so a circle missing its location suffix (e.g. a bare
     # 'Circle: Via(ID:1, ...)') is still detected and routed correctly.
     first_via = content.find('Circle: Via')
     first_pad = content.find('Circle: Pad')
     via_first = first_via != -1 and (first_pad == -1 or first_via < first_pad)
     if via_first or 'VtP[' in content:
-        df = _parse_via_to_pad(content, settings)
+        df = _parse_via_to_pad(content, settings, warnings)
         df['Process'] = 'Via to Pad'
     else:
-        df = _parse_pad_to_via(content, settings)
+        df = _parse_pad_to_via(content, settings, warnings)
         df['Process'] = 'Pad to Via'
-    return df
+
+    col_names = settings.get('COLUMN_NAMES', {})
+    grid_id_col_name = col_names.get('grid_id', 'Grid ID')
+    positional = settings.get('POSITIONAL_MAPPING', [])
+    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
+
+    # Warn about fiducials expected by POSITIONAL_MAPPING but absent in the file.
+    if grid_id_col_name in df.columns and positional:
+        present_gids = set(df[grid_id_col_name].dropna().astype(int).tolist())
+        for gid_str in positional:
+            gid = int(gid_str)
+            if gid not in present_gids:
+                loc = reverse_grid.get(gid, f'Grid {gid}')
+                msg = (f"Fiducial {gid} ({loc}) expected by POSITIONAL_MAPPING "
+                       f"but not found in file.")
+                logger.warning(msg)
+                warnings.append(msg)
+
+    # Warn about outlier SC distances (> configurable cap).
+    dist_col_name = col_names.get('ptv_distance', 'PtV Distance')
+    is_vtp = not df.empty and df['Process'].iloc[0] == 'Via to Pad'
+    cfg_key = 'VTP_REGISTRATION' if is_vtp else 'PTV_REGISTRATION'
+    cap_um = float(settings.get(cfg_key, {}).get('outlier_cap_um', 1000.0))
+    cap_mm = cap_um / 1000.0
+    if dist_col_name in df.columns:
+        outliers = df[df[dist_col_name].notna() & (df[dist_col_name].abs() > cap_mm)]
+        for _, row in outliers.iterrows():
+            gid = row.get(grid_id_col_name, 'Unknown')
+            val_um = row[dist_col_name] * 1000
+            msg = (f"Grid ID {gid}: SC = {val_um:.1f} µm — "
+                   f"exceeds outlier cap {cap_um:.0f} µm.")
+            logger.warning(msg)
+            warnings.append(msg)
+
+    return df, warnings
 
 
-def parse_qvm_file(filepath: str, settings: Optional[dict] = None) -> pd.DataFrame:
-    """Read a file and parse it."""
+def parse_qvm_file(filepath: str, settings: Optional[dict] = None) -> tuple:
+    """Read a file and parse it. Returns (df, warnings) — see parse_qvm_content."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()

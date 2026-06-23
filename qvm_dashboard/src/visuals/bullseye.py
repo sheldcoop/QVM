@@ -74,8 +74,8 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     # Summary stats (top left)
     sc = work['sc_um']
     n = int(len(sc))
-    max_sc   = float(sc.max())  if n else 0.0
-    mean_sc  = float(sc.mean()) if n else 0.0
+    max_sc    = float(sc.max())  if n else 0.0
+    mean_sc   = float(sc.mean()) if n else 0.0
     n_outside = int((sc > rings.acceptable).sum())
     fig.add_annotation(
         text=(f"<b>n</b> {n}  •  <b>max SC</b> {max_sc:.1f} µm  •  "
@@ -83,22 +83,6 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         xref='paper', yref='paper', x=0.02, y=0.98,
         xanchor='left', yanchor='top', showarrow=False, align='left',
         font=dict(size=11, color=theme.TEXT),
-        bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
-        borderwidth=1, borderpad=5,
-    )
-    # Zone legend (bottom, centred)
-    _z = theme.ZONE   # short alias to avoid f-string quoting conflicts
-    fig.add_annotation(
-        text=(
-            f"<span style='color:{_z['exceptional']}'>⬤</span> ≤{rings.exceptional:.1f}  "
-            f"<span style='color:{_z['excellent']}'>⬤</span> ≤{rings.excellent:.1f}  "
-            f"<span style='color:{_z['good']}'>⬤</span> ≤{rings.good:.1f}  "
-            f"<span style='color:{_z['acceptable']}'>⬤</span> ≤{rings.acceptable:.1f}  "
-            f"<span style='color:{_z['fail']}'>⬤</span> fail (µm)"
-        ),
-        xref='paper', yref='paper', x=0.5, y=-0.20,
-        xanchor='center', yanchor='top', showarrow=False,
-        font=dict(size=10, color=theme.TEXT),
         bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
         borderwidth=1, borderpad=5,
     )
@@ -116,8 +100,8 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
                    range=[-spread, spread],
                    tickfont=dict(color=theme.TEXT)),
         hovermode='closest',
-        # extra bottom room so the zone legend sits clear of the DX axis title
-        margin=dict(t=55, b=105, l=60, r=60),
+        showlegend=False,
+        margin=dict(t=55, b=55, l=60, r=60),
     )
     return fig
 
@@ -134,6 +118,7 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
     rings  = get_rings(settings)
     height = settings.get('CHART_HEIGHTS', {}).get('site_bars', 450)
+    cap_um = float(settings.get('VTP_REGISTRATION', {}).get('outlier_cap_um', 1000.0))
 
     work = df[[sc_col, loc_col, grid_col]].dropna().copy()
     work['sc_um'] = work[sc_col] * 1000
@@ -146,7 +131,7 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     fig.add_trace(go.Bar(
         x=work[grid_col], y=work['sc_um'],
         marker_color=work['color'],
-        marker_line=dict(width=0),   # no border — colour pops on dark
+        marker_line=dict(width=0),
         customdata=work[[loc_col, 'sc_um']].values,
         hovertemplate=(
             'Grid ID: <b>%{x}</b><br>'
@@ -171,7 +156,20 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
         )
 
     data_max = work['sc_um'].max() if not work.empty else 0.0
-    y_max = max(data_max * 1.3, rings.acceptable * 1.2)
+    y_max = max(min(data_max, cap_um) * 1.3, rings.acceptable * 1.2)
+
+    # Annotate any bar whose value exceeds the cap (it is clipped off-chart).
+    for _, row in work[work['sc_um'] > cap_um].iterrows():
+        fig.add_annotation(
+            x=row[grid_col], y=1.0,
+            xref='x', yref='paper',
+            text=f"{row['sc_um']:.0f} µm ↑",
+            showarrow=True, ax=0, ay=30,
+            arrowhead=2, arrowcolor=theme.ZONE['fail'],
+            font=dict(size=10, color=theme.ZONE['fail']),
+            yanchor='bottom',
+        )
+
     apply_dark_layout(
         fig, height=height,
         title=dict(
@@ -188,6 +186,7 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
             tickfont=dict(color=theme.TEXT),
         ),
         hovermode='x unified',
-        margin=dict(t=55, b=40, l=60, r=110),
+        showlegend=False,
+        margin=dict(t=55, b=55, l=60, r=110),
     )
     return fig

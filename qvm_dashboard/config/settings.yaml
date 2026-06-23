@@ -166,6 +166,12 @@ VTP_REGISTRATION:
   ipc_standard: "IPC-6012 Class 2"
   # USL values added to the Report sheet (X/Y USL are left blank)
   vtp_usl_um: 10.0         # VtP Distance (SC) upper spec limit (µm)
+  outlier_cap_um: 1000.0   # SC values above this (µm) are flagged as outliers
+
+PTV_REGISTRATION:
+  # USL value added to the Pad-to-Via Report sheet (keyed on PtV Distance).
+  ptv_usl_um: 10.0         # PtV Distance upper spec limit (µm) — adjust to taste
+  outlier_cap_um: 1000.0   # SC values above this (µm) are flagged as outliers
 
 EXCEL_EXPORT:
   panel_map_image: "assets/Panel_Map.png"   # path relative to qvm_dashboard/
