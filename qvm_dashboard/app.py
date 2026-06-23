@@ -7,7 +7,6 @@ from src.parser import parse_qvm_content, parse_filename, QVMParseError
 from src.visuals import plot_quiver, plot_vtp_box
 from src.utils import load_settings, calculate_annular_ring
 from src.views.quality_control import QualityControlView
-from src.views.spatial_heatmap import SpatialHeatmapView
 from src.views.registration_scatter import RegistrationScatterView
 from ui.sidebar import render_sidebar, render_nav_buttons
 from src.panel_mapping import create_four_quarters_view
@@ -86,8 +85,6 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
         # Both processes share the same registration analytics layout.
         _render_registration_analytics(filtered_df, settings)
 
-    elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
-        SpatialHeatmapView(settings).render(filtered_df)
 
 
 def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
@@ -236,8 +233,7 @@ def main() -> None:
         st.markdown("<br>", unsafe_allow_html=True)
 
         sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics",
-             "2D Spatial Heatmap (Laser Scan Field)"],
+            ["Quality Control", "Analytics"],
             state_key="ptv_sub_view",
             default="Quality Control",
         )
