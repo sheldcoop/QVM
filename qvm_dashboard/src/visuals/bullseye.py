@@ -2,13 +2,13 @@
 
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Dict, List
+from typing import Dict
 
 from src import theme
 from src.chart_helpers import get_rings, zone_colors, apply_dark_layout
 
 
-def _pass_fail_legend_traces(rings, pass_label: str, fail_label: str) -> List[go.BaseTraceType]:
+def _pass_fail_legend_traces(rings, pass_label: str, fail_label: str) -> list:
     """Two invisible scatter traces that drive a 2-entry Pass/Fail Plotly legend."""
     return [
         go.Scatter(
