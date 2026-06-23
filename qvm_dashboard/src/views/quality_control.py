@@ -198,10 +198,21 @@ component breakdown.
         st.download_button(
             label='📥 Export to Excel',
             data=buffer,
-            file_name=f"QVM_Quality_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            file_name=self._build_filename(is_via_to_pad, meta),
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             type='primary',
         )
+
+    @staticmethod
+    def _build_filename(is_via_to_pad: bool, meta: dict) -> str:
+        prefix = "VtP" if is_via_to_pad else "PtV"
+        parts = [prefix]
+        for key in ('part_number', 'panel', 'lot_number', 'process'):
+            val = str(meta.get(key, '')).strip()
+            if val:
+                parts.append(val)
+        parts.append(pd.Timestamp.now().strftime('%Y%m%d'))
+        return "_".join(parts) + ".xlsx"
 
     @staticmethod
     def _highlight_annular_ring(row, col_name: str, threshold: float):
