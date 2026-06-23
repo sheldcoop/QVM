@@ -207,10 +207,16 @@ component breakdown.
     def _build_filename(is_via_to_pad: bool, meta: dict) -> str:
         prefix = "VtP" if is_via_to_pad else "PtV"
         parts = [prefix]
-        for key in ('build_up', 'part_number', 'panel', 'process'):
+        for key in ('build_up', 'lot_number', 'part_number'):
             val = str(meta.get(key, '')).strip()
             if val:
                 parts.append(val)
+        panel_val = str(meta.get('panel', '')).strip()
+        if panel_val:
+            parts.append(f"Panel-{panel_val}")
+        process_val = str(meta.get('process', '')).strip()
+        if process_val:
+            parts.append(process_val)
         parts.append(pd.Timestamp.now().strftime('%Y%m%d'))
         return "_".join(parts) + ".xlsx"
 
