@@ -2,10 +2,26 @@
 
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Dict
+from typing import Dict, List
 
 from src import theme
 from src.chart_helpers import get_rings, zone_colors, apply_dark_layout
+
+
+def _pass_fail_legend_traces(rings, pass_label: str, fail_label: str) -> List[go.BaseTraceType]:
+    """Two invisible scatter traces that drive a 2-entry Pass/Fail Plotly legend."""
+    return [
+        go.Scatter(
+            x=[None], y=[None], mode='markers',
+            marker=dict(size=12, color=theme.ZONE['acceptable']),
+            name=pass_label, showlegend=True,
+        ),
+        go.Scatter(
+            x=[None], y=[None], mode='markers',
+            marker=dict(size=12, color=theme.ZONE['fail']),
+            name=fail_label, showlegend=True,
+        ),
+    ]
 
 
 def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
@@ -71,6 +87,13 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         showlegend=False,
     ))
 
+    # Pass/Fail legend traces (invisible points that drive the legend)
+    for trace in _pass_fail_legend_traces(
+            rings,
+            pass_label=f'Pass ≤{rings.acceptable:.0f} µm',
+            fail_label=f'Fail >{rings.acceptable:.0f} µm'):
+        fig.add_trace(trace)
+
     # Summary stats (top left)
     sc = work['sc_um']
     n = int(len(sc))
@@ -83,22 +106,6 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         xref='paper', yref='paper', x=0.02, y=0.98,
         xanchor='left', yanchor='top', showarrow=False, align='left',
         font=dict(size=11, color=theme.TEXT),
-        bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
-        borderwidth=1, borderpad=5,
-    )
-    # Zone legend (bottom, centred)
-    _z = theme.ZONE   # short alias to avoid f-string quoting conflicts
-    fig.add_annotation(
-        text=(
-            f"<span style='color:{_z['exceptional']}'>⬤</span> ≤{rings.exceptional:.1f}  "
-            f"<span style='color:{_z['excellent']}'>⬤</span> ≤{rings.excellent:.1f}  "
-            f"<span style='color:{_z['good']}'>⬤</span> ≤{rings.good:.1f}  "
-            f"<span style='color:{_z['acceptable']}'>⬤</span> ≤{rings.acceptable:.1f}  "
-            f"<span style='color:{_z['fail']}'>⬤</span> fail (µm)"
-        ),
-        xref='paper', yref='paper', x=0.5, y=-0.20,
-        xanchor='center', yanchor='top', showarrow=False,
-        font=dict(size=10, color=theme.TEXT),
         bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
         borderwidth=1, borderpad=5,
     )
@@ -116,8 +123,14 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
                    range=[-spread, spread],
                    tickfont=dict(color=theme.TEXT)),
         hovermode='closest',
-        # extra bottom room so the zone legend sits clear of the DX axis title
-        margin=dict(t=55, b=105, l=60, r=60),
+        showlegend=True,
+        legend=dict(
+            x=0.5, y=-0.12, xanchor='center', yanchor='top',
+            orientation='h',
+            bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD, borderwidth=1,
+            font=dict(color=theme.TEXT, size=11),
+        ),
+        margin=dict(t=55, b=85, l=60, r=60),
     )
     return fig
 
@@ -134,6 +147,8 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
     rings  = get_rings(settings)
     height = settings.get('CHART_HEIGHTS', {}).get('site_bars', 450)
+    cfg_key = 'VTP_REGISTRATION'  # both PtV and VtP share the same bar chart fn
+    cap_um = float(settings.get(cfg_key, {}).get('outlier_cap_um', 1000.0))
 
     work = df[[sc_col, loc_col, grid_col]].dropna().copy()
     work['sc_um'] = work[sc_col] * 1000
@@ -146,7 +161,7 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
     fig.add_trace(go.Bar(
         x=work[grid_col], y=work['sc_um'],
         marker_color=work['color'],
-        marker_line=dict(width=0),   # no border — colour pops on dark
+        marker_line=dict(width=0),
         customdata=work[[loc_col, 'sc_um']].values,
         hovertemplate=(
             'Grid ID: <b>%{x}</b><br>'
@@ -156,6 +171,13 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
         ),
         showlegend=False,
     ))
+
+    # Pass/Fail legend traces
+    for trace in _pass_fail_legend_traces(
+            rings,
+            pass_label=f'Pass ≤{rings.acceptable:.0f} µm',
+            fail_label=f'Fail >{rings.acceptable:.0f} µm'):
+        fig.add_trace(trace)
 
     for y_val, color, label in [
         (rings.excellent,  theme.ZONE['excellent'],  f'Excellent {rings.excellent:.1f} µm'),
@@ -171,7 +193,22 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
         )
 
     data_max = work['sc_um'].max() if not work.empty else 0.0
-    y_max = max(data_max * 1.3, rings.acceptable * 1.2)
+    # Cap the Y-axis so one outlier cannot crush all normal bars.
+    y_max = max(min(data_max, cap_um) * 1.3, rings.acceptable * 1.2)
+
+    # Annotate any bar whose value exceeds the cap (it is clipped off-chart).
+    clipped = work[work['sc_um'] > cap_um]
+    for _, row in clipped.iterrows():
+        fig.add_annotation(
+            x=row[grid_col], y=1.0,
+            xref='x', yref='paper',
+            text=f"{row['sc_um']:.0f} µm ↑",
+            showarrow=True, ax=0, ay=30,
+            arrowhead=2, arrowcolor=theme.ZONE['fail'],
+            font=dict(size=10, color=theme.ZONE['fail']),
+            yanchor='bottom',
+        )
+
     apply_dark_layout(
         fig, height=height,
         title=dict(
@@ -188,6 +225,13 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
             tickfont=dict(color=theme.TEXT),
         ),
         hovermode='x unified',
-        margin=dict(t=55, b=40, l=60, r=110),
+        showlegend=True,
+        legend=dict(
+            x=0.5, y=-0.12, xanchor='center', yanchor='top',
+            orientation='h',
+            bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD, borderwidth=1,
+            font=dict(color=theme.TEXT, size=11),
+        ),
+        margin=dict(t=55, b=85, l=60, r=110),
     )
     return fig
