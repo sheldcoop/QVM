@@ -239,7 +239,7 @@ def main() -> None:
         )
         st.markdown("---")
 
-        _render_sub_views(filtered_df, sub_view, settings)
+        _render_sub_views(filtered_df, sub_view, settings, is_via_to_pad=False, meta=meta)
 
     # ------------------------------------------------------------------ #
     #  VIA TO PAD — 3 sub-views only (no absolute coordinates)            #
