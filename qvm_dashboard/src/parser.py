@@ -110,6 +110,32 @@ def _resolve_grid_id(location: str, block_index: int, settings: dict) -> Optiona
     return None
 
 
+def _resolve_location_with_order_check(header_location: Optional[str],
+                                       block_index: int, settings: dict,
+                                       process_label: str) -> str:
+    """Resolve a site's location, label-first, warning if the order changed.
+
+    The location read from the file's header label is the source of truth. It is
+    cross-checked against the location POSITIONAL_MAPPING expects for this block
+    position; if they disagree, the fiducials likely arrived out of order, so a
+    warning is logged and the header-derived location is used. When no header
+    label is present, the positional (expected) location is used as a fallback.
+    """
+    positional = settings.get('POSITIONAL_MAPPING', [])
+    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
+    expected_grid_id = int(positional[block_index]) if block_index < len(positional) else None
+    expected_location = reverse_grid.get(expected_grid_id, '')
+    if header_location:
+        if header_location != expected_location:
+            logger.warning(
+                "%s block %d: header says %r but POSITIONAL_MAPPING expected %r — "
+                "fiducial order may have changed. Using header-derived location.",
+                process_label, block_index, header_location, expected_location,
+            )
+        return header_location
+    return expected_location
+
+
 def _emit_row(current: Dict[str, Any], block_index: int, settings: dict) -> dict:
     """Build a single output row dict from the accumulated parser state."""
     cols = resolve_columns(settings, _EMIT_KEYS)
@@ -212,6 +238,10 @@ def _parse_pad_to_via(content: str, settings: dict) -> pd.DataFrame:
         else:
             state, completed = _step_distance_tail(s, state, current)
             if completed:
+                # Label-first identity with a warning if the file's fiducial
+                # order disagrees with POSITIONAL_MAPPING (mirrors Via-to-Pad).
+                current['location'] = _resolve_location_with_order_check(
+                    current.get('location', ''), block_index, settings, "Pad-to-Via")
                 rows.append(_emit_row(current, block_index, settings))
                 block_index += 1
                 current = {}
@@ -255,11 +285,6 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
     downstream VtP views work from shifts). Point counts ('From N Pts.') are read
     from Circle headers when present, on a best-effort basis.
     """
-    positional = settings.get('POSITIONAL_MAPPING', [])
-    grid_mapping = settings.get('GRID_MAPPING', {})
-    # Reverse GRID_MAPPING so a positional Grid ID yields its location name.
-    reverse_grid = {int(v): k for k, v in grid_mapping.items()}
-
     rows: list = []
     block_index = 0
     diams: list = []          # diameters seen in the current site, in order
@@ -286,19 +311,8 @@ def _parse_via_to_pad(content: str, settings: dict) -> pd.DataFrame:
         elif s.startswith("DY"):
             # DY is the last value of a site — close it out and emit.
             dy = _value_after_equals(s)
-            expected_grid_id = int(positional[block_index]) if block_index < len(positional) else None
-            expected_location = reverse_grid.get(expected_grid_id, '')
-            if header_location:
-                if header_location != expected_location:
-                    logger.warning(
-                        "Via-to-Pad block %d: header says %r but POSITIONAL_MAPPING "
-                        "expected %r — fiducial order may have changed. "
-                        "Using header-derived location.",
-                        block_index, header_location, expected_location,
-                    )
-                location = header_location
-            else:
-                location = expected_location
+            location = _resolve_location_with_order_check(
+                header_location, block_index, settings, "Via-to-Pad")
             current: Dict[str, Any] = {
                 'location': location,
                 'via_diameter': diams[0] if len(diams) > 0 else None,

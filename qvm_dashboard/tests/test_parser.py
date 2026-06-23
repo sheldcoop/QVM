@@ -452,3 +452,91 @@ Distance: VtP(ID:3)
     assert len(df) == 1
     assert df.iloc[0]['Grid ID'] == 22       # from POSITIONAL_MAPPING[0]
     assert not any('fiducial order' in r.message.lower() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Pad-to-Via fiducial order cross-checking (mirrors the Via-to-Pad tests above)
+# ---------------------------------------------------------------------------
+
+# Pad-circle-first blocks; headers say LL_2 then LL_1 — matches POSITIONAL_MAPPING [22, 21].
+_PTV_ORDER_MATCHES = """
+Circle: Pad_LL_2(ID:1, From 180 Pts.)
+     Coord. X =        63.857203
+     Coord. Y =       104.634501
+     Diameter =         0.308911
+Circle: Via_LL_2(ID:2, From 70 Pts.)
+     Coord. X =        63.856611
+     Coord. Y =       104.630820
+     Diameter =         0.016742
+Distance: PtV_LL_2(ID:3) between Via_LL_2 and Pad_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+
+Circle: Pad_LL_1(ID:4, From 180 Pts.)
+     Coord. X =        63.10
+     Coord. Y =       104.10
+     Diameter =         0.3050
+Circle: Via_LL_1(ID:5, From 70 Pts.)
+     Coord. X =        63.11
+     Coord. Y =       104.12
+     Diameter =         0.0170
+Distance: PtV_LL_1(ID:6) between Via_LL_1 and Pad_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+"""
+
+# Same two blocks but fiducial order SWAPPED: LL_1 first, then LL_2.
+# POSITIONAL_MAPPING still expects LL_2 first — this should trigger a warning.
+_PTV_ORDER_SWAPPED = """
+Circle: Pad_LL_1(ID:1, From 180 Pts.)
+     Coord. X =        63.10
+     Coord. Y =       104.10
+     Diameter =         0.3050
+Circle: Via_LL_1(ID:2, From 70 Pts.)
+     Coord. X =        63.11
+     Coord. Y =       104.12
+     Diameter =         0.0170
+Distance: PtV_LL_1(ID:3) between Via_LL_1 and Pad_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+
+Circle: Pad_LL_2(ID:4, From 180 Pts.)
+     Coord. X =        63.857203
+     Coord. Y =       104.634501
+     Diameter =         0.308911
+Circle: Via_LL_2(ID:5, From 70 Pts.)
+     Coord. X =        63.856611
+     Coord. Y =       104.630820
+     Diameter =         0.016742
+Distance: PtV_LL_2(ID:6) between Via_LL_2 and Pad_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def test_ptv_order_matches_no_warning(caplog):
+    """Pad-to-Via: when header locations agree with POSITIONAL_MAPPING, no warning."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df = parse_qvm_content(_PTV_ORDER_MATCHES, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    assert (df['Process'] == 'Pad to Via').all()
+    assert df['Location'].tolist() == ['LL_2', 'LL_1']
+    assert df['Grid ID'].tolist() == [22, 21]
+    assert not any('fiducial order' in r.message.lower() for r in caplog.records)
+
+
+def test_ptv_order_mismatch_warns_and_uses_header_location(caplog):
+    """Pad-to-Via: when fiducials arrive out of order, warn and follow the header label."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df = parse_qvm_content(_PTV_ORDER_SWAPPED, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    # Locations follow the headers (LL_1 arrived first in the file).
+    assert df['Location'].tolist() == ['LL_1', 'LL_2']
+    mismatch_warnings = [r for r in caplog.records if 'fiducial order' in r.message.lower()]
+    assert len(mismatch_warnings) >= 1
