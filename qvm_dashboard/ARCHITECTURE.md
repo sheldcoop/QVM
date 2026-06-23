@@ -19,7 +19,6 @@ graph TD
     app --> utils[src/utils.py]
 
     views --> visuals
-    views --> diagnostics[src/diagnostics.py]
     views --> excel[src/excel_export.py]
     views --> base[src/views/base.py]
     views --> utils
@@ -28,7 +27,6 @@ graph TD
     visuals --> theme[src/theme.py]
     visuals --> helpers[src/chart_helpers.py]
     helpers --> theme
-    diagnostics --> theme
     panelmap --> utils
     utils --> config[(config/settings.yaml)]
     base --> config
@@ -54,8 +52,7 @@ flowchart LR
     annular --> scope[app: panel / side filters]
     scope --> view[View.render]
     view --> charts[visuals.plot_*<br/>→ Plotly figure]
-    view --> diag[diagnostics.*<br/>→ root-cause confidence]
-    view --> xlsx[excel_export.write_vtp_excel<br/>→ .xlsx with embedded charts]
+    view --> xlsx[excel_export.write_vtp_excel / write_ptv_excel<br/>→ .xlsx with embedded charts]
 ```
 
 Routing is **content-driven**: `parser.parse_qvm_content` decides Pad-to-Via vs
@@ -92,7 +89,6 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 | How a **specific chart looks** | `src/visuals/<chart>.py` |
 | Logic shared by all charts (rings, zone colours, layout) | `src/chart_helpers.py` |
 | **Add a new chart** | new module in `src/visuals/`, then re-export it in `src/visuals/__init__.py` |
-| **Pattern-detection / root-cause** math | `src/diagnostics.py` |
 | The **data table / Excel export** | `src/views/quality_control.py`, `src/excel_export.py` |
 | **Parsing** of the QVM log format | `src/parser.py` |
 | **Navigation / tabs / ingestion** | `app.py` |

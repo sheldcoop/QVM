@@ -4,10 +4,9 @@ import pandas as pd
 import os
 from pathlib import Path
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
-from src.visuals import plot_quiver, plot_heatmap, plot_vtp_box
+from src.visuals import plot_quiver, plot_vtp_box
 from src.utils import load_settings, calculate_annular_ring
 from src.views.quality_control import QualityControlView
-from src.views.analytics import AnalyticsView
 from src.views.spatial_heatmap import SpatialHeatmapView
 from src.views.registration_scatter import RegistrationScatterView
 from ui.sidebar import render_sidebar, render_nav_buttons
@@ -78,45 +77,53 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
             filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
 
     elif sub_view == "Analytics":
-        if is_via_to_pad:
-            tab1, tab2, tab3 = st.tabs([
-                "Registration Scatter", "Quiver Plot", "Box Plot",
-            ])
-            with tab1:
-                # Side selector for scatter when both sides uploaded
-                if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
-                    side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
-                    chosen_side_scatter = st.selectbox("Select Side", side_options, key="scatter_side")
-                    scatter_df = filtered_df if chosen_side_scatter == 'Both' else filtered_df[filtered_df['Side'] == chosen_side_scatter].copy()
-                else:
-                    scatter_df = filtered_df.copy()
-                RegistrationScatterView(settings).render(scatter_df)
-            with tab2:
-                # Side selector for quiver — must be single side (16 points only)
-                if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
-                    side_options = sorted(filtered_df['Side'].unique().tolist())
-                    chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")
-                    quiver_df = filtered_df[filtered_df['Side'] == chosen_side].copy()
-                else:
-                    quiver_df = filtered_df.copy()
-                plot_settings = settings.get('PLOT_SETTINGS', {})
-                multiplier = st.slider(
-                    "Vector Multiplier",
-                    min_value=plot_settings.get('vector_multiplier_min', 1),
-                    max_value=plot_settings.get('vector_multiplier_max', 100),
-                    value=plot_settings.get('vector_multiplier_default', 50),
-                    step=1,
-                    help="Exaggerates arrow length for visibility")
-                fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
-                st.plotly_chart(fig_q, use_container_width=True)
-            with tab3:
-                fig = plot_vtp_box(filtered_df, settings)
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            AnalyticsView(settings).render(filtered_df)
+        # Both processes share the same registration analytics layout.
+        _render_registration_analytics(filtered_df, settings)
 
     elif sub_view == "2D Spatial Heatmap (Laser Scan Field)":
         SpatialHeatmapView(settings).render(filtered_df)
+
+
+def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
+    """Render the shared 3-tab registration analytics used by both processes.
+
+    Tabs: Registration Scatter, Quiver Plot, Box Plot. (No regression
+    diagnostics or 4×4 heatmap — those were Pad-to-Via-only and removed so the
+    two processes present an identical analytics surface.)
+    """
+    tab1, tab2, tab3 = st.tabs([
+        "Registration Scatter", "Quiver Plot", "Box Plot",
+    ])
+    with tab1:
+        # Side selector for scatter when both sides uploaded
+        if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
+            side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
+            chosen_side_scatter = st.selectbox("Select Side", side_options, key="scatter_side")
+            scatter_df = filtered_df if chosen_side_scatter == 'Both' else filtered_df[filtered_df['Side'] == chosen_side_scatter].copy()
+        else:
+            scatter_df = filtered_df.copy()
+        RegistrationScatterView(settings).render(scatter_df)
+    with tab2:
+        # Side selector for quiver — must be single side (16 points only)
+        if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
+            side_options = sorted(filtered_df['Side'].unique().tolist())
+            chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")
+            quiver_df = filtered_df[filtered_df['Side'] == chosen_side].copy()
+        else:
+            quiver_df = filtered_df.copy()
+        plot_settings = settings.get('PLOT_SETTINGS', {})
+        multiplier = st.slider(
+            "Vector Multiplier",
+            min_value=plot_settings.get('vector_multiplier_min', 1),
+            max_value=plot_settings.get('vector_multiplier_max', 100),
+            value=plot_settings.get('vector_multiplier_default', 50),
+            step=1,
+            help="Exaggerates arrow length for visibility")
+        fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
+        st.plotly_chart(fig_q, use_container_width=True)
+    with tab3:
+        fig = plot_vtp_box(filtered_df, settings)
+        st.plotly_chart(fig, use_container_width=True)
 
 
 

@@ -7,11 +7,10 @@ from io import BytesIO
 
 import pandas as pd
 import streamlit as st
-from openpyxl.styles import PatternFill
 
 from src.views.base import BaseView
 from src.utils import convert_to_microns
-from src.excel_export import write_vtp_excel
+from src.excel_export import write_vtp_excel, write_ptv_excel
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +37,16 @@ class QualityControlView(BaseView):
         dx_col       = col_names.get('x_distance', 'Shift (DX)')
         dy_col       = col_names.get('y_distance', 'Shift (DY)')
         sc_col       = col_names.get('total_shift', 'SC')
+        ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
 
         # --- Build display dataframe ---
-        if is_via_to_pad:
-            vtp_keep = [c for c in [grid_id_col, via_diam_col, pad_diam_col,
-                                    dx_col, dy_col, sc_col]
-                        if c in filtered_df.columns]
-            display_df = filtered_df[vtp_keep].copy()
-        else:
-            display_df = filtered_df.drop(
-                columns=[c for c in ['Panel', 'Side'] if c in filtered_df.columns]
-            ).copy()
+        # Both processes keep a clean, identical column set; the only difference
+        # is the distance metric: VtP uses 'VtP Distance (SC)', PtV uses the
+        # native 'PtV Distance'. Coord. X/Y, Pad/Via Pts., Annular Ring, and the
+        # Process tag are intentionally excluded from both screen and export.
+        distance_col = sc_col if is_via_to_pad else ptv_dist_col
+        keep = [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
+        display_df = filtered_df[[c for c in keep if c in filtered_df.columns]].copy()
 
         measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
                             col_names.get('ptv_distance', 'PtV Distance'), annular_col]
@@ -68,7 +66,7 @@ class QualityControlView(BaseView):
             if is_via_to_pad:
                 st.write('Via-to-Pad export: Grid ID | Via Ø | Pad Ø | DX | DY | SC  (µm)')
             else:
-                st.write(f'Highlighting rows where {annular_col} < {threshold}')
+                st.write('Pad-to-Via export: Grid ID | Via Ø | Pad Ø | DX | DY | PtV Distance  (µm)')
         with col_right:
             self._render_export_button(
                 filtered_df, display_df, is_via_to_pad,
@@ -181,7 +179,8 @@ component breakdown.
                     write_vtp_excel(writer, display_df, filtered_df,
                                     self.settings, meta, grid_id_col)
                 else:
-                    self._write_ptv_excel(writer, display_df, annular_col, threshold)
+                    write_ptv_excel(writer, display_df, filtered_df,
+                                    self.settings, meta, grid_id_col)
             except Exception as exc:
                 logger.warning('Excel export error — writing fallback sheet: %s',
                                exc, exc_info=True)
@@ -200,22 +199,6 @@ component breakdown.
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             type='primary',
         )
-
-    @staticmethod
-    def _write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                         annular_col: str, threshold: float) -> None:
-        """Pad-to-Via export: data table with conditional red row highlighting."""
-        export_df = display_df.dropna(axis=1, how='all').copy()
-        export_df.to_excel(writer, sheet_name='QVM Data', index=False)
-
-        worksheet = writer.sheets['QVM Data']
-        red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
-
-        if annular_col in export_df.columns:
-            for row_idx, value in enumerate(export_df[annular_col], start=2):
-                if value < threshold:
-                    for col_idx in range(1, len(export_df.columns) + 1):
-                        worksheet.cell(row=row_idx, column=col_idx).fill = red_fill
 
     @staticmethod
     def _highlight_annular_ring(row, col_name: str, threshold: float):
