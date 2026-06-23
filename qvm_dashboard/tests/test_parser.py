@@ -357,3 +357,98 @@ def test_parses_when_pad_and_distance_headers_are_stripped():
     # kept its Via header (105 pts); site 1 had none.
     assert df.iloc[0]['Via Pts.'] == 105
     assert pd.isna(df.iloc[1]['Via Pts.'])
+
+
+# ---------------------------------------------------------------------------
+# Fiducial order cross-checking: header-derived location vs POSITIONAL_MAPPING
+# ---------------------------------------------------------------------------
+
+# Two-block content where headers say LL_2 first, then LL_1 — matching the
+# default POSITIONAL_MAPPING order [22 (LL_2), 21 (LL_1)].
+_VTP_ORDER_MATCHES = """
+Circle: Via_LL_2(ID:1, From 70 Pts.)
+     Diameter =         0.016742
+Circle: Pad_LL_2(ID:2, From 180 Pts.)
+     Diameter =         0.308911
+Distance: VtP_LL_2(ID:3) between Pad_LL_2 and Via_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+
+Circle: Via_LL_1(ID:4, From 70 Pts.)
+     Diameter =         0.0170
+Circle: Pad_LL_1(ID:5, From 180 Pts.)
+     Diameter =         0.3050
+Distance: VtP_LL_1(ID:6) between Pad_LL_1 and Via_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+"""
+
+# Same two blocks but with fiducial order SWAPPED: LL_1 first, then LL_2.
+# POSITIONAL_MAPPING still expects LL_2 first — this should trigger a warning.
+_VTP_ORDER_SWAPPED = """
+Circle: Via_LL_1(ID:1, From 70 Pts.)
+     Diameter =         0.0170
+Circle: Pad_LL_1(ID:2, From 180 Pts.)
+     Diameter =         0.3050
+Distance: VtP_LL_1(ID:3) between Pad_LL_1 and Via_LL_1
+           SC =         0.0021
+           DX =         0.0010
+           DY =         0.0018
+
+Circle: Via_LL_2(ID:4, From 70 Pts.)
+     Diameter =         0.016742
+Circle: Pad_LL_2(ID:5, From 180 Pts.)
+     Diameter =         0.308911
+Distance: VtP_LL_2(ID:6) between Pad_LL_2 and Via_LL_2
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def test_vtp_order_matches_no_warning(caplog):
+    """When header locations agree with POSITIONAL_MAPPING order, no warning is logged."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df = parse_qvm_content(_VTP_ORDER_MATCHES, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    assert df['Location'].tolist() == ['LL_2', 'LL_1']
+    assert df['Grid ID'].tolist() == [22, 21]
+    assert not any('fiducial order' in r.message.lower() for r in caplog.records)
+
+
+def test_vtp_order_mismatch_warns_and_uses_header_location(caplog):
+    """When fiducials arrive in a different order than POSITIONAL_MAPPING, a warning
+    is logged and the header-derived location is used (not the positional one)."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df = parse_qvm_content(_VTP_ORDER_SWAPPED, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 2
+    # Locations follow the headers (LL_1 arrived first in the file).
+    assert df['Location'].tolist() == ['LL_1', 'LL_2']
+    # At least one mismatch warning was emitted.
+    mismatch_warnings = [r for r in caplog.records if 'fiducial order' in r.message.lower()]
+    assert len(mismatch_warnings) >= 1
+
+
+def test_vtp_no_suffix_falls_back_to_positional_no_warning(caplog):
+    """Bare 'Circle: Via(...)' with no location suffix falls back to positional
+    mapping silently — no spurious mismatch warning should be raised."""
+    import logging
+    content = """
+Circle: Via(ID:1, From 65 Pts.)
+     Diameter =         0.0332
+Circle: Pad(ID:2, From 58 Pts.)
+     Diameter =         0.3680
+Distance: VtP(ID:3)
+           SC =         0.0007
+           DX =        -0.0004
+           DY =         0.0005
+"""
+    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+        df = parse_qvm_content(content, _MOCK_SETTINGS_WITH_GRID)
+    assert len(df) == 1
+    assert df.iloc[0]['Grid ID'] == 22       # from POSITIONAL_MAPPING[0]
+    assert not any('fiducial order' in r.message.lower() for r in caplog.records)
