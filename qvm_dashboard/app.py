@@ -72,8 +72,11 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
     Views pull their own settings slices from `self.settings` via BaseView, so
     only the per-render context (is_via_to_pad, meta) needs threading here.
     """
-    for w in st.session_state.get('parse_warnings', []):
-        st.warning(w)
+    warnings = st.session_state.get('parse_warnings', [])
+    if warnings:
+        with st.expander(f"⚠️ {len(warnings)} parsing warning(s)", expanded=False):
+            for w in warnings:
+                st.warning(w)
 
     if sub_view == "Quality Control":
         QualityControlView(settings).render(
