@@ -207,7 +207,7 @@ component breakdown.
     def _build_filename(is_via_to_pad: bool, meta: dict) -> str:
         prefix = "VtP" if is_via_to_pad else "PtV"
         parts = [prefix]
-        for key in ('part_number', 'panel', 'lot_number', 'process'):
+        for key in ('build_up', 'part_number', 'panel', 'process'):
             val = str(meta.get(key, '')).strip()
             if val:
                 parts.append(val)
