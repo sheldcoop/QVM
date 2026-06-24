@@ -1,0 +1,13 @@
+# Settings for the QVM Database Analysis dashboard.
+# Only the values actually consumed by the app remain:
+#   UI_STRINGS.dashboard_title -> page title          (app.py)
+#   COLORS.*                   -> CSS theme variables (app.py load_css)
+
+UI_STRINGS:
+  dashboard_title: "QVM Manufacturing Dashboard"
+
+COLORS:
+  app_background: "#212121"
+  app_text: "#FFFFFF"
+  panel_ui: "#B87333"
+  panel_ui_hover: "#d48c46"

@@ -1,0 +1,203 @@
+"""Generic renderer for every Database Analysis sub-view.
+
+One code path drives all Horus sheets, parameterised by an
+:class:`~src.dbanalysis.config.AnalysisConfig`. This replaces the six near-identical
+view modules that previously differed only in configuration.
+"""
+
+import logging
+from typing import List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
+
+from src.dbanalysis.columns import find_col, resolve_limits
+from src.dbanalysis.config import AnalysisConfig, Metric
+from src.dbanalysis.loader import load_sheet, list_sheets
+from src.dbanalysis.summary import (
+    generate_summary_table,
+    generate_lot_summary_table,
+    generate_detailed_summary_table,
+)
+from src.dbanalysis.visuals import plot_roughness_box, plot_control_chart
+from ui.sidebar import render_nav_buttons
+
+logger = logging.getLogger(__name__)
+
+
+def render_analysis(config: AnalysisConfig, files: list) -> None:
+    """Render the analysis described by ``config`` for each uploaded file."""
+    if not files:
+        st.info("No database files uploaded.")
+        return
+
+    for file in files:
+        try:
+            with st.spinner(f"Loading {file.name}..."):
+                df = load_sheet(file, config.sheet_name)
+            if df is None:
+                st.warning(
+                    f"Could not find a sheet named '{config.sheet_name}' in "
+                    f"{file.name}. Available sheets: {list_sheets(file)}"
+                )
+                continue
+            _render_sheet(config, df)
+        except FileNotFoundError as e:
+            logger.error("File missing for %s: %s", file.name, e)
+            st.error(f"Could not read {file.name}: {e}")
+        except ValueError as e:
+            # pandas/openpyxl raise ValueError for malformed workbooks/sheets.
+            logger.error("Failed to parse %s: %s", file.name, e)
+            st.error(f"Failed to parse {file.name}: {e}")
+
+
+def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
+    buildup_col = find_col(df, "buildup")
+    side_col = find_col(df, "side")
+    if not buildup_col or not side_col:
+        st.warning("Could not find 'Buildup' or 'Side' columns. Showing all data.")
+        st.dataframe(df, use_container_width=True)
+        return
+
+    selected_bu, selected_side, chart_type = _scope_controls(
+        df, config, buildup_col, side_col)
+
+    side_df = _filter_scope(df, buildup_col, side_col, selected_bu, selected_side)
+    if side_df.empty:
+        st.info(f"No data found for {selected_bu} - {selected_side}")
+        return
+
+    lot_col = find_col(side_df, "lot number")
+    panel_col = find_col(side_df, "panel")
+    process_col = find_col(side_df, "process")
+    unit_col = find_col(side_df, "unit")
+
+    # Apply each metric's display scale once, up front, so summaries and charts agree.
+    resolved = _resolve_metrics(side_df, config.metrics)
+    for m, col in resolved:
+        if m.display_scale != 1.0:
+            side_df[col] = pd.to_numeric(side_df[col], errors='coerce') * m.display_scale
+
+    if not lot_col:
+        st.warning("Could not find 'Lot Number' column to group the charts by.")
+        with st.expander("View Raw Filtered Data"):
+            st.dataframe(side_df, use_container_width=True)
+        return
+
+    _render_summaries(side_df, resolved, process_col, lot_col, panel_col)
+    _render_charts(side_df, resolved, chart_type, selected_bu, selected_side,
+                   lot_col, panel_col, process_col, unit_col)
+
+    with st.expander("View Raw Filtered Data"):
+        st.dataframe(side_df, use_container_width=True)
+
+
+def _scope_controls(df: pd.DataFrame, config: AnalysisConfig,
+                    buildup_col: str, side_col: str) -> Tuple[str, str, str]:
+    """Render the Buildup / Side / Chart-Type selectors; options come from data."""
+    buildups = sorted(df[buildup_col].dropna().astype(str).str.strip().unique().tolist())
+    sides = sorted(df[side_col].dropna().astype(str).str.strip().unique().tolist())
+    p = config.state_prefix
+
+    with st.expander("Analysis Scope", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("**Select Buildup**")
+            selected_bu = render_nav_buttons(buildups, state_key=f"{p}_bu")
+        with col2:
+            st.markdown("**Select Side**")
+            selected_side = render_nav_buttons(sides, state_key=f"{p}_side")
+        with col3:
+            st.markdown("**Chart Type**")
+            chart_type = render_nav_buttons(["Box Plot", "Control Chart"],
+                                            state_key=f"{p}_chart")
+    st.markdown("---")
+    return selected_bu, selected_side, chart_type
+
+
+def _filter_scope(df: pd.DataFrame, buildup_col: str, side_col: str,
+                  selected_bu: str, selected_side: str) -> pd.DataFrame:
+    bu_mask = df[buildup_col].astype(str).str.strip() == selected_bu
+    side_mask = df[side_col].astype(str).str.strip() == selected_side
+    return df[bu_mask & side_mask].copy()
+
+
+def _resolve_metrics(df: pd.DataFrame, metrics: List[Metric]) -> List[Tuple[Metric, str]]:
+    """Pair each configured metric with its actual column, dropping absent ones."""
+    out = []
+    for m in metrics:
+        col = find_col(df, m.col)
+        if col is not None:
+            out.append((m, col))
+    return out
+
+
+def _metrics_def(df: pd.DataFrame, resolved: List[Tuple[Metric, str]]) -> List[dict]:
+    """Build the {name, col, limits} list consumed by the summary functions."""
+    defs = []
+    for m, col in resolved:
+        limits = resolve_limits(df, m.limit_prefix) if m.limit_prefix else {}
+        defs.append({"name": m.name, "col": col, "limits": limits})
+    return defs
+
+
+def _render_summaries(df: pd.DataFrame, resolved, process_col: Optional[str],
+                      lot_col: str, panel_col: Optional[str]) -> None:
+    metrics_def = _metrics_def(df, resolved)
+    summary_df = generate_summary_table(df, process_col, metrics_def)
+    if summary_df.empty:
+        return
+
+    st.markdown("### Statistical Summary")
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    lot_summary = generate_lot_summary_table(df, process_col, lot_col, metrics_def)
+    if not lot_summary.empty:
+        with st.expander("View Lot-by-Lot Aggregate Breakdown"):
+            st.dataframe(lot_summary, use_container_width=True, hide_index=True)
+
+    if panel_col:
+        detailed = generate_detailed_summary_table(
+            df, process_col, lot_col, panel_col, metrics_def)
+        if not detailed.empty:
+            with st.expander("View Detailed Summary (Panel Level)"):
+                st.dataframe(detailed, use_container_width=True, hide_index=True)
+    st.markdown("---")
+
+
+def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
+                   selected_bu: str, selected_side: str, lot_col: str,
+                   panel_col: Optional[str], process_col: Optional[str],
+                   unit_col: Optional[str]) -> None:
+    processes = (df[process_col].dropna().astype(str).str.strip().unique().tolist()
+                 if process_col else [None])
+
+    for proc in processes:
+        if proc and process_col:
+            proc_df = df[df[process_col].astype(str).str.strip() == proc].copy()
+        else:
+            proc_df = df.copy()
+        if proc_df.empty:
+            continue
+
+        if proc:
+            st.markdown(f"### {proc}")
+        suffix = f" ({proc})" if proc else ""
+
+        for m, col in resolved:
+            limits = resolve_limits(proc_df, m.limit_prefix) if m.limit_prefix else {}
+            scope = f"{selected_bu} {selected_side}{suffix}"
+            if chart_type == "Control Chart":
+                # Spec limits intentionally not passed — they belong on the box plot.
+                fig = plot_control_chart(
+                    proc_df, col, lot_col, panel_col,
+                    f"{m.name} - {scope}", measurement_unit=m.display_unit)
+            else:
+                fig = plot_roughness_box(
+                    proc_df, col, lot_col,
+                    f"{m.name} Distribution - {scope}", color_by_col=unit_col,
+                    limits=limits, measurement_unit=m.display_unit)
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        st.divider()
