@@ -41,7 +41,7 @@ CHART_SETTINGS:
     subplot_title_size: 14
   trend:                     # Lot-over-lot Trend Analysis chart (white background)
     height: 600
-    width: null              # null = responsive (stretch); a number = fixed px
+    width: 900               # fixed px keeps points tight for PPT; null = stretch full width
     background: "#FFFFFF"
     ink_color: "#333333"     # text / axis / marker-label colour on white
     grid_color: "#e6e6e6"
