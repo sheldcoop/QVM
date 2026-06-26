@@ -80,6 +80,12 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None) 
     selected_bu, selected_side, chart_type = _scope_controls(
         df, config, buildup_col, side_col)
 
+    # Trend Analysis overlays every Buildup·Side·Process as its own line, so it
+    # works on the full sheet and ignores the Buildup/Side selection above.
+    if chart_type == "Trend Analysis":
+        _render_trend(config, df, buildup_col, side_col, style)
+        return
+
     side_df = _filter_scope(df, buildup_col, side_col, selected_bu, selected_side)
     if side_df.empty:
         st.info(f"No data found for {selected_bu} - {selected_side}")
@@ -120,6 +126,55 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None) 
 
     with st.expander("View Raw Filtered Data"):
         st.dataframe(side_df, width='stretch')
+
+
+def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
+                  side_col: str, style: dict = None) -> None:
+    """Lot-over-lot trend across the whole sheet.
+
+    Each line is a Buildup·Side·Process combination; a separate Ra and Rz chart
+    is drawn per measurement position (the ``split_col``). Buildup/Side scope
+    selectors do not apply here — every combination is shown.
+    """
+    work = df.copy()
+    lot_col = find_col(work, "lot number")
+    if not lot_col:
+        st.warning("Could not find 'Lot Number' column to build the trend.")
+        return
+    process_col = find_col(work, "process")
+
+    resolved = _resolve_metrics(work, config.metrics)
+    for m, col in resolved:
+        if m.display_scale != 1.0:
+            work[col] = pd.to_numeric(work[col], errors='coerce') * m.display_scale
+
+    series_cols = [buildup_col, side_col] + ([process_col] if process_col else [])
+    st.caption("Trend shows all buildups & sides — the Buildup/Side selectors "
+               "above are ignored here.")
+
+    split_col = find_col(work, config.split_col) if config.split_col else None
+    if split_col:
+        positions = sorted(work[split_col].dropna().astype(str).str.strip().unique())
+    else:
+        positions = [None]
+
+    for pos in positions:
+        if pos is not None:
+            slice_df = work[work[split_col].astype(str).str.strip() == pos]
+            st.markdown(f"## {pos}")
+            label = pos
+        else:
+            slice_df = work
+            label = "All Positions"
+        if slice_df.empty:
+            continue
+        for m, col in resolved:
+            fig = plot_roughness_trend(
+                slice_df, col, lot_col, series_cols,
+                f"{m.name} - {label}", measurement_unit=m.display_unit, style=style)
+            st.plotly_chart(fig, width='stretch')
+            st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("---")
 
 
 def _render_slice(df, resolved, chart_type, selected_bu, selected_side, lot_col,
@@ -210,21 +265,6 @@ def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
                    panel_col: Optional[str], process_col: Optional[str],
                    unit_col: Optional[str], extra_scope: str = "",
                    style: dict = None) -> None:
-    # Trend Analysis overlays every process as its own line, so it is rendered
-    # once per metric across all processes rather than inside the per-process
-    # loop the box/control charts use.
-    if chart_type == "Trend Analysis":
-        base = f"{selected_bu} {selected_side}"
-        if extra_scope:
-            base = f"{base} {extra_scope}"
-        for m, col in resolved:
-            fig = plot_roughness_trend(
-                df, col, lot_col, process_col,
-                f"{m.name} - {base}", measurement_unit=m.display_unit, style=style)
-            st.plotly_chart(fig, width='stretch')
-            st.markdown("<br>", unsafe_allow_html=True)
-        return
-
     processes = (df[process_col].dropna().astype(str).str.strip().unique().tolist()
                  if process_col else [None])
 

@@ -628,50 +628,44 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     return fig
 
 
-# Line colours for the per-process trend series (cycled in palette order).
+# White-background-friendly qualitative palette for overlaid trend lines.
 _TREND_COLORS = [
-    theme.PALETTE['blue'], theme.PALETTE['peach'], theme.PALETTE['green'],
-    theme.PALETTE['mauve'], theme.PALETTE['yellow'], theme.PALETTE['red'],
-    theme.PALETTE['sky'], theme.PALETTE['teal'],
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+    '#8c564b', '#e377c2', '#17becf', '#bcbd22', '#7f7f7f',
 ]
 
 
-def _hex_to_rgba(hex_color: str, alpha: float) -> str:
-    """Convert ``#rrggbb`` to an ``rgba(...)`` string for translucent bands."""
-    h = hex_color.lstrip('#')
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return f"rgba({r},{g},{b},{alpha})"
-
-
 def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
-                         process_col: str = None, title: str = "",
+                         series_cols: list, title: str = "",
                          measurement_unit: str = None, style: dict = None) -> go.Figure:
-    """Lot-over-lot trend of the per-lot mean, one line per Process.
+    """Lot-over-lot trend of the per-lot mean, one line per series combination.
 
     X axis is Lot Number (sorted); each point is the mean of ``metric_col`` for
-    that lot, with a translucent ±1 std-dev band. When a ``process_col`` is
-    given, each distinct process (e.g. Post AOP / Post ADP) becomes its own
-    trend line so lot drift can be compared across processes at a glance. This
-    is the *between-lot* counterpart to the box/control charts (which show
-    *within-lot* spread).
+    that lot. ``series_cols`` are the columns whose combined value defines each
+    line — e.g. ``[buildup_col, side_col, process_col]`` yields lines such as
+    "BU01 · Front · Post AOP", all overlaid on one chart with a legend. This is
+    the *between-lot* counterpart to the box/control charts (within-lot spread).
 
-    All sizing / fonts come from the optional ``style`` dict (CHART_SETTINGS).
+    Rendered on a plain white background (independent of the dark theme). Sizes
+    and fonts still come from the optional ``style`` dict (CHART_SETTINGS).
     """
     fam = _sty(style, 'font_family', default='Inter, sans-serif')
     title_size = _sty(style, 'title_size', default=17)
-    title_color = _sty(style, 'title_color', default='white')
-    wm_size = _sty(style, 'watermark_size', default=17)
-    grid_color = _sty(style, 'grid_color', default='rgba(255,255,255,0.05)')
-    ax = _axis_style(style)
+    ax_title_size = _sty(style, 'axis', 'title_size', default=14)
+    ax_tick_size = _sty(style, 'axis', 'tick_size', default=12)
     height = _sty(style, 'control', 'height', default=600)
-    msize = _sty(style, 'control', 'marker_size', default=10)
+    msize = _sty(style, 'control', 'marker_size', default=9)
+
+    INK = '#333333'
+    GRID = '#e6e6e6'
 
     work = df.copy()
     work[metric_col] = pd.to_numeric(work[metric_col], errors='coerce')
     work = work.dropna(subset=[metric_col])
     if work.empty:
         fig = go.Figure()
-        fig.update_layout(title=f"No data for {title}")
+        fig.update_layout(title=f"No data for {title}",
+                          plot_bgcolor='white', paper_bgcolor='white')
         return fig
 
     work[lot_col] = work[lot_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -680,69 +674,65 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
         fig = go.Figure()
         fig.update_layout(
             title=(f"{title}: need ≥2 lots for a trend (got {len(lots)}). "
-                   f"Use the Box Plot or Control Chart."))
+                   f"Use the Box Plot or Control Chart."),
+            plot_bgcolor='white', paper_bgcolor='white')
         return fig
 
-    by_process = bool(process_col is not None and process_col in work.columns
-                      and work[process_col].notna().any())
-    if by_process:
-        work[process_col] = work[process_col].astype(str).str.strip()
-        series = sorted(work[process_col].dropna().unique().tolist())
+    cols = [c for c in (series_cols or []) if c and c in work.columns]
+    for c in cols:
+        work[c] = work[c].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+    if cols:
+        keys = sorted(work.groupby(cols).groups.keys(),
+                      key=lambda k: k if isinstance(k, tuple) else (k,))
     else:
-        series = ["All"]
+        keys = [None]
 
     fig = go.Figure()
-    for i, name in enumerate(series):
-        s_df = work[work[process_col].astype(str).str.strip() == name] if by_process else work
+    for i, key in enumerate(keys):
+        if cols:
+            kv = key if isinstance(key, tuple) else (key,)
+            mask = pd.Series(True, index=work.index)
+            for c, v in zip(cols, kv):
+                mask &= (work[c] == v)
+            s_df = work[mask]
+            label = " · ".join(str(v) for v in kv)
+        else:
+            s_df = work
+            label = "All"
+
         grp = s_df.groupby(lot_col)[metric_col]
         means = grp.mean().reindex(lots)
-        stds = grp.std(ddof=1).reindex(lots)
         counts = grp.size().reindex(lots).fillna(0).astype(int)
         color = _TREND_COLORS[i % len(_TREND_COLORS)]
 
-        # ±1σ band (only across lots that have data), drawn behind the line.
-        upper = (means + stds.fillna(0))
-        lower = (means - stds.fillna(0))
-        valid = means.notna()
-        if valid.any():
-            xs = [l for l, v in zip(lots, valid) if v]
-            up = [u for u, v in zip(upper, valid) if v]
-            lo = [d for d, v in zip(lower, valid) if v]
-            fig.add_trace(go.Scatter(
-                x=xs + xs[::-1], y=up + lo[::-1], fill='toself',
-                fillcolor=_hex_to_rgba(color, 0.12), line=dict(width=0),
-                hoverinfo='skip', showlegend=False))
-
         fig.add_trace(go.Scatter(
-            x=lots, y=means.tolist(), mode='lines+markers', name=name,
+            x=lots, y=means.tolist(), mode='lines+markers', name=label,
             line=dict(color=color, width=2),
             marker=dict(color=color, size=msize),
-            customdata=np.stack([stds.fillna(0).to_numpy(), counts.to_numpy()], axis=-1),
-            hovertemplate=("Lot %{x}<br>Mean %{y:.2f}<br>"
-                           "Std %{customdata[0]:.2f} (n=%{customdata[1]})<extra>"
-                           + name + "</extra>")))
-
-    watermark = title.split(' - ')[-1] if ' - ' in title else title
-    fig.add_annotation(text=f"<b>{watermark}</b>", xref="paper", yref="paper",
-                       x=0.0, y=1.03, xanchor='left', yanchor='bottom',
-                       showarrow=False, font=dict(color='white', size=wm_size))
+            connectgaps=True,
+            customdata=counts.to_numpy(),
+            hovertemplate=("Lot %{x}<br>Mean %{y:.2f}"
+                           " (n=%{customdata})<extra>" + label + "</extra>")))
 
     y_title = f"{metric_col} ({measurement_unit})" if measurement_unit else metric_col
-    axis_title_font = dict(color=ax['title_color'], size=ax['title_size'])
-    axis_tick_font = dict(color=ax['tick_color'], size=ax['tick_size'])
 
     fig.update_layout(
         title=dict(text=f"<b>{title} (Lot Trend)</b>",
-                   font=dict(color=title_color, size=title_size), x=0.5, xanchor='center'),
-        height=height, margin=dict(l=50, r=30, t=80, b=70),
-        showlegend=by_process,
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1.0),
-        plot_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        paper_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        font=dict(family=fam, color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'))
-    fig.update_xaxes(title_text=_bold("Lot Number", ax['bold']), title_font=axis_title_font,
+                   font=dict(color=INK, size=title_size), x=0.5, xanchor='center'),
+        height=height, margin=dict(l=60, r=30, t=110, b=70),
+        showlegend=True,
+        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='left', x=0.0,
+                    font=dict(color=INK, size=ax_tick_size)),
+        plot_bgcolor='white', paper_bgcolor='white',
+        font=dict(family=fam, color=INK))
+    fig.update_xaxes(title_text="Lot Number", title_font=dict(color=INK, size=ax_title_size),
                      type='category', categoryorder='array', categoryarray=lots,
-                     tickfont=axis_tick_font, showgrid=False, zeroline=False)
-    fig.update_yaxes(title_text=_bold(f"Mean {y_title}", ax['bold']), title_font=axis_title_font,
-                     tickfont=axis_tick_font, showgrid=True, gridcolor=grid_color, zeroline=False)
+                     tickfont=dict(color=INK, size=ax_tick_size),
+                     showgrid=False, zeroline=False,
+                     showline=True, linecolor=GRID, mirror=True)
+    fig.update_yaxes(title_text=f"Mean {y_title}", title_font=dict(color=INK, size=ax_title_size),
+                     tickfont=dict(color=INK, size=ax_tick_size),
+                     showgrid=True, gridcolor=GRID, zeroline=False,
+                     showline=True, linecolor=GRID, mirror=True)
     return fig
