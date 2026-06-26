@@ -18,6 +18,8 @@ from src.dbanalysis.summary import (
     generate_summary_table,
     generate_lot_summary_table,
     generate_detailed_summary_table,
+    trend_outliers,
+    trend_series_summary,
 )
 from src.dbanalysis.visuals import (
     plot_roughness_box,
@@ -142,6 +144,8 @@ def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
         st.warning("Could not find 'Lot Number' column to build the trend.")
         return
     process_col = find_col(work, "process")
+    unit_col = find_col(work, "unit")
+    panel_col = find_col(work, "panel")
 
     resolved = _resolve_metrics(work, config.metrics)
     for m, col in resolved:
@@ -169,10 +173,26 @@ def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
         if slice_df.empty:
             continue
         for m, col in resolved:
+            out_df = trend_outliers(slice_df, col, lot_col, series_cols,
+                                    unit_col, panel_col, side_col)
+            flagged = set(zip(out_df["Series"], out_df["Lot"])) if not out_df.empty else set()
             fig = plot_roughness_trend(
                 slice_df, col, lot_col, series_cols,
-                f"{m.name} - {label}", measurement_unit=m.display_unit, style=style)
+                f"{m.name} - {label}", measurement_unit=m.display_unit, style=style,
+                unit_col=unit_col, panel_col=panel_col, flagged=flagged)
             st.plotly_chart(fig, width='stretch')
+
+            if not out_df.empty:
+                st.markdown(f"**⚠ {m.name} outlier notes** "
+                            f"({len(out_df)} measurement{'s' if len(out_df) != 1 else ''} "
+                            f"beyond 1.5×IQR)")
+                st.dataframe(out_df, width='stretch', hide_index=True)
+
+            summary_lines = trend_series_summary(slice_df, col, lot_col, series_cols)
+            if summary_lines:
+                with st.expander(f"{m.name} trend summary"):
+                    for line in summary_lines:
+                        st.markdown(f"- {line}")
             st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("---")
 

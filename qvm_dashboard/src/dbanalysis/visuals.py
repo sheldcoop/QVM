@@ -635,9 +635,27 @@ _TREND_COLORS = [
 ]
 
 
+def _extreme_label(s_df, lot_mask, metric_col, unit_col, panel_col):
+    """Return 'U3/P2 = 412.0' for the max (or min) row in a lot, or '' if absent."""
+    g = s_df[lot_mask]
+    if g.empty or (unit_col is None and panel_col is None):
+        return "", ""
+    hi = g.loc[g[metric_col].idxmax()]
+    lo = g.loc[g[metric_col].idxmin()]
+
+    def fmt(r):
+        u = str(r[unit_col]) if unit_col and unit_col in g else "?"
+        p = str(r[panel_col]).replace('.0', '') if panel_col and panel_col in g else "?"
+        return f"{u}/{p} = {float(r[metric_col]):.1f}"
+
+    return fmt(hi), fmt(lo)
+
+
 def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
                          series_cols: list, title: str = "",
-                         measurement_unit: str = None, style: dict = None) -> go.Figure:
+                         measurement_unit: str = None, style: dict = None,
+                         unit_col: str = None, panel_col: str = None,
+                         flagged: set = None) -> go.Figure:
     """Lot-over-lot trend of the per-lot mean, one line per series combination.
 
     X axis is Lot Number (sorted); each point is the mean of ``metric_col`` for
@@ -688,6 +706,10 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
     else:
         keys = [None]
 
+    flagged = flagged or set()
+    has_extreme = (unit_col and unit_col in work.columns) or (panel_col and panel_col in work.columns)
+    ring_x, ring_y = [], []   # outlier lot-points to ring (option A)
+
     fig = go.Figure()
     for i, key in enumerate(keys):
         if cols:
@@ -706,14 +728,37 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
         counts = grp.size().reindex(lots).fillna(0).astype(int)
         color = _TREND_COLORS[i % len(_TREND_COLORS)]
 
+        # Per-lot extreme contributors for the hover (option B).
+        his, los = [], []
+        for lot in lots:
+            hi, lo = _extreme_label(s_df, s_df[lot_col] == lot, metric_col,
+                                    unit_col, panel_col) if has_extreme else ("", "")
+            his.append(hi)
+            los.append(lo)
+            if (label, lot) in flagged and pd.notna(means.get(lot)):
+                ring_x.append(lot)
+                ring_y.append(means.get(lot))
+
+        customdata = np.stack([counts.to_numpy().astype(object),
+                               np.array(his, dtype=object),
+                               np.array(los, dtype=object)], axis=-1)
+        hover = "Lot %{x}<br>Mean %{y:.2f} (n=%{customdata[0]})"
+        if has_extreme:
+            hover += "<br>high: %{customdata[1]}<br>low: %{customdata[2]}"
         fig.add_trace(go.Scatter(
             x=lots, y=means.tolist(), mode='lines+markers', name=f"<b>{label}</b>",
             line=dict(color=color, width=2),
             marker=dict(color=color, size=msize),
             connectgaps=True,
-            customdata=counts.to_numpy(),
-            hovertemplate=("Lot %{x}<br>Mean %{y:.2f}"
-                           " (n=%{customdata})<extra>" + label + "</extra>")))
+            customdata=customdata,
+            hovertemplate=hover + "<extra>" + label + "</extra>"))
+
+    if ring_x:
+        fig.add_trace(go.Scatter(
+            x=ring_x, y=ring_y, mode='markers', name="⚠ outlier",
+            marker=dict(size=msize + 7, color='rgba(0,0,0,0)',
+                        line=dict(color='#d62728', width=2)),
+            hoverinfo='skip'))
 
     y_title = f"{metric_col} ({measurement_unit})" if measurement_unit else metric_col
     big_axis_size = ax_title_size + 4   # larger, bolder axis titles
