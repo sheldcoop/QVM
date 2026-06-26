@@ -45,7 +45,7 @@ class DownloadCenterView:
         with col1:
             st.subheader("Master Excel Summary")
             st.markdown("Generates a multi-sheet Excel file containing statistical summaries for all metrics.")
-            if st.button("Compile Excel Summary", use_container_width=True, key="btn_compile_excel"):
+            if st.button("Compile Excel Summary", width='stretch', key="btn_compile_excel"):
                 with st.spinner("Compiling Excel file..."):
                     try:
                         st.session_state['excel_bytes'] = self._generate_excel_summary()
@@ -59,14 +59,14 @@ class DownloadCenterView:
                     data=st.session_state['excel_bytes'],
                     file_name="Master_Summary.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, key="dl_excel",
+                    width='stretch', key="dl_excel",
                 )
 
         with col2:
             st.subheader("Complete Chart Archive")
             st.markdown("Generates a ZIP file containing PNGs of every single chart (Box & Control).")
             st.warning("Warning: This requires `kaleido` and may take a few minutes to render.")
-            if st.button("Generate Chart Archive (ZIP)", use_container_width=True, key="btn_compile_zip"):
+            if st.button("Generate Chart Archive (ZIP)", width='stretch', key="btn_compile_zip"):
                 with st.spinner("Rendering charts headlessly... Please do not refresh the page..."):
                     try:
                         st.session_state['zip_bytes'] = self._generate_chart_zip()
@@ -83,7 +83,7 @@ class DownloadCenterView:
                     data=st.session_state['zip_bytes'],
                     file_name="Chart_Archive.zip",
                     mime="application/zip",
-                    use_container_width=True, key="dl_zip",
+                    width='stretch', key="dl_zip",
                 )
 
     # ------------------------------------------------------------------ #

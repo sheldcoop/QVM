@@ -56,7 +56,7 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
     side_col = find_col(df, "side")
     if not buildup_col or not side_col:
         st.warning("Could not find 'Buildup' or 'Side' columns. Showing all data.")
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width='stretch')
         return
 
     selected_bu, selected_side, chart_type = _scope_controls(
@@ -81,7 +81,7 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
     if not lot_col:
         st.warning("Could not find 'Lot Number' column to group the charts by.")
         with st.expander("View Raw Filtered Data"):
-            st.dataframe(side_df, use_container_width=True)
+            st.dataframe(side_df, width='stretch')
         return
 
     # Some sheets (Roughness) carry a sub-position that must NOT be pooled
@@ -101,7 +101,7 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
                       lot_col, panel_col, process_col, unit_col)
 
     with st.expander("View Raw Filtered Data"):
-        st.dataframe(side_df, use_container_width=True)
+        st.dataframe(side_df, width='stretch')
 
 
 def _render_slice(df, resolved, chart_type, selected_bu, selected_side, lot_col,
@@ -169,19 +169,19 @@ def _render_summaries(df: pd.DataFrame, resolved, process_col: Optional[str],
         return
 
     st.markdown("### Statistical Summary")
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    st.dataframe(summary_df, width='stretch', hide_index=True)
 
     lot_summary = generate_lot_summary_table(df, process_col, lot_col, metrics_def)
     if not lot_summary.empty:
         with st.expander("View Lot-by-Lot Aggregate Breakdown"):
-            st.dataframe(lot_summary, use_container_width=True, hide_index=True)
+            st.dataframe(lot_summary, width='stretch', hide_index=True)
 
     if panel_col:
         detailed = generate_detailed_summary_table(
             df, process_col, lot_col, panel_col, metrics_def)
         if not detailed.empty:
             with st.expander("View Detailed Summary (Panel Level)"):
-                st.dataframe(detailed, use_container_width=True, hide_index=True)
+                st.dataframe(detailed, width='stretch', hide_index=True)
     st.markdown("---")
 
 
@@ -221,7 +221,7 @@ def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
                     proc_df, col, lot_col,
                     f"{m.name} Distribution - {scope}", color_by_col=unit_col,
                     limits=limits, measurement_unit=m.display_unit)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             st.markdown("<br>", unsafe_allow_html=True)
 
         st.divider()
