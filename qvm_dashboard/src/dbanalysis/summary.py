@@ -54,18 +54,54 @@ def _series_label(df: pd.DataFrame, series_cols: list) -> pd.Series:
 OUTLIER_K = 2.0  # flag values more than k standard deviations from the mean
 
 
+def _explain_lot(g: pd.DataFrame, direction: str, m: float, s: float, k: float,
+                 unit_col: str, panel_col: str, side_col: str) -> str:
+    """Diagnose why a lot's mean is an outlier: a single spike or a broad shift."""
+    def _src(r):
+        bits = []
+        if unit_col and unit_col in g:
+            bits.append(f"Unit {r[unit_col]}")
+        if panel_col and panel_col in g:
+            bits.append(f"Panel {str(r[panel_col]).replace('.0', '')}")
+        if side_col and side_col in g:
+            bits.append(str(r[side_col]))
+        return " / ".join(bits) if bits else "a measurement"
+
+    lm = g["__v"].mean()
+    n = len(g)
+    # The extreme measurement in the outlier's direction.
+    ext = g.loc[g["__v"].idxmax()] if direction == "high" else g.loc[g["__v"].idxmin()]
+    ext_val = float(ext["__v"])
+    word = "max" if direction == "high" else "min"
+
+    if n >= 2:
+        without = g.loc[g.index != ext.name, "__v"].mean()
+    else:
+        without = lm
+    # If dropping that one point brings the lot back within the series band,
+    # the jump was driven by a single measurement.
+    if n >= 2 and abs(without - m) <= k * s:
+        return (f"Sudden {direction} {word}: {_src(ext)} = {ext_val:.1f}. "
+                f"Without it the lot mean returns to {without:.1f} (back in range) "
+                f"— likely one bad measurement.")
+    lot_std = g["__v"].std(ddof=1) if n > 1 else 0.0
+    return (f"Broad {direction} shift: {n} measurements averaging {lm:.1f} vs "
+            f"series {m:.1f}, within-lot σ={lot_std:.1f} — not a single point; "
+            f"looks like a real process change. Most extreme: {_src(ext)} = {ext_val:.1f}.")
+
+
 def trend_outliers(df: pd.DataFrame, metric_col: str, lot_col: str, series_cols: list,
                    unit_col: str = None, panel_col: str = None, side_col: str = None,
                    k: float = OUTLIER_K) -> pd.DataFrame:
-    """Outliers at two levels, using a simple ``|x - mean| > k·std`` rule.
+    """Lots whose final mean is an outlier within their series, with a reason.
 
-    Within-lot: individual measurements that sit beyond ``mean ± k·std`` of their
-    own (series, lot) group — pinpoints a specific Unit/Panel to chase. Lot-mean:
-    a lot whose mean sits beyond ``mean ± k·std`` of the series' other lot-means —
-    the dot you see jump on the trend. Each row carries the coordinates to find it
-    plus an Impact note showing how much it moves the number it belongs to.
+    For each series (Buildup·Side·Process) the lot-means are taken; a lot is
+    flagged when its mean sits beyond ``mean ± k·std`` of the series' lot-means
+    — the dot you see jump on the trend. Each flagged lot gets a plain-language
+    Reason that drills into its raw measurements to say whether one sudden
+    max/min from a specific Unit/Panel drove it, or the whole lot shifted.
 
-    Returns columns: Series, Lot, Type, Value, Unit, Panel, Side, Impact.
+    Returns columns: Series, Lot, Lot Mean, Series Mean, Δ%, Reason.
     """
     work = df.copy()
     work["__v"] = pd.to_numeric(work[metric_col], errors='coerce')
@@ -76,34 +112,7 @@ def trend_outliers(df: pd.DataFrame, metric_col: str, lot_col: str, series_cols:
     work["__series"] = _series_label(work, series_cols)
     work["__lot"] = work[lot_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-    def _cell(r, col, strip_dot=False):
-        if not col or col not in work.columns:
-            return "—"
-        v = str(r[col])
-        return v.replace('.0', '') if strip_dot else v
-
     rows = []
-
-    # --- Within-lot: a measurement unusual vs its own lot's peers ----------- #
-    for (series, lot), g in work.groupby(["__series", "__lot"]):
-        if len(g) < 2:
-            continue
-        mean, std = g["__v"].mean(), g["__v"].std(ddof=1)
-        if not std > 0:
-            continue
-        flagged = g[(g["__v"] - mean).abs() > k * std]
-        for _, r in flagged.iterrows():
-            without = g.loc[g.index != r.name, "__v"].mean()
-            pct = (without - mean) / mean * 100 if mean else 0.0
-            rows.append({
-                "Series": series, "Lot": lot, "Type": "within-lot",
-                "Value": round(float(r["__v"]), 2),
-                "Unit": _cell(r, unit_col), "Panel": _cell(r, panel_col, True),
-                "Side": _cell(r, side_col),
-                "Impact": f"{mean:.1f} → {without:.1f} ({pct:+.1f}%)",
-            })
-
-    # --- Lot-mean: a lot whose mean jumped vs the series' other lots -------- #
     for series, g in work.groupby("__series"):
         lot_means = g.groupby("__lot")["__v"].mean()
         if len(lot_means) < 2:
@@ -112,19 +121,24 @@ def trend_outliers(df: pd.DataFrame, metric_col: str, lot_col: str, series_cols:
         if not s > 0:
             continue
         for lot, lm in lot_means.items():
-            if abs(lm - m) > k * s:
-                pct = (lm - m) / m * 100 if m else 0.0
-                rows.append({
-                    "Series": series, "Lot": lot, "Type": "lot-mean",
-                    "Value": round(float(lm), 2),
-                    "Unit": "—", "Panel": "—", "Side": "—",
-                    "Impact": f"{lm:.1f} vs series {m:.1f} ({pct:+.1f}%)",
-                })
+            if abs(lm - m) <= k * s:
+                continue
+            direction = "high" if lm > m else "low"
+            lot_rows = g[g["__lot"] == lot]
+            pct = (lm - m) / m * 100 if m else 0.0
+            rows.append({
+                "Series": series, "Lot": lot,
+                "Lot Mean": round(float(lm), 2),
+                "Series Mean": round(float(m), 2),
+                "Δ%": f"{pct:+.1f}%",
+                "Reason": _explain_lot(lot_rows, direction, m, s, k,
+                                       unit_col, panel_col, side_col),
+            })
 
     if not rows:
         return pd.DataFrame()
     return (pd.DataFrame(rows)
-            .sort_values(["Series", "Lot", "Type"])
+            .sort_values(["Series", "Lot"])
             .reset_index(drop=True))
 
 

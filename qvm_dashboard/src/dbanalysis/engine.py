@@ -188,8 +188,8 @@ def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
                 out_df.insert(0, "Position", label)
                 out_df.insert(0, "Source", source_name or "—")
                 st.markdown(f"**⚠ {m.name} outlier notes** "
-                            f"({len(out_df)} flagged beyond {OUTLIER_K:g}σ — "
-                            f"within-lot + lot-mean)")
+                            f"({len(out_df)} lot{'s' if len(out_df) != 1 else ''} whose "
+                            f"final mean is beyond {OUTLIER_K:g}σ of the series)")
                 st.dataframe(out_df, width='stretch', hide_index=True)
 
             summary_lines = trend_series_summary(slice_df, col, lot_col, series_cols)
