@@ -745,10 +745,13 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
         hover = "Lot %{x}<br>Mean %{y:.2f} (n=%{customdata[0]})"
         if has_extreme:
             hover += "<br>high: %{customdata[1]}<br>low: %{customdata[2]}"
+        text = [f"{v:.1f}" if pd.notna(v) else "" for v in means]
         fig.add_trace(go.Scatter(
-            x=lots, y=means.tolist(), mode='lines+markers', name=f"<b>{label}</b>",
+            x=lots, y=means.tolist(), mode='lines+markers+text', name=f"<b>{label}</b>",
             line=dict(color=color, width=2),
             marker=dict(color=color, size=msize),
+            text=text, textposition='top center',
+            textfont=dict(color=color, size=ax_tick_size),
             connectgaps=True,
             customdata=customdata,
             hovertemplate=hover + "<extra>" + label + "</extra>"))
