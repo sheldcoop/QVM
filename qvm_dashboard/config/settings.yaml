@@ -38,3 +38,38 @@ CHART_SETTINGS:
     height: 950
     marker_size: 8
     subplot_title_size: 14
+  trend:                     # Lot-over-lot Trend Analysis chart (white background)
+    height: 600
+    width: null              # null = responsive (stretch); a number = fixed px
+    background: "#FFFFFF"
+    ink_color: "#333333"     # text / axis / marker-label colour on white
+    grid_color: "#e6e6e6"
+    title_size: 18
+    axis_title_size: 18
+    axis_tick_size: 14
+    legend_size: 18
+    line_width: 2
+    marker_size: 9
+    value_labels: true       # show per-lot mean on each point
+    label_decimals: 1
+    label_position: "top center"
+    margin:
+      l: 70
+      r: 190
+      t: 70
+      b: 70
+    outlier:
+      ring_color: "#d62728"
+      ring_extra_size: 7
+      ring_width: 2
+    colors:
+      - "#1f77b4"
+      - "#ff7f0e"
+      - "#2ca02c"
+      - "#d62728"
+      - "#9467bd"
+      - "#8c564b"
+      - "#e377c2"
+      - "#17becf"
+      - "#bcbd22"
+      - "#7f7f7f"

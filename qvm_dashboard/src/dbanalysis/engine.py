@@ -182,7 +182,8 @@ def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
                 slice_df, col, lot_col, series_cols,
                 f"{m.name} - {label}", measurement_unit=m.display_unit, style=style,
                 unit_col=unit_col, panel_col=panel_col, flagged=flagged)
-            st.plotly_chart(fig, width='stretch')
+            trend_width = (style or {}).get('trend', {}).get('width')
+            st.plotly_chart(fig, width='content' if trend_width else 'stretch')
 
             if not out_df.empty:
                 out_df.insert(0, "Position", label)

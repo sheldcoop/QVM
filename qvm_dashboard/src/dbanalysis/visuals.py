@@ -668,14 +668,26 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
     and fonts still come from the optional ``style`` dict (CHART_SETTINGS).
     """
     fam = _sty(style, 'font_family', default='Inter, sans-serif')
-    title_size = _sty(style, 'title_size', default=17)
-    ax_title_size = _sty(style, 'axis', 'title_size', default=14)
-    ax_tick_size = _sty(style, 'axis', 'tick_size', default=12)
-    height = _sty(style, 'control', 'height', default=600)
-    msize = _sty(style, 'control', 'marker_size', default=9)
+    title_size = _sty(style, 'trend', 'title_size', default=18)
+    axis_title_size = _sty(style, 'trend', 'axis_title_size', default=18)
+    tick_size = _sty(style, 'trend', 'axis_tick_size', default=14)
+    legend_size = _sty(style, 'trend', 'legend_size', default=18)
+    height = _sty(style, 'trend', 'height', default=600)
+    width = _sty(style, 'trend', 'width', default=None)
+    msize = _sty(style, 'trend', 'marker_size', default=9)
+    line_width = _sty(style, 'trend', 'line_width', default=2)
+    show_labels = _sty(style, 'trend', 'value_labels', default=True)
+    label_decimals = _sty(style, 'trend', 'label_decimals', default=1)
+    label_position = _sty(style, 'trend', 'label_position', default='top center')
+    margin = _sty(style, 'trend', 'margin', default={'l': 70, 'r': 190, 't': 70, 'b': 70})
+    ring_color = _sty(style, 'trend', 'outlier', 'ring_color', default='#d62728')
+    ring_extra = _sty(style, 'trend', 'outlier', 'ring_extra_size', default=7)
+    ring_width = _sty(style, 'trend', 'outlier', 'ring_width', default=2)
+    palette = _sty(style, 'trend', 'colors', default=_TREND_COLORS) or _TREND_COLORS
 
-    INK = '#333333'
-    GRID = '#e6e6e6'
+    INK = _sty(style, 'trend', 'ink_color', default='#333333')
+    GRID = _sty(style, 'trend', 'grid_color', default='#e6e6e6')
+    BG = _sty(style, 'trend', 'background', default='#FFFFFF')
 
     work = df.copy()
     work[metric_col] = pd.to_numeric(work[metric_col], errors='coerce')
@@ -683,7 +695,7 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
     if work.empty:
         fig = go.Figure()
         fig.update_layout(title=f"No data for {title}",
-                          plot_bgcolor='white', paper_bgcolor='white')
+                          plot_bgcolor=BG, paper_bgcolor=BG)
         return fig
 
     work[lot_col] = work[lot_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -726,7 +738,7 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
         grp = s_df.groupby(lot_col)[metric_col]
         means = grp.mean().reindex(lots)
         counts = grp.size().reindex(lots).fillna(0).astype(int)
-        color = _TREND_COLORS[i % len(_TREND_COLORS)]
+        color = palette[i % len(palette)]
 
         # Per-lot extreme contributors for the hover (option B).
         his, los = [], []
@@ -745,13 +757,14 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
         hover = "Lot %{x}<br>Mean %{y:.2f} (n=%{customdata[0]})"
         if has_extreme:
             hover += "<br>high: %{customdata[1]}<br>low: %{customdata[2]}"
-        text = [f"{v:.1f}" if pd.notna(v) else "" for v in means]
+        mode = 'lines+markers+text' if show_labels else 'lines+markers'
+        text = [f"{v:.{label_decimals}f}" if pd.notna(v) else "" for v in means]
         fig.add_trace(go.Scatter(
-            x=lots, y=means.tolist(), mode='lines+markers+text', name=f"<b>{label}</b>",
-            line=dict(color=color, width=2),
+            x=lots, y=means.tolist(), mode=mode, name=f"<b>{label}</b>",
+            line=dict(color=color, width=line_width),
             marker=dict(color=color, size=msize),
-            text=text, textposition='top center',
-            textfont=dict(color=color, size=ax_tick_size),
+            text=text, textposition=label_position,
+            textfont=dict(color=color, size=tick_size),
             connectgaps=True,
             customdata=customdata,
             hovertemplate=hover + "<extra>" + label + "</extra>"))
@@ -759,32 +772,35 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
     if ring_x:
         fig.add_trace(go.Scatter(
             x=ring_x, y=ring_y, mode='markers', name="⚠ outlier",
-            marker=dict(size=msize + 7, color='rgba(0,0,0,0)',
-                        line=dict(color='#d62728', width=2)),
+            marker=dict(size=msize + ring_extra, color='rgba(0,0,0,0)',
+                        line=dict(color=ring_color, width=ring_width)),
             hoverinfo='skip'))
 
     y_title = f"{metric_col} ({measurement_unit})" if measurement_unit else metric_col
-    big_axis_size = ax_title_size + 4   # larger, bolder axis titles
-    big_legend_size = ax_tick_size + 4  # larger, bolder legend entries
 
-    fig.update_layout(
+    layout = dict(
         title=dict(text=f"<b>{title} (Lot Trend)</b>",
                    font=dict(color=INK, size=title_size), x=0.5, xanchor='center'),
-        height=height, margin=dict(l=70, r=190, t=70, b=70),
+        height=height,
+        margin=dict(l=margin.get('l', 70), r=margin.get('r', 190),
+                    t=margin.get('t', 70), b=margin.get('b', 70)),
         showlegend=True,
         legend=dict(orientation='v', xanchor='left', x=1.02, yanchor='top', y=1.0,
-                    font=dict(color=INK, size=big_legend_size)),
-        plot_bgcolor='white', paper_bgcolor='white',
+                    font=dict(color=INK, size=legend_size)),
+        plot_bgcolor=BG, paper_bgcolor=BG,
         font=dict(family=fam, color=INK))
+    if width:
+        layout['width'] = width
+    fig.update_layout(**layout)
     fig.update_xaxes(title_text="<b>Lot Number</b>",
-                     title_font=dict(color=INK, size=big_axis_size),
+                     title_font=dict(color=INK, size=axis_title_size),
                      type='category', categoryorder='array', categoryarray=lots,
-                     tickfont=dict(color=INK, size=ax_tick_size),
+                     tickfont=dict(color=INK, size=tick_size),
                      showgrid=False, zeroline=False,
                      showline=True, linecolor=GRID, mirror=True)
     fig.update_yaxes(title_text=f"<b>Mean {y_title}</b>",
-                     title_font=dict(color=INK, size=big_axis_size),
-                     tickfont=dict(color=INK, size=ax_tick_size),
+                     title_font=dict(color=INK, size=axis_title_size),
+                     tickfont=dict(color=INK, size=tick_size),
                      showgrid=True, gridcolor=GRID, zeroline=False,
                      showline=True, linecolor=GRID, mirror=True)
     return fig
