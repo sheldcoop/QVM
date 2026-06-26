@@ -707,7 +707,7 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
         color = _TREND_COLORS[i % len(_TREND_COLORS)]
 
         fig.add_trace(go.Scatter(
-            x=lots, y=means.tolist(), mode='lines+markers', name=label,
+            x=lots, y=means.tolist(), mode='lines+markers', name=f"<b>{label}</b>",
             line=dict(color=color, width=2),
             marker=dict(color=color, size=msize),
             connectgaps=True,
@@ -716,22 +716,26 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
                            " (n=%{customdata})<extra>" + label + "</extra>")))
 
     y_title = f"{metric_col} ({measurement_unit})" if measurement_unit else metric_col
+    big_axis_size = ax_title_size + 4   # larger, bolder axis titles
+    big_legend_size = ax_tick_size + 4  # larger, bolder legend entries
 
     fig.update_layout(
         title=dict(text=f"<b>{title} (Lot Trend)</b>",
                    font=dict(color=INK, size=title_size), x=0.5, xanchor='center'),
-        height=height, margin=dict(l=60, r=30, t=110, b=70),
+        height=height, margin=dict(l=70, r=190, t=70, b=70),
         showlegend=True,
-        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='left', x=0.0,
-                    font=dict(color=INK, size=ax_tick_size)),
+        legend=dict(orientation='v', xanchor='left', x=1.02, yanchor='top', y=1.0,
+                    font=dict(color=INK, size=big_legend_size)),
         plot_bgcolor='white', paper_bgcolor='white',
         font=dict(family=fam, color=INK))
-    fig.update_xaxes(title_text="Lot Number", title_font=dict(color=INK, size=ax_title_size),
+    fig.update_xaxes(title_text="<b>Lot Number</b>",
+                     title_font=dict(color=INK, size=big_axis_size),
                      type='category', categoryorder='array', categoryarray=lots,
                      tickfont=dict(color=INK, size=ax_tick_size),
                      showgrid=False, zeroline=False,
                      showline=True, linecolor=GRID, mirror=True)
-    fig.update_yaxes(title_text=f"Mean {y_title}", title_font=dict(color=INK, size=ax_title_size),
+    fig.update_yaxes(title_text=f"<b>Mean {y_title}</b>",
+                     title_font=dict(color=INK, size=big_axis_size),
                      tickfont=dict(color=INK, size=ax_tick_size),
                      showgrid=True, gridcolor=GRID, zeroline=False,
                      showline=True, linecolor=GRID, mirror=True)
