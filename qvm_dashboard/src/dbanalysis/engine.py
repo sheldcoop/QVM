@@ -19,7 +19,11 @@ from src.dbanalysis.summary import (
     generate_lot_summary_table,
     generate_detailed_summary_table,
 )
-from src.dbanalysis.visuals import plot_roughness_box, plot_control_chart
+from src.dbanalysis.visuals import (
+    plot_roughness_box,
+    plot_control_chart,
+    plot_roughness_trend,
+)
 from ui.sidebar import render_nav_buttons
 
 logger = logging.getLogger(__name__)
@@ -143,8 +147,9 @@ def _scope_controls(df: pd.DataFrame, config: AnalysisConfig,
             selected_side = render_nav_buttons(sides, state_key=f"{p}_side")
         with col3:
             st.markdown("**Chart Type**")
-            chart_type = render_nav_buttons(["Box Plot", "Control Chart"],
-                                            state_key=f"{p}_chart")
+            chart_type = render_nav_buttons(
+                ["Box Plot", "Control Chart", "Trend Analysis"],
+                state_key=f"{p}_chart")
     st.markdown("---")
     return selected_bu, selected_side, chart_type
 
@@ -205,6 +210,21 @@ def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
                    panel_col: Optional[str], process_col: Optional[str],
                    unit_col: Optional[str], extra_scope: str = "",
                    style: dict = None) -> None:
+    # Trend Analysis overlays every process as its own line, so it is rendered
+    # once per metric across all processes rather than inside the per-process
+    # loop the box/control charts use.
+    if chart_type == "Trend Analysis":
+        base = f"{selected_bu} {selected_side}"
+        if extra_scope:
+            base = f"{base} {extra_scope}"
+        for m, col in resolved:
+            fig = plot_roughness_trend(
+                df, col, lot_col, process_col,
+                f"{m.name} - {base}", measurement_unit=m.display_unit, style=style)
+            st.plotly_chart(fig, width='stretch')
+            st.markdown("<br>", unsafe_allow_html=True)
+        return
+
     processes = (df[process_col].dropna().astype(str).str.strip().unique().tolist()
                  if process_col else [None])
 

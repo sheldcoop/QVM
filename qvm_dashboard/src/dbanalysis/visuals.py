@@ -626,3 +626,123 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
             ann['font'] = dict(size=subplot_size, color='rgba(255,255,255,0.7)')
 
     return fig
+
+
+# Line colours for the per-process trend series (cycled in palette order).
+_TREND_COLORS = [
+    theme.PALETTE['blue'], theme.PALETTE['peach'], theme.PALETTE['green'],
+    theme.PALETTE['mauve'], theme.PALETTE['yellow'], theme.PALETTE['red'],
+    theme.PALETTE['sky'], theme.PALETTE['teal'],
+]
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert ``#rrggbb`` to an ``rgba(...)`` string for translucent bands."""
+    h = hex_color.lstrip('#')
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
+                         process_col: str = None, title: str = "",
+                         measurement_unit: str = None, style: dict = None) -> go.Figure:
+    """Lot-over-lot trend of the per-lot mean, one line per Process.
+
+    X axis is Lot Number (sorted); each point is the mean of ``metric_col`` for
+    that lot, with a translucent ±1 std-dev band. When a ``process_col`` is
+    given, each distinct process (e.g. Post AOP / Post ADP) becomes its own
+    trend line so lot drift can be compared across processes at a glance. This
+    is the *between-lot* counterpart to the box/control charts (which show
+    *within-lot* spread).
+
+    All sizing / fonts come from the optional ``style`` dict (CHART_SETTINGS).
+    """
+    fam = _sty(style, 'font_family', default='Inter, sans-serif')
+    title_size = _sty(style, 'title_size', default=17)
+    title_color = _sty(style, 'title_color', default='white')
+    wm_size = _sty(style, 'watermark_size', default=17)
+    grid_color = _sty(style, 'grid_color', default='rgba(255,255,255,0.05)')
+    ax = _axis_style(style)
+    height = _sty(style, 'control', 'height', default=600)
+    msize = _sty(style, 'control', 'marker_size', default=10)
+
+    work = df.copy()
+    work[metric_col] = pd.to_numeric(work[metric_col], errors='coerce')
+    work = work.dropna(subset=[metric_col])
+    if work.empty:
+        fig = go.Figure()
+        fig.update_layout(title=f"No data for {title}")
+        return fig
+
+    work[lot_col] = work[lot_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+    lots = sorted(work[lot_col].dropna().unique().tolist())
+    if len(lots) < 2:
+        fig = go.Figure()
+        fig.update_layout(
+            title=(f"{title}: need ≥2 lots for a trend (got {len(lots)}). "
+                   f"Use the Box Plot or Control Chart."))
+        return fig
+
+    by_process = (process_col is not None and process_col in work.columns
+                  and work[process_col].notna().any())
+    if by_process:
+        work[process_col] = work[process_col].astype(str).str.strip()
+        series = sorted(work[process_col].dropna().unique().tolist())
+    else:
+        series = ["All"]
+
+    fig = go.Figure()
+    for i, name in enumerate(series):
+        s_df = work[work[process_col].astype(str).str.strip() == name] if by_process else work
+        grp = s_df.groupby(lot_col)[metric_col]
+        means = grp.mean().reindex(lots)
+        stds = grp.std(ddof=1).reindex(lots)
+        counts = grp.size().reindex(lots).fillna(0).astype(int)
+        color = _TREND_COLORS[i % len(_TREND_COLORS)]
+
+        # ±1σ band (only across lots that have data), drawn behind the line.
+        upper = (means + stds.fillna(0))
+        lower = (means - stds.fillna(0))
+        valid = means.notna()
+        if valid.any():
+            xs = [l for l, v in zip(lots, valid) if v]
+            up = [u for u, v in zip(upper, valid) if v]
+            lo = [d for d, v in zip(lower, valid) if v]
+            fig.add_trace(go.Scatter(
+                x=xs + xs[::-1], y=up + lo[::-1], fill='toself',
+                fillcolor=_hex_to_rgba(color, 0.12), line=dict(width=0),
+                hoverinfo='skip', showlegend=False))
+
+        fig.add_trace(go.Scatter(
+            x=lots, y=means.tolist(), mode='lines+markers', name=name,
+            line=dict(color=color, width=2),
+            marker=dict(color=color, size=msize),
+            customdata=np.stack([stds.fillna(0).to_numpy(), counts.to_numpy()], axis=-1),
+            hovertemplate=("Lot %{x}<br>Mean %{y:.2f}<br>"
+                           "Std %{customdata[0]:.2f} (n=%{customdata[1]})<extra>"
+                           + name + "</extra>")))
+
+    watermark = title.split(' - ')[-1] if ' - ' in title else title
+    fig.add_annotation(text=f"<b>{watermark}</b>", xref="paper", yref="paper",
+                       x=0.0, y=1.03, xanchor='left', yanchor='bottom',
+                       showarrow=False, font=dict(color='white', size=wm_size))
+
+    y_title = f"{metric_col} ({measurement_unit})" if measurement_unit else metric_col
+    axis_title_font = dict(color=ax['title_color'], size=ax['title_size'])
+    axis_tick_font = dict(color=ax['tick_color'], size=ax['tick_size'])
+
+    fig.update_layout(
+        title=dict(text=f"<b>{title} (Lot Trend)</b>",
+                   font=dict(color=title_color, size=title_size), x=0.5, xanchor='center'),
+        height=height, margin=dict(l=50, r=30, t=80, b=70),
+        showlegend=by_process,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1.0),
+        plot_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
+        paper_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
+        font=dict(family=fam, color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'))
+    fig.update_xaxes(title_text=_bold("Lot Number", ax['bold']), title_font=axis_title_font,
+                     type='category', categoryorder='array', categoryarray=lots,
+                     tickfont=axis_tick_font, showgrid=False, zeroline=False)
+    fig.update_yaxes(title_text=_bold(f"Mean {y_title}", ax['bold']), title_font=axis_title_font,
+                     tickfont=axis_tick_font, showgrid=True, gridcolor=grid_color, zeroline=False)
+    return fig
