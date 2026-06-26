@@ -683,8 +683,8 @@ def plot_roughness_trend(df: pd.DataFrame, metric_col: str, lot_col: str,
                    f"Use the Box Plot or Control Chart."))
         return fig
 
-    by_process = (process_col is not None and process_col in work.columns
-                  and work[process_col].notna().any())
+    by_process = bool(process_col is not None and process_col in work.columns
+                      and work[process_col].notna().any())
     if by_process:
         work[process_col] = work[process_col].astype(str).str.strip()
         series = sorted(work[process_col].dropna().unique().tolist())
