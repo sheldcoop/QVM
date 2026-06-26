@@ -11,3 +11,30 @@ COLORS:
   app_text: "#FFFFFF"
   panel_ui: "#B87333"
   panel_ui_hover: "#d48c46"
+
+# All chart layout/sizing/typography lives here (colors of the data series still
+# come from src/theme.py). Tweak these to restyle every chart without touching code.
+CHART_SETTINGS:
+  font_family: "Inter, sans-serif"
+  title_size: 18
+  title_color: "#FFFFFF"
+  watermark_size: 17
+  badge_size: 14
+  grid_color: "rgba(255,255,255,0.05)"
+  axis:
+    title_color: "#FFFFFF"   # x/y axis titles (e.g. "Lot Number", value)
+    title_size: 16
+    tick_color: "#FFFFFF"    # x/y tick labels (lot numbers, values)
+    tick_size: 14
+    bold: true               # bold axis titles + tick labels
+  box:                       # the box-plot "bars"
+    height: 700
+    box_width: 0.35          # width of each box; spacing follows from this
+    jitter: 0.15             # horizontal scatter of the dots
+    marker_size: 10
+    marker_opacity: 0.9
+    mean_label_size: 13
+  control:                   # X-bar & S control chart
+    height: 950
+    marker_size: 8
+    subplot_title_size: 14

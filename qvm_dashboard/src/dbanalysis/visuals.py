@@ -41,11 +41,41 @@ def b4(n: int) -> float:
         return float('nan')
     return 1.0 + 3.0 * math.sqrt(1.0 - cc * cc) / cc
 
-def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title: str, color_by_col: str = None, limits: dict = None, measurement_unit: str = None) -> go.Figure:
+def _sty(style, *path, default=None):
+    """Read a nested key from the CHART_SETTINGS dict, falling back to ``default``."""
+    cur = style or {}
+    for k in path:
+        if isinstance(cur, dict) and k in cur:
+            cur = cur[k]
+        else:
+            return default
+    return cur
+
+
+def _bold(text, on: bool) -> str:
+    """Wrap text in <b> when bold is on (robust across Plotly versions)."""
+    return f"<b>{text}</b>" if on else str(text)
+
+
+def _axis_style(style):
+    """Resolve the shared axis font settings used by both charts."""
+    txt = theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'
+    return {
+        'title_color': _sty(style, 'axis', 'title_color', default=txt),
+        'title_size': _sty(style, 'axis', 'title_size', default=14),
+        'tick_color': _sty(style, 'axis', 'tick_color', default=txt),
+        'tick_size': _sty(style, 'axis', 'tick_size', default=12),
+        'bold': _sty(style, 'axis', 'bold', default=False),
+    }
+
+
+def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title: str, color_by_col: str = None, limits: dict = None, measurement_unit: str = None, style: dict = None) -> go.Figure:
     """Panel-level box plot grouped by `group_col` (e.g. Lot Name).
-    
+
     Layout: All | Lot A | Lot B | Lot C ...
-    Narrow, tall boxes with bold jitter dots. Mean reference line.
+    Narrow, tall boxes with bold jitter dots. Mean reference line. All sizing /
+    fonts come from the optional ``style`` dict (CHART_SETTINGS); omitting it keeps
+    the original hardcoded look.
     """
     df_plot = df.dropna(subset=[metric_col]).copy()
     
@@ -66,7 +96,22 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
     
     rng = np.random.default_rng(42)
     fig = go.Figure()
-    
+
+    # --- Resolve style (CHART_SETTINGS) with current defaults --------------- #
+    fam = _sty(style, 'font_family', default='Inter, sans-serif')
+    title_size = _sty(style, 'title_size', default=17)
+    title_color = _sty(style, 'title_color', default='white')
+    wm_size = _sty(style, 'watermark_size', default=17)
+    badge_size = _sty(style, 'badge_size', default=14)
+    grid_color = _sty(style, 'grid_color', default='rgba(255,255,255,0.05)')
+    ax = _axis_style(style)
+    box_h = _sty(style, 'box', 'height', default=700)
+    box_w = _sty(style, 'box', 'box_width', default=0.35)
+    jit = _sty(style, 'box', 'jitter', default=0.15)
+    msize = _sty(style, 'box', 'marker_size', default=10)
+    mopac = _sty(style, 'box', 'marker_opacity', default=0.9)
+    mean_size = _sty(style, 'box', 'mean_label_size', default=13)
+
     # Ensure the grouping column is treated as a string (categorical)
     if group_col in df_plot.columns:
         df_plot[group_col] = df_plot[group_col].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -111,14 +156,14 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
             y=values,
             name=x_label,
             boxpoints=False,
-            width=0.35,
+            width=box_w,
             fillcolor=fill,
             line=dict(color=color, width=2),
             marker_color=color,
             showlegend=False,
             hoverinfo='skip',
         ))
-        jitter = rng.uniform(-0.15, 0.15, size=len(values))
+        jitter = rng.uniform(-jit, jit, size=len(values))
         
         # Find panel column if it exists
         p_col = next((c for c in df_group.columns if str(c).lower().strip() == 'panel'), None)
@@ -154,7 +199,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
                     text=hover_texts,
                     mode='markers',
                     name=f"{color_by_col}: {unit_val}",
-                    marker=dict(color=u_color, size=10, opacity=0.9, line=dict(width=0.5, color='rgba(0,0,0,0.5)')),
+                    marker=dict(color=u_color, size=msize, opacity=mopac, line=dict(width=0.5, color='rgba(0,0,0,0.5)')),
                     hovertemplate="%{text}<extra></extra>",
                     showlegend=show_leg,
                     legendgroup=str(unit_val),
@@ -173,7 +218,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
                 y=values,
                 text=hover_texts,
                 mode='markers',
-                marker=dict(color=color, size=10, opacity=0.9, line=dict(width=0)),
+                marker=dict(color=color, size=msize, opacity=mopac, line=dict(width=0)),
                 hovertemplate="%{text}<extra></extra>",
                 showlegend=False,
             ))
@@ -205,7 +250,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
             x=_x_pos[g], y=max_val + offset,
             xanchor='center', yanchor='bottom',
             showarrow=False,
-            font=dict(size=13, color=g_color),
+            font=dict(size=mean_size, color=g_color),
         )
         
     # Global mean line
@@ -225,9 +270,9 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
         x=0.0, y=1.05,
         xanchor='left', yanchor='bottom',
         showarrow=False,
-        font=dict(color='white', size=17)
+        font=dict(color='white', size=wm_size)
     )
-    
+
     # Optional Spec Limits
     if limits:
         if limits.get("LSL") is not None:
@@ -264,7 +309,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
                     x=1.0, y=1.05,
                     xanchor='right', yanchor='bottom',
                     showarrow=False,
-                    font=dict(color=ppk_color, size=14),
+                    font=dict(color=ppk_color, size=badge_size),
                     bgcolor='rgba(0,0,0,0.5)',
                     borderpad=4,
                     bordercolor=ppk_color,
@@ -283,31 +328,35 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
     fig.update_layout(
         title=dict(
             text=f"<b>{title}</b>",
-            font=dict(color="white", size=17),
+            font=dict(color=title_color, size=title_size),
             x=0.5,
             xanchor='center'
         ),
-        height=700,
+        height=box_h,
         margin=dict(l=50, r=30, t=60, b=40),
         xaxis=dict(
-            title=group_col,
+            title=dict(text=_bold(group_col, ax['bold']),
+                       font=dict(color=ax['title_color'], size=ax['title_size'])),
+            tickfont=dict(color=ax['tick_color'], size=ax['tick_size']),
             tickmode='array',
             tickvals=list(_x_pos.values()),
-            ticktext=list(_x_pos.keys()),
+            ticktext=[_bold(k, ax['bold']) for k in _x_pos.keys()],
             tickangle=-90,
             showgrid=False,
             zeroline=False,
             range=x_range
         ),
         yaxis=dict(
-            title=y_title,
+            title=dict(text=_bold(y_title, ax['bold']),
+                       font=dict(color=ax['title_color'], size=ax['title_size'])),
+            tickfont=dict(color=ax['tick_color'], size=ax['tick_size']),
             showgrid=True,
-            gridcolor='rgba(255,255,255,0.05)',
+            gridcolor=grid_color,
             zeroline=False,
         ),
         plot_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
         paper_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        font=dict(family='Inter, sans-serif', color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'),
+        font=dict(family=fam, color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'),
         legend=dict(
             orientation="v",
             yanchor="top",
@@ -324,7 +373,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
 
 def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
                        panel_col: str = None, title: str = "",
-                       measurement_unit: str = None) -> go.Figure:
+                       measurement_unit: str = None, style: dict = None) -> go.Figure:
     """X-bar & S control chart with rational subgroups.
 
     Subgroups are ``(lot, panel)`` when a panel column is available — this gives
@@ -341,8 +390,21 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     plots subgroup *means* (voice of the process), whereas specs apply to
     *individual* parts (voice of the customer). Spec compliance lives on the box
     plot and the Pp/Ppk capability summary.
+
+    All sizing / fonts come from the optional ``style`` dict (CHART_SETTINGS).
     """
     MIN_SUBGROUPS = 2
+
+    # --- Resolve style (CHART_SETTINGS) with current defaults --------------- #
+    fam = _sty(style, 'font_family', default='Inter, sans-serif')
+    title_size = _sty(style, 'title_size', default=17)
+    title_color = _sty(style, 'title_color', default='white')
+    wm_size = _sty(style, 'watermark_size', default=17)
+    grid_color = _sty(style, 'grid_color', default='rgba(255,255,255,0.05)')
+    ax = _axis_style(style)
+    cc_h = _sty(style, 'control', 'height', default=950)
+    cc_msize = _sty(style, 'control', 'marker_size', default=10)
+    subplot_size = _sty(style, 'control', 'subplot_title_size', default=14)
 
     work = df.copy()
     work[metric_col] = pd.to_numeric(work[metric_col], errors='coerce')
@@ -492,7 +554,7 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
                       annotation_text='Center Line (S)', annotation_position='top left',
                       row=2, col=1)
         fig.add_trace(go.Scatter(x=x, y=stds, mode='markers',
-                                 marker=dict(color=colors_s, size=10,
+                                 marker=dict(color=colors_s, size=cc_msize,
                                              line=dict(width=1, color='rgba(0,0,0,0.5)')),
                                  text=hover_s, hovertemplate="%{text}<extra></extra>",
                                  showlegend=False), row=2, col=1)
@@ -525,7 +587,7 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     watermark = title.split(' - ')[-1] if ' - ' in title else title
     fig.add_annotation(text=f"<b>{watermark}</b>", xref="paper", yref="paper",
                        x=0.0, y=1.03, xanchor='left', yanchor='bottom',
-                       showarrow=False, font=dict(color='white', size=17))
+                       showarrow=False, font=dict(color='white', size=wm_size))
 
     span = max(5.0, len(groups))
     center = (len(groups) - 1) / 2.0
@@ -534,26 +596,33 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
 
     fig.update_layout(
         title=dict(text=f"<b>{title} (X-Bar & S-Chart)</b>",
-                   font=dict(color="white", size=17), x=0.5, xanchor='center'),
-        height=950, margin=dict(l=50, r=30, t=80, b=90), showlegend=False,
+                   font=dict(color=title_color, size=title_size), x=0.5, xanchor='center'),
+        height=cc_h, margin=dict(l=50, r=30, t=80, b=90), showlegend=False,
         plot_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
         paper_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        font=dict(family='Inter, sans-serif',
+        font=dict(family=fam,
                   color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'))
 
+    axis_title_font = dict(color=ax['title_color'], size=ax['title_size'])
+    axis_tick_font = dict(color=ax['tick_color'], size=ax['tick_size'])
     x_title = "Panel (grouped by Lot)" if by_panel else "Lot"
     fig.update_xaxes(tickmode='array', tickvals=x, ticktext=[''] * len(labels),
-                     showgrid=False, zeroline=False, range=x_range, row=1, col=1)
-    fig.update_xaxes(title_text=x_title, tickmode='array', tickvals=x,
-                     ticktext=labels, tickangle=-90, showgrid=False, zeroline=False,
+                     tickfont=axis_tick_font, showgrid=False, zeroline=False,
+                     range=x_range, row=1, col=1)
+    fig.update_xaxes(title_text=_bold(x_title, ax['bold']), title_font=axis_title_font,
+                     tickmode='array', tickvals=x,
+                     ticktext=[_bold(l, ax['bold']) for l in labels], tickangle=-90,
+                     tickfont=axis_tick_font, showgrid=False, zeroline=False,
                      range=x_range, row=2, col=1)
-    fig.update_yaxes(title_text=f"Mean {y_title}", showgrid=True,
-                     gridcolor='rgba(255,255,255,0.05)', zeroline=False, row=1, col=1)
-    fig.update_yaxes(title_text=f"Std Dev {y_title}", showgrid=True,
-                     gridcolor='rgba(255,255,255,0.05)', zeroline=False, row=2, col=1)
+    fig.update_yaxes(title_text=_bold(f"Mean {y_title}", ax['bold']), title_font=axis_title_font,
+                     tickfont=axis_tick_font, showgrid=True,
+                     gridcolor=grid_color, zeroline=False, row=1, col=1)
+    fig.update_yaxes(title_text=_bold(f"Std Dev {y_title}", ax['bold']), title_font=axis_title_font,
+                     tickfont=axis_tick_font, showgrid=True,
+                     gridcolor=grid_color, zeroline=False, row=2, col=1)
 
     for ann in fig['layout']['annotations']:
         if ann['text'] in ("Accuracy (X-Bar)", "Precision (S-Chart)"):
-            ann['font'] = dict(size=14, color='rgba(255,255,255,0.7)')
+            ann['font'] = dict(size=subplot_size, color='rgba(255,255,255,0.7)')
 
     return fig

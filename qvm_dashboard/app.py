@@ -72,7 +72,7 @@ def main() -> None:
         return
 
     if db_sub_view in DB_ANALYSES:
-        render_analysis(DB_ANALYSES[db_sub_view], db_files)
+        render_analysis(DB_ANALYSES[db_sub_view], db_files, settings)
     elif db_sub_view == "Download Center":
         from src.views.download_center import DownloadCenterView
         DownloadCenterView(settings, db_files).render()

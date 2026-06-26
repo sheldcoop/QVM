@@ -170,6 +170,7 @@ class DownloadCenterView:
 
     def _process_sheet_for_zip(self, zipf: zipfile.ZipFile, df: pd.DataFrame,
                                config: AnalysisConfig):
+        style = self.settings.get('CHART_SETTINGS', {})
         df = _ensure_header(df)
         buildup_col = find_col(df, "buildup")
         side_col = find_col(df, "side")
@@ -213,12 +214,12 @@ class DownloadCenterView:
 
                             fig_box = plot_roughness_box(proc_df, col, lot_col, title,
                                                          color_by_col=unit_col, limits=limits,
-                                                         measurement_unit=m.display_unit)
+                                                         measurement_unit=m.display_unit, style=style)
                             zipf.writestr(f"{base}/{safe_proc}_BoxPlot.png",
                                           fig_box.to_image(format="png", width=1200, height=600))
 
                             fig_cc = plot_control_chart(proc_df, col, lot_col, panel_col, title,
-                                                        measurement_unit=m.display_unit)
+                                                        measurement_unit=m.display_unit, style=style)
                             zipf.writestr(f"{base}/{safe_proc}_ControlChart.png",
                                       fig_cc.to_image(format="png", width=1200, height=800))
 

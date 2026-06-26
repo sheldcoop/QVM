@@ -282,6 +282,34 @@ def test_control_chart_no_bands_for_lot_only_subgroups():
     assert [s for s in fig.layout.shapes if s.type == 'rect'] == []
 
 
+def test_box_style_applied_from_settings():
+    style = {"box": {"height": 555},
+             "axis": {"tick_color": "#FFFFFF", "tick_size": 22, "bold": True}}
+    fig = plot_roughness_box(_make_df(), "Roughness", "Lot", "Test", style=style)
+    assert fig.layout.height == 555
+    assert fig.layout.xaxis.tickfont.color == "#FFFFFF"
+    assert fig.layout.xaxis.tickfont.size == 22
+    # bold wraps tick labels
+    assert all(t.startswith("<b>") for t in fig.layout.xaxis.ticktext)
+
+
+def test_control_style_applied_from_settings():
+    style = {"control": {"height": 808}, "axis": {"tick_size": 19}}
+    fig = plot_control_chart(_panel_df(3), "Roughness", "Lot", "Panel", "Test", style=style)
+    assert fig.layout.height == 808
+
+
+def test_arrow_safe_enables_arrow_serialization():
+    """The mixed '..nm' string column must serialize to Arrow after the cast."""
+    import pyarrow as pa
+    from src.dbanalysis.engine import _arrow_safe
+    df = pd.DataFrame({"Ra_Std_dev": ["0.89nm", "1.2nm"], "Ra_Mean": [1.0, 2.0]})
+    out = _arrow_safe(df)
+    assert out["Ra_Std_dev"].tolist() == ["0.89nm", "1.2nm"]
+    assert out["Ra_Mean"].tolist() == [1.0, 2.0]   # numeric preserved
+    pa.Table.from_pandas(out)   # raised before the fix; must not now
+
+
 def test_control_chart_draws_no_spec_limits():
     """Spec limits live on the box plot, not the control chart.
 

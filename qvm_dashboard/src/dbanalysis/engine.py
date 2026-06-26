@@ -25,12 +25,13 @@ from ui.sidebar import render_nav_buttons
 logger = logging.getLogger(__name__)
 
 
-def render_analysis(config: AnalysisConfig, files: list) -> None:
+def render_analysis(config: AnalysisConfig, files: list, settings: dict = None) -> None:
     """Render the analysis described by ``config`` for each uploaded file."""
     if not files:
         st.info("No database files uploaded.")
         return
 
+    style = (settings or {}).get('CHART_SETTINGS', {})
     for file in files:
         try:
             with st.spinner(f"Loading {file.name}..."):
@@ -41,7 +42,7 @@ def render_analysis(config: AnalysisConfig, files: list) -> None:
                     f"{file.name}. Available sheets: {list_sheets(file)}"
                 )
                 continue
-            _render_sheet(config, df)
+            _render_sheet(config, df, style)
         except FileNotFoundError as e:
             logger.error("File missing for %s: %s", file.name, e)
             st.error(f"Could not read {file.name}: {e}")
@@ -51,12 +52,25 @@ def render_analysis(config: AnalysisConfig, files: list) -> None:
             st.error(f"Failed to parse {file.name}: {e}")
 
 
-def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
+def _arrow_safe(df: pd.DataFrame) -> pd.DataFrame:
+    """Cast object columns to str so st.dataframe's Arrow conversion never errors.
+
+    Raw Horus columns like ``Ra_Std_dev`` store strings such as ``"0.89nm"`` mixed
+    with numbers, which Arrow can't serialise. This only affects on-screen display.
+    """
+    out = df.copy()
+    for c in out.columns:
+        if out[c].dtype == object:
+            out[c] = out[c].astype(str)
+    return out
+
+
+def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None) -> None:
     buildup_col = find_col(df, "buildup")
     side_col = find_col(df, "side")
     if not buildup_col or not side_col:
         st.warning("Could not find 'Buildup' or 'Side' columns. Showing all data.")
-        st.dataframe(df, width='stretch')
+        st.dataframe(_arrow_safe(df), width='stretch')
         return
 
     selected_bu, selected_side, chart_type = _scope_controls(
@@ -81,7 +95,7 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
     if not lot_col:
         st.warning("Could not find 'Lot Number' column to group the charts by.")
         with st.expander("View Raw Filtered Data"):
-            st.dataframe(side_df, width='stretch')
+            st.dataframe(_arrow_safe(side_df), width='stretch')
         return
 
     # Some sheets (Roughness) carry a sub-position that must NOT be pooled
@@ -94,21 +108,22 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
                 continue
             st.markdown(f"## {val}")
             _render_slice(slice_df, resolved, chart_type, selected_bu, selected_side,
-                          lot_col, panel_col, process_col, unit_col, extra_scope=val)
+                          lot_col, panel_col, process_col, unit_col, style, extra_scope=val)
             st.markdown("---")
     else:
         _render_slice(side_df, resolved, chart_type, selected_bu, selected_side,
-                      lot_col, panel_col, process_col, unit_col)
+                      lot_col, panel_col, process_col, unit_col, style)
 
     with st.expander("View Raw Filtered Data"):
         st.dataframe(side_df, width='stretch')
 
 
 def _render_slice(df, resolved, chart_type, selected_bu, selected_side, lot_col,
-                  panel_col, process_col, unit_col, extra_scope: str = "") -> None:
+                  panel_col, process_col, unit_col, style: dict = None,
+                  extra_scope: str = "") -> None:
     _render_summaries(df, resolved, process_col, lot_col, panel_col)
     _render_charts(df, resolved, chart_type, selected_bu, selected_side,
-                   lot_col, panel_col, process_col, unit_col, extra_scope)
+                   lot_col, panel_col, process_col, unit_col, extra_scope, style)
 
 
 def _scope_controls(df: pd.DataFrame, config: AnalysisConfig,
@@ -188,7 +203,8 @@ def _render_summaries(df: pd.DataFrame, resolved, process_col: Optional[str],
 def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
                    selected_bu: str, selected_side: str, lot_col: str,
                    panel_col: Optional[str], process_col: Optional[str],
-                   unit_col: Optional[str], extra_scope: str = "") -> None:
+                   unit_col: Optional[str], extra_scope: str = "",
+                   style: dict = None) -> None:
     processes = (df[process_col].dropna().astype(str).str.strip().unique().tolist()
                  if process_col else [None])
 
@@ -215,12 +231,12 @@ def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
                 # Spec limits intentionally not passed — they belong on the box plot.
                 fig = plot_control_chart(
                     proc_df, col, lot_col, panel_col,
-                    f"{m.name} - {scope}", measurement_unit=m.display_unit)
+                    f"{m.name} - {scope}", measurement_unit=m.display_unit, style=style)
             else:
                 fig = plot_roughness_box(
                     proc_df, col, lot_col,
                     f"{m.name} Distribution - {scope}", color_by_col=unit_col,
-                    limits=limits, measurement_unit=m.display_unit)
+                    limits=limits, measurement_unit=m.display_unit, style=style)
             st.plotly_chart(fig, width='stretch')
             st.markdown("<br>", unsafe_allow_html=True)
 
