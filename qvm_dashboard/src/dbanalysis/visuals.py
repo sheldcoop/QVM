@@ -5,8 +5,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from src import theme
-
 # --- SPC unbiasing constants (functions of subgroup size n) ----------------- #
 # Computed exactly from the Gamma function rather than table lookups, so they
 # work for any subgroup size, including the unequal sizes the Horus data has.
@@ -59,7 +57,7 @@ def _bold(text, on: bool) -> str:
 
 def _axis_style(style):
     """Resolve the shared axis font settings used by both charts."""
-    txt = theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'
+    txt = '#333333'   # dark ink, for the light-theme charts
     return {
         'title_color': _sty(style, 'axis', 'title_color', default=txt),
         'title_size': _sty(style, 'axis', 'title_size', default=14),
@@ -67,6 +65,26 @@ def _axis_style(style):
         'tick_size': _sty(style, 'axis', 'tick_size', default=12),
         'bold': _sty(style, 'axis', 'bold', default=False),
     }
+
+
+# --- Light-theme tokens shared by the box & control charts (white background) #
+LIGHT_BG = '#FFFFFF'
+LIGHT_INK = '#333333'           # primary text / watermark / legend
+LIGHT_GRID = '#e6e6e6'
+LIGHT_MUTED = 'rgba(0,0,0,0.45)'   # subtle notes / band labels / mean line
+# Status & signal colours chosen for contrast on white.
+SIG_RED = '#d62728'      # out-of-spec / Rule 1 / high std
+SIG_ORANGE = '#e8820c'   # Rule 2
+SIG_GOLD = '#c9a000'     # Rule 3 / marginal capability
+SIG_PURPLE = '#7b3fb5'   # Rule 4
+SIG_GREEN = '#2ca02c'    # in-spec / Target / in-control std / good capability
+SIG_BLUE = '#1f77b4'     # in-control point / centre line
+
+# White-background-friendly qualitative palette (also used by the trend chart).
+_LIGHT_PALETTE = [
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+    '#8c564b', '#e377c2', '#17becf', '#bcbd22', '#7f7f7f',
+]
 
 
 def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title: str, color_by_col: str = None, limits: dict = None, measurement_unit: str = None, style: dict = None) -> go.Figure:
@@ -100,10 +118,11 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
     # --- Resolve style (CHART_SETTINGS) with current defaults --------------- #
     fam = _sty(style, 'font_family', default='Inter, sans-serif')
     title_size = _sty(style, 'title_size', default=17)
-    title_color = _sty(style, 'title_color', default='white')
+    title_color = _sty(style, 'title_color', default=LIGHT_INK)
     wm_size = _sty(style, 'watermark_size', default=17)
     badge_size = _sty(style, 'badge_size', default=14)
-    grid_color = _sty(style, 'grid_color', default='rgba(255,255,255,0.05)')
+    grid_color = _sty(style, 'grid_color', default=LIGHT_GRID)
+    bg = _sty(style, 'background', default=LIGHT_BG)
     ax = _axis_style(style)
     box_h = _sty(style, 'box', 'height', default=700)
     box_w = _sty(style, 'box', 'box_width', default=0.35)
@@ -138,7 +157,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
             pass
         # Use a qualitative colorscale for units (Plotly's Safe colors are nice)
         import plotly.express as px
-        base_colors = px.colors.qualitative.Safe + px.colors.qualitative.Pastel
+        base_colors = px.colors.qualitative.Safe + px.colors.qualitative.Dark24
         for i, u in enumerate(unique_units):
             unit_colors[u] = base_colors[i % len(base_colors)]
             
@@ -228,7 +247,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
     offset = (max_val - sc.min()) * 0.1 if max_val > sc.min() else 0.5
     
     # Group boxes
-    colors = list(theme.QUARTER_COLORS.values()) if hasattr(theme, 'QUARTER_COLORS') else ['#F38BA8', '#FAB387', '#F9E2AF', '#A6E3A1', '#89B4FA', '#CBA6F7']
+    colors = _LIGHT_PALETTE
     
     for i, g in enumerate(groups):
         gdf = df_plot[df_plot[group_col] == g]
@@ -257,7 +276,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
     fig.add_hline(
         y=mean_v,
         line_dash='dot',
-        line_color='rgba(255,255,255,0.3)',
+        line_color=LIGHT_MUTED,
         annotation_text='Overall Mean',
         annotation_position='top left',
     )
@@ -270,17 +289,17 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
         x=0.0, y=1.05,
         xanchor='left', yanchor='bottom',
         showarrow=False,
-        font=dict(color='white', size=wm_size)
+        font=dict(color=LIGHT_INK, size=wm_size)
     )
 
     # Optional Spec Limits
     if limits:
         if limits.get("LSL") is not None:
-            fig.add_hline(y=limits["LSL"], line_dash="dash", line_color="#F38BA8", annotation_text="LSL", annotation_position="bottom right")
+            fig.add_hline(y=limits["LSL"], line_dash="dash", line_color=SIG_RED, annotation_text="LSL", annotation_position="bottom right")
         if limits.get("Target") is not None:
-            fig.add_hline(y=limits["Target"], line_dash="dash", line_color="#A6E3A1", annotation_text="Target", annotation_position="bottom right")
+            fig.add_hline(y=limits["Target"], line_dash="dash", line_color=SIG_GREEN, annotation_text="Target", annotation_position="bottom right")
         if limits.get("USL") is not None:
-            fig.add_hline(y=limits["USL"], line_dash="dash", line_color="#F38BA8", annotation_text="USL", annotation_position="top right")
+            fig.add_hline(y=limits["USL"], line_dash="dash", line_color=SIG_RED, annotation_text="USL", annotation_position="top right")
             
         # Process Performance (Pp / Ppk). This uses the OVERALL (long-term) sample
         # sigma, so it is Pp/Ppk, not Cp/Cpk (which require within-subgroup sigma).
@@ -300,7 +319,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
                 else:
                     ppk_val = (mean_v - float(lsl)) / (3 * std_v)
 
-                ppk_color = '#A6E3A1' if ppk_val >= 1.33 else ('#F9E2AF' if ppk_val >= 1.0 else '#F38BA8')
+                ppk_color = SIG_GREEN if ppk_val >= 1.33 else (SIG_GOLD if ppk_val >= 1.0 else SIG_RED)
                 badge_text = f"<b>Pp: {pp_text} | Ppk: {ppk_val:.2f}</b>"
 
                 fig.add_annotation(
@@ -310,7 +329,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
                     xanchor='right', yanchor='bottom',
                     showarrow=False,
                     font=dict(color=ppk_color, size=badge_size),
-                    bgcolor='rgba(0,0,0,0.5)',
+                    bgcolor='rgba(255,255,255,0.9)',
                     borderpad=4,
                     bordercolor=ppk_color,
                     borderwidth=1
@@ -354,9 +373,9 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
             gridcolor=grid_color,
             zeroline=False,
         ),
-        plot_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        paper_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        font=dict(family=fam, color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'),
+        plot_bgcolor=bg,
+        paper_bgcolor=bg,
+        font=dict(family=fam, color=LIGHT_INK),
         legend=dict(
             orientation="v",
             yanchor="top",
@@ -364,7 +383,7 @@ def plot_roughness_box(df: pd.DataFrame, metric_col: str, group_col: str, title:
             xanchor="left",
             x=1.02,
             bgcolor='rgba(0,0,0,0)',
-            font=dict(color='white')
+            font=dict(color=LIGHT_INK)
         )
     )
     
@@ -398,9 +417,10 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     # --- Resolve style (CHART_SETTINGS) with current defaults --------------- #
     fam = _sty(style, 'font_family', default='Inter, sans-serif')
     title_size = _sty(style, 'title_size', default=17)
-    title_color = _sty(style, 'title_color', default='white')
+    title_color = _sty(style, 'title_color', default=LIGHT_INK)
     wm_size = _sty(style, 'watermark_size', default=17)
-    grid_color = _sty(style, 'grid_color', default='rgba(255,255,255,0.05)')
+    grid_color = _sty(style, 'grid_color', default=LIGHT_GRID)
+    bg = _sty(style, 'background', default=LIGHT_BG)
     ax = _axis_style(style)
     cc_h = _sty(style, 'control', 'height', default=950)
     cc_msize = _sty(style, 'control', 'marker_size', default=10)
@@ -478,24 +498,24 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     z = (means - grand_mean) / se_mean
 
     # --- Western Electric rules (in z-space) -------------------------------- #
-    colors_x = ['#89B4FA'] * len(z)
+    colors_x = [SIG_BLUE] * len(z)
     sizes_x = [8] * len(z)
     viol_x = [''] * len(z)
     for i in range(len(z)):
         if abs(z[i]) > 3:
-            viol_x[i] = "Rule 1: beyond 3σ"; colors_x[i] = '#F38BA8'; sizes_x[i] = 12; continue
+            viol_x[i] = "Rule 1: beyond 3σ"; colors_x[i] = SIG_RED; sizes_x[i] = 12; continue
         if i >= 2:
             w = z[i - 2:i + 1]
             if (np.sum(w > 2) >= 2) or (np.sum(w < -2) >= 2):
-                viol_x[i] = "Rule 2: 2 of 3 beyond 2σ"; colors_x[i] = '#FAB387'; sizes_x[i] = 12; continue
+                viol_x[i] = "Rule 2: 2 of 3 beyond 2σ"; colors_x[i] = SIG_ORANGE; sizes_x[i] = 12; continue
         if i >= 4:
             w = z[i - 4:i + 1]
             if (np.sum(w > 1) >= 4) or (np.sum(w < -1) >= 4):
-                viol_x[i] = "Rule 3: 4 of 5 beyond 1σ"; colors_x[i] = '#F9E2AF'; sizes_x[i] = 10; continue
+                viol_x[i] = "Rule 3: 4 of 5 beyond 1σ"; colors_x[i] = SIG_GOLD; sizes_x[i] = 10; continue
         if i >= 7:
             w = z[i - 7:i + 1]
             if np.all(w > 0) or np.all(w < 0):
-                viol_x[i] = "Rule 4: 8 in a row one side"; colors_x[i] = '#CBA6F7'; sizes_x[i] = 10
+                viol_x[i] = "Rule 4: 8 in a row one side"; colors_x[i] = SIG_PURPLE; sizes_x[i] = 10
 
     hover_x = []
     for i in range(len(groups)):
@@ -509,8 +529,8 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     if show_s:
         ucl_s = np.array([b4(n) * s_bar if n > 1 else np.nan for n in sizes], dtype=float)
         lcl_s = np.array([b3(n) * s_bar if n > 1 else np.nan for n in sizes], dtype=float)
-        colors_s = ['#F38BA8' if (not np.isnan(stds[i]) and not np.isnan(ucl_s[i])
-                                  and stds[i] > ucl_s[i]) else '#A6E3A1'
+        colors_s = [SIG_RED if (not np.isnan(stds[i]) and not np.isnan(ucl_s[i])
+                                and stds[i] > ucl_s[i]) else SIG_GREEN
                     for i in range(len(stds))]
         hover_s = [f"<b>{lots[i]} / {labels[i]}</b><br>N: {sizes[i]}<br>Std Dev: "
                    f"{stds[i]:.2f}" if not np.isnan(stds[i]) else f"<b>{lots[i]} / {labels[i]}</b><br>N: {sizes[i]}"
@@ -524,15 +544,15 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
 
     # Row 1: X-bar — variable control limits as step lines
     fig.add_trace(go.Scatter(x=x, y=ucl_x, mode='lines', line_shape='hv',
-                             line=dict(color='rgba(243,139,168,0.8)', dash='dash'),
+                             line=dict(color='rgba(214,39,40,0.7)', dash='dash'),
                              name='UCL', hoverinfo='skip'), row=1, col=1)
     fig.add_trace(go.Scatter(x=x, y=lcl_x, mode='lines', line_shape='hv',
-                             line=dict(color='rgba(243,139,168,0.8)', dash='dash'),
+                             line=dict(color='rgba(214,39,40,0.7)', dash='dash'),
                              name='LCL', hoverinfo='skip'), row=1, col=1)
-    fig.add_hline(y=grand_mean, line_dash='solid', line_color='rgba(137,180,250,0.8)',
+    fig.add_hline(y=grand_mean, line_dash='solid', line_color='rgba(31,119,180,0.8)',
                   annotation_text='Center Line', annotation_position='top left', row=1, col=1)
     fig.add_trace(go.Scatter(x=x, y=means, mode='lines',
-                             line=dict(color='rgba(255,255,255,0.2)', width=2),
+                             line=dict(color='rgba(0,0,0,0.25)', width=2),
                              showlegend=False, hoverinfo='skip'), row=1, col=1)
     fig.add_trace(go.Scatter(x=x, y=means, mode='markers',
                              marker=dict(color=colors_x, size=sizes_x,
@@ -545,12 +565,12 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     # Row 2: S-chart, or an explanatory note when unavailable
     if show_s:
         fig.add_trace(go.Scatter(x=x, y=ucl_s, mode='lines', line_shape='hv',
-                                 line=dict(color='rgba(243,139,168,0.8)', dash='dash'),
+                                 line=dict(color='rgba(214,39,40,0.7)', dash='dash'),
                                  name='UCL_s', hoverinfo='skip'), row=2, col=1)
         fig.add_trace(go.Scatter(x=x, y=lcl_s, mode='lines', line_shape='hv',
-                                 line=dict(color='rgba(243,139,168,0.8)', dash='dash'),
+                                 line=dict(color='rgba(214,39,40,0.7)', dash='dash'),
                                  name='LCL_s', hoverinfo='skip'), row=2, col=1)
-        fig.add_hline(y=s_bar, line_dash='solid', line_color='rgba(166,227,161,0.8)',
+        fig.add_hline(y=s_bar, line_dash='solid', line_color='rgba(44,160,44,0.8)',
                       annotation_text='Center Line (S)', annotation_position='top left',
                       row=2, col=1)
         fig.add_trace(go.Scatter(x=x, y=stds, mode='markers',
@@ -561,7 +581,7 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     else:
         fig.add_annotation(text="S-chart unavailable (one measurement per subgroup)",
                            xref="paper", yref="paper", x=0.5, y=0.2,
-                           showarrow=False, font=dict(color='rgba(255,255,255,0.6)', size=13))
+                           showarrow=False, font=dict(color=LIGHT_MUTED, size=13))
 
     # Faint background bands grouping consecutive panels by lot (panel subgroups
     # only). Bands carry the lot identity so point colour stays free for the WECO
@@ -573,12 +593,12 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
         band_idx = 0
         for i in range(1, len(lots) + 1):
             if i == len(lots) or lots[i] != lots[start]:
-                fill = 'rgba(255,255,255,0.05)' if band_idx % 2 == 0 else 'rgba(255,255,255,0.0)'
+                fill = 'rgba(0,0,0,0.04)' if band_idx % 2 == 0 else 'rgba(0,0,0,0.0)'
                 fig.add_vrect(x0=start - 0.5, x1=(i - 1) + 0.5, fillcolor=fill,
                               line_width=0, layer='below', row=1, col=1,
                               annotation_text=str(lots[start]), annotation_position="top",
                               annotation_font_size=11,
-                              annotation_font_color='rgba(255,255,255,0.6)')
+                              annotation_font_color=LIGHT_MUTED)
                 fig.add_vrect(x0=start - 0.5, x1=(i - 1) + 0.5, fillcolor=fill,
                               line_width=0, layer='below', row=2, col=1)
                 start = i
@@ -587,7 +607,7 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
     watermark = title.split(' - ')[-1] if ' - ' in title else title
     fig.add_annotation(text=f"<b>{watermark}</b>", xref="paper", yref="paper",
                        x=0.0, y=1.03, xanchor='left', yanchor='bottom',
-                       showarrow=False, font=dict(color='white', size=wm_size))
+                       showarrow=False, font=dict(color=LIGHT_INK, size=wm_size))
 
     span = max(5.0, len(groups))
     center = (len(groups) - 1) / 2.0
@@ -598,10 +618,8 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
         title=dict(text=f"<b>{title} (X-Bar & S-Chart)</b>",
                    font=dict(color=title_color, size=title_size), x=0.5, xanchor='center'),
         height=cc_h, margin=dict(l=50, r=30, t=80, b=90), showlegend=False,
-        plot_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        paper_bgcolor=theme.BACKGROUND if hasattr(theme, 'BACKGROUND') else '#1e1e2e',
-        font=dict(family=fam,
-                  color=theme.TEXT if hasattr(theme, 'TEXT') else '#cdd6f4'))
+        plot_bgcolor=bg, paper_bgcolor=bg,
+        font=dict(family=fam, color=LIGHT_INK))
 
     axis_title_font = dict(color=ax['title_color'], size=ax['title_size'])
     axis_tick_font = dict(color=ax['tick_color'], size=ax['tick_size'])
@@ -623,7 +641,7 @@ def plot_control_chart(df: pd.DataFrame, metric_col: str, lot_col: str,
 
     for ann in fig['layout']['annotations']:
         if ann['text'] in ("Accuracy (X-Bar)", "Precision (S-Chart)"):
-            ann['font'] = dict(size=subplot_size, color='rgba(255,255,255,0.7)')
+            ann['font'] = dict(size=subplot_size, color='rgba(0,0,0,0.6)')
 
     return fig
 

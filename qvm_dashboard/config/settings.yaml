@@ -17,14 +17,15 @@ COLORS:
 CHART_SETTINGS:
   font_family: "Inter, sans-serif"
   title_size: 18
-  title_color: "#FFFFFF"
+  title_color: "#333333"
   watermark_size: 17
   badge_size: 14
-  grid_color: "rgba(255,255,255,0.05)"
+  background: "#FFFFFF"       # plot/paper background for box & control charts
+  grid_color: "#e6e6e6"
   axis:
-    title_color: "#FFFFFF"   # x/y axis titles (e.g. "Lot Number", value)
+    title_color: "#333333"   # x/y axis titles (e.g. "Lot Number", value)
     title_size: 16
-    tick_color: "#FFFFFF"    # x/y tick labels (lot numbers, values)
+    tick_color: "#333333"    # x/y tick labels (lot numbers, values)
     tick_size: 14
     bold: true               # bold axis titles + tick labels
   box:                       # the box-plot "bars"
