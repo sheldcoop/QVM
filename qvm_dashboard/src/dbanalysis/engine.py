@@ -20,6 +20,7 @@ from src.dbanalysis.summary import (
     generate_detailed_summary_table,
     trend_outliers,
     trend_series_summary,
+    OUTLIER_K,
 )
 from src.dbanalysis.visuals import (
     plot_roughness_box,
@@ -48,7 +49,7 @@ def render_analysis(config: AnalysisConfig, files: list, settings: dict = None) 
                     f"{file.name}. Available sheets: {list_sheets(file)}"
                 )
                 continue
-            _render_sheet(config, df, style)
+            _render_sheet(config, df, style, source_name=file.name)
         except FileNotFoundError as e:
             logger.error("File missing for %s: %s", file.name, e)
             st.error(f"Could not read {file.name}: {e}")
@@ -71,7 +72,8 @@ def _arrow_safe(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None) -> None:
+def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None,
+                  source_name: str = "") -> None:
     buildup_col = find_col(df, "buildup")
     side_col = find_col(df, "side")
     if not buildup_col or not side_col:
@@ -85,7 +87,7 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None) 
     # Trend Analysis overlays every Buildup·Side·Process as its own line, so it
     # works on the full sheet and ignores the Buildup/Side selection above.
     if chart_type == "Trend Analysis":
-        _render_trend(config, df, buildup_col, side_col, style)
+        _render_trend(config, df, buildup_col, side_col, style, source_name)
         return
 
     side_df = _filter_scope(df, buildup_col, side_col, selected_bu, selected_side)
@@ -131,7 +133,7 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame, style: dict = None) 
 
 
 def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
-                  side_col: str, style: dict = None) -> None:
+                  side_col: str, style: dict = None, source_name: str = "") -> None:
     """Lot-over-lot trend across the whole sheet.
 
     Each line is a Buildup·Side·Process combination; a separate Ra and Rz chart
@@ -183,9 +185,11 @@ def _render_trend(config: AnalysisConfig, df: pd.DataFrame, buildup_col: str,
             st.plotly_chart(fig, width='stretch')
 
             if not out_df.empty:
+                out_df.insert(0, "Position", label)
+                out_df.insert(0, "Source", source_name or "—")
                 st.markdown(f"**⚠ {m.name} outlier notes** "
-                            f"({len(out_df)} measurement{'s' if len(out_df) != 1 else ''} "
-                            f"beyond 1.5×IQR)")
+                            f"({len(out_df)} flagged beyond {OUTLIER_K:g}σ — "
+                            f"within-lot + lot-mean)")
                 st.dataframe(out_df, width='stretch', hide_index=True)
 
             summary_lines = trend_series_summary(slice_df, col, lot_col, series_cols)

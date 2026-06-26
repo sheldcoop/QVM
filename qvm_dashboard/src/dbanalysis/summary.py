@@ -51,15 +51,21 @@ def _series_label(df: pd.DataFrame, series_cols: list) -> pd.Series:
     return out
 
 
+OUTLIER_K = 2.0  # flag values more than k standard deviations from the mean
+
+
 def trend_outliers(df: pd.DataFrame, metric_col: str, lot_col: str, series_cols: list,
                    unit_col: str = None, panel_col: str = None, side_col: str = None,
-                   k: float = 1.5) -> pd.DataFrame:
-    """Individual measurements outside the Tukey fence, pooled per series.
+                   k: float = OUTLIER_K) -> pd.DataFrame:
+    """Outliers at two levels, using a simple ``|x - mean| > k·std`` rule.
 
-    Bounds ``[Q1 - k·IQR, Q3 + k·IQR]`` are computed within each series (one
-    Buildup·Side·Process combination) across all its lots, then every raw row
-    beyond them is reported with the coordinates needed to find it in the source
-    data: Series, Lot, Value, Unit, Panel, Side, and which Limit it broke.
+    Within-lot: individual measurements that sit beyond ``mean ± k·std`` of their
+    own (series, lot) group — pinpoints a specific Unit/Panel to chase. Lot-mean:
+    a lot whose mean sits beyond ``mean ± k·std`` of the series' other lot-means —
+    the dot you see jump on the trend. Each row carries the coordinates to find it
+    plus an Impact note showing how much it moves the number it belongs to.
+
+    Returns columns: Series, Lot, Type, Value, Unit, Panel, Side, Impact.
     """
     work = df.copy()
     work["__v"] = pd.to_numeric(work[metric_col], errors='coerce')
@@ -70,27 +76,56 @@ def trend_outliers(df: pd.DataFrame, metric_col: str, lot_col: str, series_cols:
     work["__series"] = _series_label(work, series_cols)
     work["__lot"] = work[lot_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
+    def _cell(r, col, strip_dot=False):
+        if not col or col not in work.columns:
+            return "—"
+        v = str(r[col])
+        return v.replace('.0', '') if strip_dot else v
+
     rows = []
-    for series, g in work.groupby("__series"):
-        q1, q3 = g["__v"].quantile(0.25), g["__v"].quantile(0.75)
-        iqr = q3 - q1
-        if not iqr > 0:
+
+    # --- Within-lot: a measurement unusual vs its own lot's peers ----------- #
+    for (series, lot), g in work.groupby(["__series", "__lot"]):
+        if len(g) < 2:
             continue
-        lo, hi = q1 - k * iqr, q3 + k * iqr
-        flagged = g[(g["__v"] < lo) | (g["__v"] > hi)]
+        mean, std = g["__v"].mean(), g["__v"].std(ddof=1)
+        if not std > 0:
+            continue
+        flagged = g[(g["__v"] - mean).abs() > k * std]
         for _, r in flagged.iterrows():
+            without = g.loc[g.index != r.name, "__v"].mean()
+            pct = (without - mean) / mean * 100 if mean else 0.0
             rows.append({
-                "Series": series,
-                "Lot": r["__lot"],
+                "Series": series, "Lot": lot, "Type": "within-lot",
                 "Value": round(float(r["__v"]), 2),
-                "Unit": str(r[unit_col]) if unit_col and unit_col in g else "—",
-                "Panel": str(r[panel_col]).replace('.0', '') if panel_col and panel_col in g else "—",
-                "Side": str(r[side_col]) if side_col and side_col in g else "—",
-                "Limit": "high" if r["__v"] > hi else "low",
+                "Unit": _cell(r, unit_col), "Panel": _cell(r, panel_col, True),
+                "Side": _cell(r, side_col),
+                "Impact": f"{mean:.1f} → {without:.1f} ({pct:+.1f}%)",
             })
+
+    # --- Lot-mean: a lot whose mean jumped vs the series' other lots -------- #
+    for series, g in work.groupby("__series"):
+        lot_means = g.groupby("__lot")["__v"].mean()
+        if len(lot_means) < 2:
+            continue
+        m, s = lot_means.mean(), lot_means.std(ddof=1)
+        if not s > 0:
+            continue
+        for lot, lm in lot_means.items():
+            if abs(lm - m) > k * s:
+                pct = (lm - m) / m * 100 if m else 0.0
+                rows.append({
+                    "Series": series, "Lot": lot, "Type": "lot-mean",
+                    "Value": round(float(lm), 2),
+                    "Unit": "—", "Panel": "—", "Side": "—",
+                    "Impact": f"{lm:.1f} vs series {m:.1f} ({pct:+.1f}%)",
+                })
+
     if not rows:
         return pd.DataFrame()
-    return pd.DataFrame(rows).sort_values(["Series", "Lot"]).reset_index(drop=True)
+    return (pd.DataFrame(rows)
+            .sort_values(["Series", "Lot", "Type"])
+            .reset_index(drop=True))
 
 
 def trend_series_summary(df: pd.DataFrame, metric_col: str, lot_col: str,
