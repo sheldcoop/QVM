@@ -39,12 +39,15 @@ class AnalysisConfig:
     state_prefix: str             # unique prefix for Streamlit widget keys
     short_name: str               # compact label for export folders/filenames
     metrics: List[Metric] = field(default_factory=list)
+    split_col: Optional[str] = None  # normalised col to split into separate
+                                     # sections (never pooled), e.g. Roughness'
+                                     # "measurement position" (BKM vs Next-to-via)
 
 
 DB_ANALYSES = {
     "Roughness": AnalysisConfig(
         key="Roughness", sheet_name="Roughness", state_prefix="db",
-        short_name="Roughness",
+        short_name="Roughness", split_col="measurement position",
         metrics=[
             Metric("Ra Mean", "ra mean", None, 1000.0, "nm"),
             Metric("Rz Mean", "rz mean", None, 1000.0, "nm"),

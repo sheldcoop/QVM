@@ -29,6 +29,7 @@ from src.dbanalysis.visuals import (
     plot_roughness_box, plot_control_chart, c4, a3, b3, b4,
 )
 from src.dbanalysis import columns as cols
+from src.dbanalysis.columns import group_limits
 from src.dbanalysis.loader import find_sheet
 
 
@@ -124,6 +125,51 @@ def test_summary_missing_metric_column_skipped():
     out = generate_summary_table(_make_df(), "Process",
                                  [{"name": "Ghost", "col": "DoesNotExist"}])
     assert out.empty
+
+
+def test_group_limits_single_mixed_none():
+    one = pd.DataFrame({"Line": [1, 2], "Line_LSL": [35, 35], "Line_USL": [65, 65]})
+    lim, mixed = group_limits(one, "line")
+    assert mixed is False and lim == {"LSL": 35, "USL": 65}
+
+    mix = pd.DataFrame({"Line": [1, 2], "Line_LSL": [45, 65], "Line_USL": [55, 75]})
+    lim, mixed = group_limits(mix, "line")
+    assert mixed is True and lim == {}
+
+    none = pd.DataFrame({"Line": [1, 2]})
+    lim, mixed = group_limits(none, "line")
+    assert mixed is False and lim == {}
+
+
+def test_summary_uses_each_groups_own_limits():
+    # Process A spec 35/65; Process B spec 10/90 — each must use its own.
+    df = pd.DataFrame({
+        "Process": ["A", "A", "B", "B"],
+        "Line": [48.0, 52.0, 48.0, 52.0],
+        "Line_LSL": [35, 35, 10, 10],
+        "Line_USL": [65, 65, 90, 90],
+    })
+    metric = {"name": "Line", "col": "Line", "limit_prefix": "line"}
+    out = generate_summary_table(df, "Process", [metric])
+    ppk_a = out[out["Process"] == "A"].iloc[0]["Ppk"]
+    ppk_b = out[out["Process"] == "B"].iloc[0]["Ppk"]
+    # tighter spec (A) -> lower Ppk than wider spec (B); B not scored on A's 35/65.
+    assert float(ppk_a) < float(ppk_b)
+
+
+def test_summary_mixed_spec_guard():
+    df = pd.DataFrame({
+        "Process": ["FET", "FET", "FET", "FET"],
+        "Line": [48.0, 52.0, 68.0, 72.0],
+        "Line_LSL": [45, 45, 65, 65],   # two distinct specs in one group
+        "Line_USL": [55, 55, 75, 75],
+    })
+    metric = {"name": "Line", "col": "Line", "limit_prefix": "line"}
+    row = generate_summary_table(df, "Process", [metric]).iloc[0]
+    assert row["Ppk"] == "N/A (mixed spec)"
+    assert row["Pp"] == "N/A"
+    # descriptive stats still present
+    assert row["N"] == 4
 
 
 def test_lot_summary_grouping():

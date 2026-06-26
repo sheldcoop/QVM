@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 import streamlit as st
 
-from src.dbanalysis.columns import normalize_col, find_col, resolve_limits
+from src.dbanalysis.columns import normalize_col, find_col, group_limits
 from src.dbanalysis.config import DB_ANALYSES, AnalysisConfig
 from src.dbanalysis.loader import load_sheet
 from src.dbanalysis.summary import (
@@ -128,24 +128,25 @@ class DownloadCenterView:
         agg_all, lot_all, det_all = [], [], []
         for bu in df['_bu'].dropna().unique():
             for side in df['_side'].dropna().unique():
-                sub = df[(df['_bu'] == bu) & (df['_side'] == side)].copy()
-                if sub.empty:
+                sub_bs = df[(df['_bu'] == bu) & (df['_side'] == side)].copy()
+                if sub_bs.empty:
                     continue
-                metrics_def = _metrics_def(sub, config)
-                if not metrics_def:
-                    continue
+                for pos, sub in _split_slices(sub_bs, config):
+                    metrics_def = _metrics_def(sub, config)
+                    if not metrics_def:
+                        continue
 
-                agg = generate_summary_table(sub, process_col, metrics_def)
-                if _tag(agg, bu, side):
-                    agg_all.append(agg)
-                if lot_col:
-                    lot = generate_lot_summary_table(sub, process_col, lot_col, metrics_def)
-                    if _tag(lot, bu, side):
-                        lot_all.append(lot)
-                if lot_col and panel_col:
-                    det = generate_detailed_summary_table(sub, process_col, lot_col, panel_col, metrics_def)
-                    if _tag(det, bu, side):
-                        det_all.append(det)
+                    agg = generate_summary_table(sub, process_col, metrics_def)
+                    if _tag(agg, bu, side, pos):
+                        agg_all.append(agg)
+                    if lot_col:
+                        lot = generate_lot_summary_table(sub, process_col, lot_col, metrics_def)
+                        if _tag(lot, bu, side, pos):
+                            lot_all.append(lot)
+                    if lot_col and panel_col:
+                        det = generate_detailed_summary_table(sub, process_col, lot_col, panel_col, metrics_def)
+                        if _tag(det, bu, side, pos):
+                            det_all.append(det)
 
         return (
             pd.concat(agg_all, ignore_index=True) if agg_all else pd.DataFrame(),
@@ -185,36 +186,40 @@ class DownloadCenterView:
 
         for bu in df['_bu'].dropna().unique():
             for side in df['_side'].dropna().unique():
-                sub = df[(df['_bu'] == bu) & (df['_side'] == side)].copy()
-                if sub.empty:
+                sub_bs = df[(df['_bu'] == bu) & (df['_side'] == side)].copy()
+                if sub_bs.empty:
                     continue
-                _apply_scales(sub, config)
-                processes = (sub[process_col].dropna().astype(str).str.strip().unique().tolist()
-                             if process_col else [None])
-                for proc in processes:
-                    proc_df = (sub[sub[process_col].astype(str).str.strip() == proc].copy()
-                               if proc and process_col else sub.copy())
-                    if proc_df.empty:
-                        continue
-                    safe_proc = str(proc).replace(" ", "_").replace("/", "_") if proc else "All"
-                    for m in config.metrics:
-                        col = find_col(proc_df, m.col)
-                        if col is None:
+                _apply_scales(sub_bs, config)
+                for pos, sub in _split_slices(sub_bs, config):
+                    safe_pos = str(pos).replace(" ", "_").replace("/", "_") if pos else None
+                    processes = (sub[process_col].dropna().astype(str).str.strip().unique().tolist()
+                                 if process_col else [None])
+                    for proc in processes:
+                        proc_df = (sub[sub[process_col].astype(str).str.strip() == proc].copy()
+                                   if proc and process_col else sub.copy())
+                        if proc_df.empty:
                             continue
-                        limits = resolve_limits(proc_df, m.limit_prefix) if m.limit_prefix else {}
-                        safe_metric = m.name.replace(" ", "_").replace("/", "_")
-                        base = f"{config.short_name}/{bu}/{side}/{safe_metric}"
-                        title = f"{config.short_name} - {bu} {side} - {m.name} {safe_proc}"
+                        safe_proc = str(proc).replace(" ", "_").replace("/", "_") if proc else "All"
+                        for m in config.metrics:
+                            col = find_col(proc_df, m.col)
+                            if col is None:
+                                continue
+                            limits = group_limits(proc_df, m.limit_prefix)[0] if m.limit_prefix else {}
+                            safe_metric = m.name.replace(" ", "_").replace("/", "_")
+                            pos_seg = f"/{safe_pos}" if safe_pos else ""
+                            pos_lbl = f" {pos}" if pos else ""
+                            base = f"{config.short_name}/{bu}/{side}{pos_seg}/{safe_metric}"
+                            title = f"{config.short_name} - {bu} {side}{pos_lbl} - {m.name} {safe_proc}"
 
-                        fig_box = plot_roughness_box(proc_df, col, lot_col, title,
-                                                     color_by_col=unit_col, limits=limits,
-                                                     measurement_unit=m.display_unit)
-                        zipf.writestr(f"{base}/{safe_proc}_BoxPlot.png",
-                                      fig_box.to_image(format="png", width=1200, height=600))
+                            fig_box = plot_roughness_box(proc_df, col, lot_col, title,
+                                                         color_by_col=unit_col, limits=limits,
+                                                         measurement_unit=m.display_unit)
+                            zipf.writestr(f"{base}/{safe_proc}_BoxPlot.png",
+                                          fig_box.to_image(format="png", width=1200, height=600))
 
-                        fig_cc = plot_control_chart(proc_df, col, lot_col, panel_col, title,
-                                                    measurement_unit=m.display_unit)
-                        zipf.writestr(f"{base}/{safe_proc}_ControlChart.png",
+                            fig_cc = plot_control_chart(proc_df, col, lot_col, panel_col, title,
+                                                        measurement_unit=m.display_unit)
+                            zipf.writestr(f"{base}/{safe_proc}_ControlChart.png",
                                       fig_cc.to_image(format="png", width=1200, height=800))
 
 
@@ -245,21 +250,37 @@ def _apply_scales(df: pd.DataFrame, config: AnalysisConfig) -> None:
 
 
 def _metrics_def(df: pd.DataFrame, config: AnalysisConfig) -> list:
+    """Scale metrics and pass the spec prefix through (per-group limit resolution
+    + mixed-spec guard happen inside the summary functions)."""
     _apply_scales(df, config)
     defs = []
     for m in config.metrics:
         col = find_col(df, m.col)
         if col is None:
             continue
-        limits = resolve_limits(df, m.limit_prefix) if m.limit_prefix else {}
-        defs.append({"name": m.name, "col": col, "limits": limits})
+        defs.append({"name": m.name, "col": col, "limit_prefix": m.limit_prefix})
     return defs
 
 
-def _tag(summary_df: pd.DataFrame, bu: str, side: str) -> bool:
-    """Prepend Buildup/Side columns in place; return True if non-empty."""
+def _split_slices(df: pd.DataFrame, config: AnalysisConfig) -> list:
+    """[(position_label_or_None, slice_df)] — split by config.split_col if present."""
+    split_col = find_col(df, config.split_col) if config.split_col else None
+    if not split_col:
+        return [(None, df)]
+    out = []
+    for v in sorted(df[split_col].dropna().astype(str).str.strip().unique()):
+        sl = df[df[split_col].astype(str).str.strip() == v].copy()
+        if not sl.empty:
+            out.append((v, sl))
+    return out
+
+
+def _tag(summary_df: pd.DataFrame, bu: str, side: str, position=None) -> bool:
+    """Prepend Buildup/Side(/Position) columns in place; return True if non-empty."""
     if summary_df.empty:
         return False
+    if position is not None:
+        summary_df.insert(0, 'Position', position)
     summary_df.insert(0, 'Side', side)
     summary_df.insert(0, 'Buildup', bu)
     return True

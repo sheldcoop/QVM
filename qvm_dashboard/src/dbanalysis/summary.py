@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 
+from src.dbanalysis.columns import group_limits
+
 
 def _capability(mean: float, std: float, limits: dict) -> tuple:
     """Return (Pp, Ppk) as formatted strings from OVERALL (long-term) sigma.
@@ -38,7 +40,14 @@ def _metric_stats(df: pd.DataFrame, col: str):
 
 
 def _metric_row(df: pd.DataFrame, metric: dict) -> dict:
-    """Build the stats row for one metric on one group, or {} if absent/empty."""
+    """Build the stats row for one metric on one group, or {} if absent/empty.
+
+    Spec limits are resolved from THIS group's own rows when the metric carries a
+    ``limit_prefix`` — so each process/lot/panel is scored against its own spec.
+    A group that mixes more than one spec reports ``Ppk="N/A (mixed spec)"``
+    rather than averaging across specs. Metrics with a precomputed ``limits``
+    dict (and no prefix) keep the legacy behaviour.
+    """
     col = metric.get("col")
     if not col or col not in df.columns:
         return {}
@@ -46,7 +55,16 @@ def _metric_row(df: pd.DataFrame, metric: dict) -> dict:
     if stats is None:
         return {}
     n, mean, std, min_val, max_val = stats
-    pp, ppk = _capability(mean, std, metric.get("limits", {}))
+
+    prefix = metric.get("limit_prefix")
+    if prefix:
+        limits, mixed = group_limits(df, prefix)
+        if mixed:
+            pp, ppk = "N/A", "N/A (mixed spec)"
+        else:
+            pp, ppk = _capability(mean, std, limits)
+    else:
+        pp, ppk = _capability(mean, std, metric.get("limits", {}))
     return {
         "Metric": metric.get("name", "Unknown"),
         "N": n,

@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-from src.dbanalysis.columns import find_col, resolve_limits
+from src.dbanalysis.columns import find_col, group_limits
 from src.dbanalysis.config import AnalysisConfig, Metric
 from src.dbanalysis.loader import load_sheet, list_sheets
 from src.dbanalysis.summary import (
@@ -84,12 +84,31 @@ def _render_sheet(config: AnalysisConfig, df: pd.DataFrame) -> None:
             st.dataframe(side_df, use_container_width=True)
         return
 
-    _render_summaries(side_df, resolved, process_col, lot_col, panel_col)
-    _render_charts(side_df, resolved, chart_type, selected_bu, selected_side,
-                   lot_col, panel_col, process_col, unit_col)
+    # Some sheets (Roughness) carry a sub-position that must NOT be pooled
+    # (e.g. BKM vs Next-to-via). Render a separate section per split value.
+    split_col = find_col(side_df, config.split_col) if config.split_col else None
+    if split_col:
+        for val in sorted(side_df[split_col].dropna().astype(str).str.strip().unique()):
+            slice_df = side_df[side_df[split_col].astype(str).str.strip() == val].copy()
+            if slice_df.empty:
+                continue
+            st.markdown(f"## {val}")
+            _render_slice(slice_df, resolved, chart_type, selected_bu, selected_side,
+                          lot_col, panel_col, process_col, unit_col, extra_scope=val)
+            st.markdown("---")
+    else:
+        _render_slice(side_df, resolved, chart_type, selected_bu, selected_side,
+                      lot_col, panel_col, process_col, unit_col)
 
     with st.expander("View Raw Filtered Data"):
         st.dataframe(side_df, use_container_width=True)
+
+
+def _render_slice(df, resolved, chart_type, selected_bu, selected_side, lot_col,
+                  panel_col, process_col, unit_col, extra_scope: str = "") -> None:
+    _render_summaries(df, resolved, process_col, lot_col, panel_col)
+    _render_charts(df, resolved, chart_type, selected_bu, selected_side,
+                   lot_col, panel_col, process_col, unit_col, extra_scope)
 
 
 def _scope_controls(df: pd.DataFrame, config: AnalysisConfig,
@@ -132,18 +151,19 @@ def _resolve_metrics(df: pd.DataFrame, metrics: List[Metric]) -> List[Tuple[Metr
     return out
 
 
-def _metrics_def(df: pd.DataFrame, resolved: List[Tuple[Metric, str]]) -> List[dict]:
-    """Build the {name, col, limits} list consumed by the summary functions."""
-    defs = []
-    for m, col in resolved:
-        limits = resolve_limits(df, m.limit_prefix) if m.limit_prefix else {}
-        defs.append({"name": m.name, "col": col, "limits": limits})
-    return defs
+def _metrics_def(resolved: List[Tuple[Metric, str]]) -> List[dict]:
+    """Build the {name, col, limit_prefix} list consumed by the summary functions.
+
+    The prefix (not a precomputed limit) is passed through so the summary resolves
+    each aggregation group's spec from its own rows and guards mixed specs.
+    """
+    return [{"name": m.name, "col": col, "limit_prefix": m.limit_prefix}
+            for m, col in resolved]
 
 
 def _render_summaries(df: pd.DataFrame, resolved, process_col: Optional[str],
                       lot_col: str, panel_col: Optional[str]) -> None:
-    metrics_def = _metrics_def(df, resolved)
+    metrics_def = _metrics_def(resolved)
     summary_df = generate_summary_table(df, process_col, metrics_def)
     if summary_df.empty:
         return
@@ -168,7 +188,7 @@ def _render_summaries(df: pd.DataFrame, resolved, process_col: Optional[str],
 def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
                    selected_bu: str, selected_side: str, lot_col: str,
                    panel_col: Optional[str], process_col: Optional[str],
-                   unit_col: Optional[str]) -> None:
+                   unit_col: Optional[str], extra_scope: str = "") -> None:
     processes = (df[process_col].dropna().astype(str).str.strip().unique().tolist()
                  if process_col else [None])
 
@@ -185,8 +205,12 @@ def _render_charts(df: pd.DataFrame, resolved, chart_type: str,
         suffix = f" ({proc})" if proc else ""
 
         for m, col in resolved:
-            limits = resolve_limits(proc_df, m.limit_prefix) if m.limit_prefix else {}
-            scope = f"{selected_bu} {selected_side}{suffix}"
+            # Single spec → draw lines + badge; mixed/none → no misleading capability.
+            limits = group_limits(proc_df, m.limit_prefix)[0] if m.limit_prefix else {}
+            base = f"{selected_bu} {selected_side}"
+            if extra_scope:
+                base = f"{base} {extra_scope}"
+            scope = f"{base}{suffix}"
             if chart_type == "Control Chart":
                 # Spec limits intentionally not passed — they belong on the box plot.
                 fig = plot_control_chart(
