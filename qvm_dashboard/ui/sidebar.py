@@ -6,6 +6,7 @@ Centralizes all sidebar logic for cleaner app.py.
 
 import streamlit as st
 from typing import Dict, List, Optional
+from src.parser import parse_filename
 
 
 def render_sidebar(settings: Dict) -> Dict:
@@ -27,6 +28,74 @@ def render_sidebar(settings: Dict) -> Dict:
             type=['txt'],
             accept_multiple_files=True
         )
+
+        file_overrides = []
+        if uploaded_files:
+            with st.expander("Optional Per-File Overrides", expanded=False):
+                st.caption(
+                    "Leave values on Auto/blank to keep current behavior. "
+                    "Set values only when you want to override file naming metadata."
+                )
+                for idx, uploaded_file in enumerate(uploaded_files):
+                    inferred = parse_filename(uploaded_file.name)
+                    inferred_hint = inferred.get('format_hint') or "Unknown"
+                    inferred_side = inferred.get('Side', 'Unknown')
+                    inferred_panel = inferred.get('Panel Number', 'Unknown')
+
+                    st.markdown(f"**{uploaded_file.name}**")
+                    st.caption(
+                        f"Inferred: Type={inferred_hint}, Side={inferred_side}, Panel={inferred_panel}"
+                    )
+
+                    selected_process = st.selectbox(
+                        "Type",
+                        [
+                            "Auto (content-detected)",
+                            "Pad to Via (PTV)",
+                            "Via to Pad (VTP)",
+                        ],
+                        key=f"override_process_{idx}_{uploaded_file.name}",
+                    )
+
+                    selected_side = st.selectbox(
+                        "Side",
+                        [
+                            "Auto (from filename)",
+                            "Front (F)",
+                            "Back (B)",
+                        ],
+                        key=f"override_side_{idx}_{uploaded_file.name}",
+                    )
+
+                    panel_text = st.text_input(
+                        "Panel Number",
+                        value="",
+                        placeholder="Auto (from filename)",
+                        key=f"override_panel_{idx}_{uploaded_file.name}",
+                    ).strip()
+
+                    process_override = None
+                    if selected_process == "Pad to Via (PTV)":
+                        process_override = "Pad to Via"
+                    elif selected_process == "Via to Pad (VTP)":
+                        process_override = "Via to Pad"
+
+                    side_override = None
+                    if selected_side == "Front (F)":
+                        side_override = "F"
+                    elif selected_side == "Back (B)":
+                        side_override = "B"
+
+                    panel_override = panel_text if panel_text else None
+
+                    file_overrides.append({
+                        'file_name': uploaded_file.name,
+                        'process_override': process_override,
+                        'side_override': side_override,
+                        'panel_override': panel_override,
+                    })
+
+                    st.markdown("---")
         
         st.markdown("---")
         
@@ -42,6 +111,7 @@ def render_sidebar(settings: Dict) -> Dict:
         
         sidebar_config = {
             'uploaded_files': uploaded_files,
+            'file_overrides': file_overrides,
             'project_name':  project_name,
             'part_number':   part_number,
             'lot_number':    lot_number,
