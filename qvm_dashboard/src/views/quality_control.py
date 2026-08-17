@@ -3,6 +3,7 @@ Quality Control View — statistical summary, data table, and Excel export.
 """
 
 import logging
+import re
 from io import BytesIO
 
 import pandas as pd
@@ -198,27 +199,71 @@ component breakdown.
         st.download_button(
             label='📥 Export to Excel',
             data=buffer,
-            file_name=self._build_filename(is_via_to_pad, meta),
+            file_name=self._build_filename(filtered_df, is_via_to_pad, meta),
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             type='primary',
         )
 
     @staticmethod
-    def _build_filename(is_via_to_pad: bool, meta: dict) -> str:
-        prefix = "VtP" if is_via_to_pad else "PtV"
-        parts = [prefix]
-        for key in ('build_up', 'lot_number', 'part_number'):
-            val = str(meta.get(key, '')).strip()
-            if val:
-                parts.append(val)
-        panel_val = str(meta.get('panel', '')).strip()
-        if panel_val:
-            parts.append(f"Panel-{panel_val}")
-        process_val = str(meta.get('process', '')).strip()
-        if process_val:
-            parts.append(process_val)
-        parts.append(pd.Timestamp.now().strftime('%Y%m%d'))
-        return "_".join(parts) + ".xlsx"
+    def _safe_token(value: str) -> str:
+        value = re.sub(r'\s+', '-', str(value).strip())
+        value = re.sub(r'[^A-Za-z0-9._-]', '', value)
+        return value.strip('-_')
+
+    @classmethod
+    def _build_filename(cls, filtered_df: pd.DataFrame, is_via_to_pad: bool, meta: dict) -> str:
+        process_token = "VTP" if is_via_to_pad else "PTV"
+        if 'Process' in filtered_df.columns and not filtered_df.empty:
+            proc_vals = sorted({str(v).strip() for v in filtered_df['Process'].dropna().tolist() if str(v).strip()})
+            if len(proc_vals) == 1:
+                p = proc_vals[0].lower()
+                if 'via to pad' in p:
+                    process_token = 'VTP'
+                elif 'pad to via' in p:
+                    process_token = 'PTV'
+            elif len(proc_vals) > 1:
+                process_token = 'MIXED'
+
+        panel_token = None
+        if 'Panel' in filtered_df.columns and not filtered_df.empty:
+            panel_vals = sorted({str(v).strip() for v in filtered_df['Panel'].dropna().tolist()
+                                 if str(v).strip() and str(v).strip().lower() != 'unknown'})
+            if len(panel_vals) == 1:
+                panel_token = f"P{panel_vals[0]}"
+            elif len(panel_vals) > 1:
+                panel_token = 'PMulti'
+        if panel_token is None:
+            panel_val = str(meta.get('panel', '')).strip()
+            if panel_val:
+                panel_token = f"P{panel_val}"
+
+        side_token = None
+        if 'Side' in filtered_df.columns and not filtered_df.empty:
+            side_vals = sorted({str(v).strip().upper() for v in filtered_df['Side'].dropna().tolist()
+                                if str(v).strip() and str(v).strip().lower() != 'unknown'})
+            if len(side_vals) == 1 and side_vals[0] in ('F', 'B'):
+                side_token = side_vals[0]
+            elif len(side_vals) > 1:
+                side_token = 'FB'
+
+        parts = ['QVM', process_token]
+        if panel_token:
+            parts.append(panel_token)
+        if side_token:
+            parts.append(side_token)
+
+        build_up = str(meta.get('build_up', '')).strip()
+        lot = str(meta.get('lot_number', '')).strip()
+        if build_up:
+            bu_token = build_up if build_up.upper().startswith('BU-') else f"BU-{build_up}"
+            parts.append(bu_token)
+        if lot:
+            lot_lower = lot.lower()
+            lot_token = lot if lot_lower.startswith('lot-') else f"Lot-{lot}"
+            parts.append(lot_token)
+
+        safe_parts = [cls._safe_token(p) for p in parts if cls._safe_token(p)]
+        return "_".join(safe_parts) + ".xlsx"
 
     @staticmethod
     def _highlight_annular_ring(row, col_name: str, threshold: float):

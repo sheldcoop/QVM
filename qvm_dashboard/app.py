@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from pathlib import Path
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
+from src.upload_metadata import resolve_upload_metadata
 from src.visuals import plot_quiver, plot_vtp_box
 from src.utils import load_settings, calculate_annular_ring
 from src.views.quality_control import QualityControlView
@@ -140,6 +141,7 @@ def main() -> None:
 
     sidebar_config = render_sidebar(settings)
     uploaded_files = sidebar_config['uploaded_files']
+    file_overrides = sidebar_config.get('file_overrides', [])
     meta = {
         'project_name': sidebar_config.get('project_name', ''),
         'part_number':  sidebar_config.get('part_number', ''),
@@ -157,7 +159,7 @@ def main() -> None:
     all_data = []
     all_warnings = []
     if uploaded_files:
-        for file in uploaded_files:
+        for file_index, file in enumerate(uploaded_files):
             logger.info('Parsing file: %s', file.name)
             try:
                 filename_info = parse_filename(file.name)
@@ -177,13 +179,22 @@ def main() -> None:
                 continue
 
             df = calculate_annular_ring(df, settings)
-            df['Panel'] = filename_info.get('Panel Number', 'Unknown')
-            df['Side'] = filename_info.get('Side', 'Unknown')
-            all_data.append(df)
-
             hint = filename_info.get('format_hint')
             detected = df['Process'].iloc[0] if not df.empty else None
-            if hint is None:
+            file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
+            resolved = resolve_upload_metadata(filename_info, detected, file_override)
+            process_override = resolved['process_override']
+            panel_override = resolved['panel_override']
+            side_override = resolved['side_override']
+
+            if process_override:
+                if detected and process_override != detected:
+                    st.sidebar.warning(
+                        f"⚠️ `{file.name}`: user override sets type to **{process_override}** "
+                        f"(content detected **{detected}**). Using override."
+                    )
+                df['Process'] = resolved['final_process']
+            elif hint is None:
                 st.sidebar.warning(
                     f"⚠️ `{file.name}`: filename doesn't include `VTP` or `PTV`. "
                     f"Treated as **{detected}** based on file content."
@@ -193,6 +204,26 @@ def main() -> None:
                     f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
                     f"**{detected}**. Going with the content."
                 )
+
+            parsed_panel = resolved['parsed_panel']
+            parsed_side = resolved['parsed_side']
+            final_panel = resolved['final_panel']
+            final_side = resolved['final_side']
+
+            if panel_override and parsed_panel not in ('', 'Unknown') and panel_override != parsed_panel:
+                st.sidebar.warning(
+                    f"⚠️ `{file.name}`: user override sets panel to **{panel_override}** "
+                    f"(filename panel **{parsed_panel}**). Using override."
+                )
+            if side_override and parsed_side not in ('', 'Unknown') and side_override != parsed_side:
+                st.sidebar.warning(
+                    f"⚠️ `{file.name}`: user override sets side to **{side_override}** "
+                    f"(filename side **{parsed_side}**). Using override."
+                )
+
+            df['Panel'] = final_panel
+            df['Side'] = final_side
+            all_data.append(df)
 
     st.session_state['parse_warnings'] = all_warnings
 

@@ -72,6 +72,20 @@ VtP has no global coordinates, so spatial analysis views (Quiver, Polar Drift, 2
 
 Use the sidebar to upload one or more `.txt` files. Multiple files (multiple panels or sides) can be uploaded at once — they are concatenated into a combined dataset. Use the **Panel** and **Side** scope filters that appear in each view to isolate a single panel or side.
 
+Filename defaults are still supported and recommended:
+
+- Include `VTP` or `PTV` in the filename.
+- Include panel number as `Panel <N>` or `Panel_<N>`.
+- End with side marker `_F` or `_B` before `.txt`.
+
+Optional per-file overrides are available in the sidebar under **Optional Per-File Overrides**. If set, override precedence is:
+
+1. User override
+2. Parsed filename value
+3. `Unknown`
+
+For process type, default routing is content-based; user type override is applied only when selected.
+
 ---
 
 ## Navigation
@@ -192,7 +206,7 @@ Thresholds for color-coding optical edge confidence point counts.
 | `Type` | — | `Via` or `Pad` (row type, used internally for optical edge filtering) |
 | `Panel` | — | Panel number extracted from filename |
 | `Side` | — | `F` (front) or `B` (back) extracted from filename |
-| `Process` | — | `Pad to Via` or `Via to Pad` extracted from filename |
+| `Process` | — | `Pad to Via` or `Via to Pad` detected from file content (optionally overridden in sidebar) |
 
 **Physical meanings:**
 
