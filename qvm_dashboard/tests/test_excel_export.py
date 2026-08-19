@@ -24,6 +24,7 @@ def _vtp_frame(sides, settings):
     frames = []
     for side in sides:
         n = 16
+        bu = 'BU-01' if side == 'F' else 'BU-02'
         frames.append(pd.DataFrame({
             cn['grid_id']: grid,
             cn['location']: [f'p{i}' for i in range(n)],
@@ -35,6 +36,7 @@ def _vtp_frame(sides, settings):
             cn['y_distance']: rng.normal(0, 0.004, n),
             cn['ptv_distance']: np.abs(rng.normal(0.005, 0.002, n)),
             cn['total_shift']: np.abs(rng.normal(0.005, 0.002, n)),
+            'Build Up': [bu] * n,
             'Side': [side] * n, 'Panel': ['20'] * n,
         }))
     return pd.concat(frames, ignore_index=True)
@@ -91,3 +93,37 @@ def test_analytics_charts_do_not_overlap(settings):
     assert cols[1] - cols[0] >= 13, 'right column too close (overlap risk)'
     # bottom row must clear the tallest (~32-row) top image
     assert rows[1] - rows[0] >= 32, 'bottom row too close (overlap risk)'
+
+
+def test_analytics_sheet_falls_back_when_chart_render_fails(settings, monkeypatch):
+    import openpyxl
+    from qvm_dashboard.src import excel_export
+
+    df = _vtp_frame(['F'], settings)
+    disp = df[[settings['COLUMN_NAMES']['grid_id'], settings['COLUMN_NAMES']['inner_diameter'],
+               settings['COLUMN_NAMES']['outer_diameter'], settings['COLUMN_NAMES']['x_distance'],
+               settings['COLUMN_NAMES']['y_distance'], settings['COLUMN_NAMES']['total_shift']]].copy()
+
+    monkeypatch.setattr(excel_export, '_fig_to_xl_image', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('kaleido blocked')))
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        excel_export.write_vtp_excel(w, disp, df.copy(), settings,
+                                     {'panel': '20', 'process': 'Via to Pad'},
+                                     settings['COLUMN_NAMES']['grid_id'])
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    assert 'Analytics' in wb.sheetnames
+    assert len(wb['Analytics']._images) == 4
+
+
+def test_report_sheet_preserves_row_level_build_up(settings):
+    wb = _export(settings, ['F', 'B'])
+    report = wb['Report']
+
+    headers = [c.value for c in report[1]]
+    bu_col_idx = headers.index('Buildup') + 1
+    bu_values = {report.cell(row=r, column=bu_col_idx).value for r in range(2, report.max_row + 1)}
+
+    assert {'BU-01', 'BU-02'}.issubset(bu_values)

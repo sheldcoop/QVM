@@ -74,6 +74,13 @@ def render_sidebar(settings: Dict) -> Dict:
                         key=f"override_panel_{idx}_{uploaded_file.name}",
                     ).strip()
 
+                    build_up_text = st.text_input(
+                        "Build Up (BU)",
+                        value="",
+                        placeholder="Optional, e.g. BU-01",
+                        key=f"override_build_up_{idx}_{uploaded_file.name}",
+                    ).strip()
+
                     process_override = None
                     if selected_process == "Pad to Via (PTV)":
                         process_override = "Pad to Via"
@@ -87,12 +94,14 @@ def render_sidebar(settings: Dict) -> Dict:
                         side_override = "B"
 
                     panel_override = panel_text if panel_text else None
+                    build_up_override = build_up_text if build_up_text else None
 
                     file_overrides.append({
                         'file_name': uploaded_file.name,
                         'process_override': process_override,
                         'side_override': side_override,
                         'panel_override': panel_override,
+                        'build_up_override': build_up_override,
                     })
 
                     st.markdown("---")

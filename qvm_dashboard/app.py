@@ -1,27 +1,31 @@
 import logging
-import streamlit as st
-import pandas as pd
 import os
 from pathlib import Path
-from src.parser import parse_qvm_content, parse_filename, QVMParseError
-from src.upload_metadata import resolve_upload_metadata
-from src.visuals import plot_quiver, plot_vtp_box
-from src.utils import load_settings, calculate_annular_ring
+
+import pandas as pd
+import streamlit as st
+
+from src.ingestion import ingest_uploaded_file
+from src.panel_mapping import create_four_quarters_view
+from src.parser import QVMParseError
+from src.utils import load_settings
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
-from ui.sidebar import render_sidebar, render_nav_buttons
-from src.panel_mapping import create_four_quarters_view
+from src.visuals import plot_quiver, plot_vtp_box
+from ui.sidebar import render_nav_buttons, render_sidebar
+
 
 pd.options.mode.copy_on_write = True
 
 logger = logging.getLogger(__name__)
 
+
 def load_css(file_path: str, settings: dict = None) -> None:
     try:
         css = Path(file_path).read_text()
         colors = (settings or {}).get('COLORS', {})
-        bg    = colors.get('app_background', '#212121')
-        text  = colors.get('app_text', '#FFFFFF')
+        bg = colors.get('app_background', '#212121')
+        text = colors.get('app_text', '#FFFFFF')
         panel = colors.get('panel_ui', '#B87333')
         hover = colors.get('panel_ui_hover', '#d48c46')
         st.markdown(f'''
@@ -37,6 +41,7 @@ def load_css(file_path: str, settings: dict = None) -> None:
         ''', unsafe_allow_html=True)
     except FileNotFoundError:
         pass
+
 
 def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> pd.DataFrame:
     """Render panel/side scope filters and return filtered DataFrame."""
@@ -65,13 +70,30 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> pd.DataFr
     return filtered
 
 
+def _build_up_filter(df: pd.DataFrame, state_key: str) -> tuple[pd.DataFrame, str]:
+    """Render top-level Build Up selector and apply BU filter."""
+    if 'Build Up' not in df.columns:
+        return df, "All"
+
+    bu_values = sorted({str(v).strip() for v in df['Build Up'].dropna().tolist() if str(v).strip()})
+    if not bu_values:
+        return df, "All"
+
+    if len(bu_values) == 1:
+        st.markdown(f"**Build Up:** {bu_values[0]}")
+        return df, bu_values[0]
+
+    bu_options = ["All"] + bu_values
+    st.markdown("**Select Build Up**")
+    selected_bu = render_nav_buttons(bu_options, state_key=state_key, default="All")
+    if selected_bu == "All":
+        return df, selected_bu
+    return df[df['Build Up'] == selected_bu].copy(), selected_bu
+
+
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                       is_via_to_pad: bool = False, meta: dict = None) -> None:
-    """Render whichever sub-view is active.
-
-    Views pull their own settings slices from `self.settings` via BaseView, so
-    only the per-render context (is_via_to_pad, meta) needs threading here.
-    """
+    """Render whichever sub-view is active."""
     warnings = st.session_state.get('parse_warnings', [])
     if warnings:
         with st.expander(f"⚠️ {len(warnings)} parsing warning(s)", expanded=False):
@@ -79,27 +101,15 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                 st.warning(w)
 
     if sub_view == "Quality Control":
-        QualityControlView(settings).render(
-            filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
-
+        QualityControlView(settings).render(filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
     elif sub_view == "Analytics":
-        # Both processes share the same registration analytics layout.
         _render_registration_analytics(filtered_df, settings)
 
 
-
 def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
-    """Render the shared 3-tab registration analytics used by both processes.
-
-    Tabs: Registration Scatter, Quiver Plot, Box Plot. (No regression
-    diagnostics or 4×4 heatmap — those were Pad-to-Via-only and removed so the
-    two processes present an identical analytics surface.)
-    """
-    tab1, tab2, tab3 = st.tabs([
-        "Registration Scatter", "Quiver Plot", "Box Plot",
-    ])
+    """Render the shared 3-tab registration analytics used by both processes."""
+    tab1, tab2, tab3 = st.tabs(["Registration Scatter", "Quiver Plot", "Box Plot"])
     with tab1:
-        # Side selector for scatter when both sides uploaded
         if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
             side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
             chosen_side_scatter = st.selectbox("Select Side", side_options, key="scatter_side")
@@ -108,7 +118,6 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
             scatter_df = filtered_df.copy()
         RegistrationScatterView(settings).render(scatter_df)
     with tab2:
-        # Side selector for quiver — must be single side (16 points only)
         if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
             side_options = sorted(filtered_df['Side'].unique().tolist())
             chosen_side = st.selectbox("Select Side for Quiver Plot", side_options, key="quiver_side")
@@ -122,13 +131,13 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
             max_value=plot_settings.get('vector_multiplier_max', 100),
             value=plot_settings.get('vector_multiplier_default', 50),
             step=1,
-            help="Exaggerates arrow length for visibility")
+            help="Exaggerates arrow length for visibility",
+        )
         fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
         st.plotly_chart(fig_q, use_container_width=True)
     with tab3:
         fig = plot_vtp_box(filtered_df, settings)
         st.plotly_chart(fig, use_container_width=True)
-
 
 
 def main() -> None:
@@ -144,27 +153,24 @@ def main() -> None:
     file_overrides = sidebar_config.get('file_overrides', [])
     meta = {
         'project_name': sidebar_config.get('project_name', ''),
-        'part_number':  sidebar_config.get('part_number', ''),
-        'lot_number':   sidebar_config.get('lot_number', ''),
-        'lot_name':     sidebar_config.get('lot_name', ''),
-        'build_up':     sidebar_config.get('build_up', ''),
-        'process':      sidebar_config.get('process', ''),
-        'panel':        sidebar_config.get('panel', ''),
+        'part_number': sidebar_config.get('part_number', ''),
+        'lot_number': sidebar_config.get('lot_number', ''),
+        'lot_name': sidebar_config.get('lot_name', ''),
+        'build_up': sidebar_config.get('build_up', ''),
+        'process': sidebar_config.get('process', ''),
+        'panel': sidebar_config.get('panel', ''),
     }
 
-    # --- Data Ingestion ---
-    # Routing (Pad-to-Via vs Via-to-Pad) is decided by parse_qvm_content from
-    # the file contents, not the filename. The filename only contributes Panel
-    # and Side metadata, plus a hint we use to warn the user about mis-naming.
     all_data = []
     all_warnings = []
     if uploaded_files:
         for file_index, file in enumerate(uploaded_files):
             logger.info('Parsing file: %s', file.name)
             try:
-                filename_info = parse_filename(file.name)
-                content = file.getvalue().decode('utf-8')
-                df, file_warnings = parse_qvm_content(content, settings)
+                file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
+                df, file_warnings, ui_warnings, _, _ = ingest_uploaded_file(
+                    file, settings, file_override=file_override,
+                    default_build_up=meta.get('build_up'))
                 all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),
@@ -178,56 +184,12 @@ def main() -> None:
                 st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
                 continue
 
-            df = calculate_annular_ring(df, settings)
-            hint = filename_info.get('format_hint')
-            detected = df['Process'].iloc[0] if not df.empty else None
-            file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
-            resolved = resolve_upload_metadata(filename_info, detected, file_override)
-            process_override = resolved['process_override']
-            panel_override = resolved['panel_override']
-            side_override = resolved['side_override']
-
-            if process_override:
-                if detected and process_override != detected:
-                    st.sidebar.warning(
-                        f"⚠️ `{file.name}`: user override sets type to **{process_override}** "
-                        f"(content detected **{detected}**). Using override."
-                    )
-                df['Process'] = resolved['final_process']
-            elif hint is None:
-                st.sidebar.warning(
-                    f"⚠️ `{file.name}`: filename doesn't include `VTP` or `PTV`. "
-                    f"Treated as **{detected}** based on file content."
-                )
-            elif detected is not None and hint != detected:
-                st.sidebar.warning(
-                    f"⚠️ `{file.name}`: filename hints **{hint}** but content is "
-                    f"**{detected}**. Going with the content."
-                )
-
-            parsed_panel = resolved['parsed_panel']
-            parsed_side = resolved['parsed_side']
-            final_panel = resolved['final_panel']
-            final_side = resolved['final_side']
-
-            if panel_override and parsed_panel not in ('', 'Unknown') and panel_override != parsed_panel:
-                st.sidebar.warning(
-                    f"⚠️ `{file.name}`: user override sets panel to **{panel_override}** "
-                    f"(filename panel **{parsed_panel}**). Using override."
-                )
-            if side_override and parsed_side not in ('', 'Unknown') and side_override != parsed_side:
-                st.sidebar.warning(
-                    f"⚠️ `{file.name}`: user override sets side to **{side_override}** "
-                    f"(filename side **{parsed_side}**). Using override."
-                )
-
-            df['Panel'] = final_panel
-            df['Side'] = final_side
+            for warning in ui_warnings:
+                st.sidebar.warning(warning)
             all_data.append(df)
 
     st.session_state['parse_warnings'] = all_warnings
 
-    # --- Top-Level Navigation ---
     main_view = render_nav_buttons(
         ["Panel Map", "Pad to Via", "Via to Pad", "Alignment"],
         state_key="main_view",
@@ -244,12 +206,17 @@ def main() -> None:
         return
 
     master_df = pd.concat(all_data, ignore_index=True)
+    scoped_df, selected_build_up = _build_up_filter(master_df, state_key="build_up_scope")
 
-    # ------------------------------------------------------------------ #
-    #  PAD TO VIA — all 6 sub-views (has absolute coordinates)            #
-    # ------------------------------------------------------------------ #
+    if selected_build_up != "All":
+        meta['build_up'] = selected_build_up
+
+    if scoped_df.empty:
+        st.warning("No data matches the selected Build Up.")
+        return
+
     if main_view == "Pad to Via":
-        ptv_df = master_df[~master_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
+        ptv_df = scoped_df[~scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
 
         if ptv_df.empty:
             st.info("Please upload a Pad-to-Via file (e.g. 'Post PFC_Pad to Via_Panel 20_F.txt').")
@@ -272,11 +239,8 @@ def main() -> None:
 
         _render_sub_views(filtered_df, sub_view, settings, is_via_to_pad=False, meta=meta)
 
-    # ------------------------------------------------------------------ #
-    #  VIA TO PAD — 3 sub-views only (no absolute coordinates)            #
-    # ------------------------------------------------------------------ #
     elif main_view == "Via to Pad":
-        vtp_df = master_df[master_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
+        vtp_df = scoped_df[scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
 
         if vtp_df.empty:
             st.info("Please upload a Via-to-Pad file (e.g. 'Via to Pad_Panel 25_F.txt').")
@@ -290,9 +254,6 @@ def main() -> None:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Analytics / Polar Drift / Spatial Heatmap require absolute coordinates
-        # which Via-to-Pad files do not contain — those views are intentionally
-        # excluded here as they would produce meaningless results without position data.
         sub_view = render_nav_buttons(
             ["Quality Control", "Analytics"],
             state_key="vtp_sub_view",
@@ -304,7 +265,10 @@ def main() -> None:
 
     elif main_view == "Alignment":
         st.markdown("### Alignment — Coming Soon")
-        st.info("Alignment analytics are being developed. This section will include registration skew, machine alignment diagnostics, and system calibration checks soon.")
+        st.info(
+            "Alignment analytics are being developed. This section will include registration skew, machine alignment diagnostics, and system calibration checks soon."
+        )
+
 
 if __name__ == "__main__":
     main()

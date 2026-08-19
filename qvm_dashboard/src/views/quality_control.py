@@ -252,10 +252,26 @@ component breakdown.
         if side_token:
             parts.append(side_token)
 
-        build_up = str(meta.get('build_up', '')).strip()
+        build_up_token = None
+        if 'Build Up' in filtered_df.columns and not filtered_df.empty:
+            bu_vals = sorted({str(v).strip() for v in filtered_df['Build Up'].dropna().tolist()
+                              if str(v).strip() and str(v).strip().lower() != 'unknown'})
+            if len(bu_vals) == 1:
+                build_up_token = bu_vals[0]
+            elif len(bu_vals) > 1:
+                build_up_token = 'BUMulti'
+        if build_up_token is None:
+            build_up = str(meta.get('build_up', '')).strip()
+            if build_up:
+                build_up_token = build_up
+
         lot = str(meta.get('lot_number', '')).strip()
-        if build_up:
-            bu_token = build_up if build_up.upper().startswith('BU-') else f"BU-{build_up}"
+        if build_up_token:
+            upper_bu = build_up_token.upper()
+            if upper_bu.startswith('BU-') or upper_bu == 'BUMULTI':
+                bu_token = build_up_token
+            else:
+                bu_token = f"BU-{build_up_token}"
             parts.append(bu_token)
         if lot:
             lot_lower = lot.lower()

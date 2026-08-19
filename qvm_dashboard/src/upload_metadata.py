@@ -1,6 +1,21 @@
 """Helpers for resolving upload metadata with optional user overrides."""
 
+from dataclasses import dataclass
 from typing import Optional
+
+
+@dataclass(frozen=True)
+class UploadMetadata:
+    """Resolved metadata for a single uploaded file."""
+
+    final_process: Optional[str]
+    final_panel: str
+    final_side: str
+    parsed_panel: str
+    parsed_side: str
+    process_override: Optional[str]
+    panel_override: Optional[str]
+    side_override: Optional[str]
 
 
 def resolve_override_value(override_value: Optional[str], parsed_value: str,
@@ -14,7 +29,7 @@ def resolve_override_value(override_value: Optional[str], parsed_value: str,
 
 
 def resolve_upload_metadata(filename_info: dict, detected_process: Optional[str],
-                            override: Optional[dict] = None) -> dict:
+                            override: Optional[dict] = None) -> UploadMetadata:
     """Resolve final process/panel/side using precedence: override > parsed > unknown.
 
     Returns final values plus parsed/override fields for caller warning decisions.
@@ -31,13 +46,13 @@ def resolve_upload_metadata(filename_info: dict, detected_process: Optional[str]
     final_panel = resolve_override_value(panel_override, parsed_panel, unknown='Unknown')
     final_side = resolve_override_value(side_override, parsed_side, unknown='Unknown')
 
-    return {
-        'final_process': final_process,
-        'final_panel': final_panel,
-        'final_side': final_side,
-        'parsed_panel': parsed_panel,
-        'parsed_side': parsed_side,
-        'process_override': process_override,
-        'panel_override': panel_override,
-        'side_override': side_override,
-    }
+    return UploadMetadata(
+        final_process=final_process,
+        final_panel=final_panel,
+        final_side=final_side,
+        parsed_panel=parsed_panel,
+        parsed_side=parsed_side,
+        process_override=process_override,
+        panel_override=panel_override,
+        side_override=side_override,
+    )
