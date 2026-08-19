@@ -39,6 +39,45 @@ def _fig_to_xl_image(fig: go.Figure, width_px: int = 700,
     return xl
 
 
+def _write_chart_fallback(ws, anchor: str, chart_name: str, exc: Exception) -> None:
+    """Embed a lightweight placeholder PNG when a chart image cannot be rendered."""
+    try:
+        from PIL import Image as PILImage, ImageDraw, ImageFont
+
+        width, height = 700, 220
+        image = PILImage.new('RGB', (width, height), color=(255, 247, 247))
+        draw = ImageDraw.Draw(image)
+        title = f'{chart_name} unavailable'
+        message = 'Chart rendering failed; workbook preserved without live graphic.'
+        detail = str(exc)
+
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+
+        draw.text((20, 20), title, fill=(156, 0, 6), font=font)
+        draw.text((20, 55), message, fill=(90, 90, 90), font=font)
+        draw.text((20, 85), detail[:110], fill=(120, 120, 120), font=font)
+
+        buf = BytesIO()
+        image.save(buf, format='PNG')
+        buf.seek(0)
+        xl = XLImage(buf)
+        xl.width = width
+        xl.height = height
+        ws.add_image(xl, anchor)
+    except Exception:
+        cell = ws[anchor]
+        cell.value = f"{chart_name} chart unavailable: {exc}"
+        try:
+            import openpyxl.styles as xl_styles
+            cell.font = xl_styles.Font(italic=True, color='9C0006')
+            cell.fill = xl_styles.PatternFill(fill_type='solid', fgColor='FFC7CE')
+        except ImportError:
+            pass
+
+
 def _load_panel_map_image(settings: dict) -> XLImage | None:
     """Load Panel_Map.png from the path configured in EXCEL_EXPORT settings.
 
@@ -136,6 +175,7 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
         except Exception as exc:
             logger.warning('%s chart embed failed for %s: %s',
                            name, sheet_label, exc, exc_info=True)
+            _write_chart_fallback(ws, anchor, name, exc)
             st.sidebar.warning(
                 f'⚠️ {name} not embedded in "{sheet_label}": {exc}')
 
@@ -176,7 +216,8 @@ def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
     return df.copy().rename(columns={grid_id_col: 'Grid ID'})
 
 
-def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: str,
+def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
+                  build_up_vals: pd.Series | None, grid_id_col: str,
                   meta: dict, usl_col_name: str, usl_value: float,
                   include_xy_usl: bool = False) -> pd.DataFrame:
     """Full report frame: metadata prepended, USL reference column(s) appended.
@@ -192,7 +233,7 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None, grid_id_col: st
     s.insert(0, 'Side',        side_vals if side_vals is not None else '')
     s.insert(0, 'Panel',       meta.get('panel', ''))
     s.insert(0, 'Process',     meta.get('process', ''))
-    s.insert(0, 'Buildup',     meta.get('build_up', ''))
+    s.insert(0, 'Buildup',     build_up_vals if build_up_vals is not None else meta.get('build_up', ''))
     s.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
     s.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
     s.insert(0, 'Part_Number', meta.get('part_number', ''))
@@ -237,6 +278,8 @@ def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
             mask       = filtered_df['Side'] == side
             side_disp  = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
             side_vals  = filtered_df.loc[mask, 'Side'].values
+            build_vals = (filtered_df.loc[mask, 'Build Up'].values
+                          if 'Build Up' in filtered_df.columns else None)
             sheet_name = f'{sheet_base} - {side}'
 
             _measurement_sheet(side_disp, grid_id_col).to_excel(
@@ -244,7 +287,7 @@ def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
             ws = writer.sheets[sheet_name]
             _embed_charts(ws, settings, sheet_name)
             report_frames.append(
-                _report_sheet(side_disp, side_vals, grid_id_col, meta,
+                _report_sheet(side_disp, side_vals, build_vals, grid_id_col, meta,
                               usl_col_name, usl_value, include_xy_usl))
 
         pd.concat(report_frames, ignore_index=True).to_excel(
@@ -254,7 +297,8 @@ def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
             writer, sheet_name=sheet_base, index=False)
         ws = writer.sheets[sheet_base]
         _embed_charts(ws, settings, sheet_base)
-        _report_sheet(display_df, side_series, grid_id_col, meta,
+        build_series = filtered_df['Build Up'].values if 'Build Up' in filtered_df.columns else None
+        _report_sheet(display_df, side_series, build_series, grid_id_col, meta,
                       usl_col_name, usl_value, include_xy_usl).to_excel(
             writer, sheet_name='Report', index=False)
 

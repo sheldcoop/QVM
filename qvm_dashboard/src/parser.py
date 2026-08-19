@@ -17,7 +17,7 @@ class QVMParseError(Exception):
 
 _PTS_RE = re.compile(r"From\s+(\d+)\s*Pts\.")
 _PANEL_RE = re.compile(r'panel[\s_]*(\d+)', re.IGNORECASE)
-_SIDE_RE = re.compile(r'[_\s]([fb])\s*$', re.IGNORECASE)
+_SIDE_RE = re.compile(r'[_\s](front|back|[fb])\s*$', re.IGNORECASE)
 
 
 def _parse_value(line: str) -> float:
@@ -71,7 +71,11 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
     panel_number = panel_match.group(1) if panel_match else 'Unknown'
 
     side_match = _SIDE_RE.search(name_without_ext)
-    side = side_match.group(1).upper() if side_match else 'Unknown'
+    if side_match:
+        side_token = side_match.group(1).lower()
+        side = 'F' if side_token in ('f', 'front') else 'B'
+    else:
+        side = 'Unknown'
 
     return {
         'format_hint': format_hint,

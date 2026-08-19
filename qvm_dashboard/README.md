@@ -64,7 +64,7 @@ Distance: Via[LL_2] -> Pad_LL_2
   DY: -0.003
 ```
 
-VtP has no global coordinates, so spatial analysis views (Quiver, Polar Drift, 2D Heatmap) are not available.
+VtP has no global coordinates, so coordinate-dependent views (Polar Drift, 2D Heatmap) are not available.
 
 ---
 
@@ -85,6 +85,9 @@ Optional per-file overrides are available in the sidebar under **Optional Per-Fi
 3. `Unknown`
 
 For process type, default routing is content-based; user type override is applied only when selected.
+
+You can also set **Build Up (BU)** per uploaded file (for example `BU-01`, `BU-02`).
+When multiple BUs are uploaded together, a top-level **Build Up** selector appears above analysis so you can switch between `All` and each BU value.
 
 ---
 
@@ -110,7 +113,7 @@ Table of all measurements with pass/fail color coding against tolerances defined
 Pad-to-Via and Via-to-Pad share an identical 3-tab registration layout:
 
 - **Registration Scatter** — DX/DY bullseye with concentric tolerance rings plus per-site SC bars.
-- **Quiver Plot** — Directional error vectors at each fiducial site, color-coded by distortion class (red = expansion/shrinkage, gold = twist, blue = global offset), with a sensitivity slider to amplify small errors.
+- **Quiver Plot** — Directional error vectors at each fiducial site, color-coded by distortion class (red = expansion/shrinkage, gold = twist, blue = global offset), with a sensitivity slider to amplify small errors. Available for both processes.
 - **Box Plot** — Panel-level SC distribution with per-quarter boxes.
 
 Pad-to-Via additionally exposes the **2D Spatial Heatmap (Laser Scan Field)** sub-view, which needs the absolute coordinates only PtV files carry.
@@ -206,6 +209,7 @@ Thresholds for color-coding optical edge confidence point counts.
 | `Type` | — | `Via` or `Pad` (row type, used internally for optical edge filtering) |
 | `Panel` | — | Panel number extracted from filename |
 | `Side` | — | `F` (front) or `B` (back) extracted from filename |
+| `Build Up` | — | Build-up tag resolved per uploaded file (override first, then job-level default) |
 | `Process` | — | `Pad to Via` or `Via to Pad` detected from file content (optionally overridden in sidebar) |
 
 **Physical meanings:**

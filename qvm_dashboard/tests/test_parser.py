@@ -51,6 +51,20 @@ def test_parse_filename_mixed_case_vtp():
     assert result['Side'] == "F"
 
 
+def test_parse_filename_front_alias():
+    result = parse_filename("VTP_Panel_18_Front.txt")
+    assert result['format_hint'] == "Via to Pad"
+    assert result['Panel Number'] == "18"
+    assert result['Side'] == "F"
+
+
+def test_parse_filename_back_alias():
+    result = parse_filename("PTV_Panel_19_back.txt")
+    assert result['format_hint'] == "Pad to Via"
+    assert result['Panel Number'] == "19"
+    assert result['Side'] == "B"
+
+
 def test_parse_filename_no_hint():
     result = parse_filename("random_data.txt")
     assert result['format_hint'] is None
