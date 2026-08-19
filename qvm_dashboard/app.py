@@ -75,19 +75,33 @@ def _build_up_filter(df: pd.DataFrame, state_key: str) -> tuple[pd.DataFrame, st
     if 'Build Up' not in df.columns:
         return df, "All"
 
-    bu_values = sorted({str(v).strip() for v in df['Build Up'].dropna().tolist() if str(v).strip()})
-    if not bu_values:
+    all_bu_values = sorted({str(v).strip() for v in df['Build Up'].dropna().tolist() if str(v).strip()})
+    if not all_bu_values:
         return df, "All"
 
-    if len(bu_values) == 1:
-        st.markdown(f"**Build Up:** {bu_values[0]}")
-        return df, bu_values[0]
+    normalized_values = [v for v in all_bu_values if v.lower() != 'unknown']
+    has_unknown = any(v.lower() == 'unknown' for v in all_bu_values)
 
-    bu_options = ["All"] + bu_values
+    # Show a selector when more than one BU state exists (including Unknown).
+    total_states = len(normalized_values) + (1 if has_unknown else 0)
+
+    if total_states == 1 and normalized_values:
+        st.markdown(f"**Build Up:** {normalized_values[0]}")
+        return df, normalized_values[0]
+
+    if total_states == 1 and has_unknown:
+        st.markdown("**Build Up:** Unknown")
+        return df[df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy(), "Unknown"
+
+    bu_options = ["All"] + normalized_values
+    if has_unknown:
+        bu_options.append("Unknown")
     st.markdown("**Select Build Up**")
     selected_bu = render_nav_buttons(bu_options, state_key=state_key, default="All")
     if selected_bu == "All":
         return df, selected_bu
+    if selected_bu == "Unknown":
+        return df[df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy(), selected_bu
     return df[df['Build Up'] == selected_bu].copy(), selected_bu
 
 
