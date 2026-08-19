@@ -109,13 +109,18 @@ def _load_panel_map_image(settings: dict) -> XLImage | None:
 # ---------------------------------------------------------------------------
 
 def _add_panel_map(ws, settings: dict, label: str) -> None:
-    """Embed Panel_Map.png at H1."""
+    """Embed Panel_Map.png to the right of the data table to avoid overlap."""
     try:
+        from openpyxl.utils.cell import get_column_letter
+
         xl = _load_panel_map_image(settings)
         if xl is None:
             st.sidebar.warning(f"⚠️ Panel_Map.png not found — skipped in '{label}'.")
             return
-        ws.add_image(xl, 'H1')
+
+        data_end_col = max(int(getattr(ws, 'max_column', 1) or 1), 1)
+        anchor_col = get_column_letter(data_end_col + 2)
+        ws.add_image(xl, f'{anchor_col}1')
     except Exception as exc:
         logger.warning('Panel map embed failed for %s: %s', label, exc, exc_info=True)
         st.sidebar.warning(f"⚠️ Panel map not embedded in '{label}': {exc}")
@@ -231,10 +236,16 @@ def _build_process_display(df: pd.DataFrame, settings: dict,
     ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
     annular_col = col_names.get('annular_ring', 'Annular Ring')
 
+    work = df.copy()
+    if annular_col not in work.columns:
+        required = {pad_diam_col, via_diam_col, ptv_dist_col}
+        if required.issubset(set(work.columns)):
+            work[annular_col] = (work[pad_diam_col] / 2) - (work[via_diam_col] / 2) - work[ptv_dist_col]
+
     distance_col = sc_col if is_via_to_pad else ptv_dist_col
     meta_cols = ['Build Up', 'Panel', 'Side']
-    keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
-    display_df = df[[c for c in keep if c in df.columns]].copy()
+    keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col, annular_col]
+    display_df = work[[c for c in keep if c in work.columns]].copy()
 
     measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
                         ptv_dist_col, annular_col]
@@ -417,8 +428,8 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
     """Write one workbook with process-separated sheets and BU analytics.
 
     Sheets written:
-    - 'Via to Pad' / 'Via to Pad - F/B' — process data with panel map
-    - 'Pad to Via' / 'Pad to Via - F/B' — process data with panel map
+    - 'Via to Pad' — process data with panel map
+    - 'Pad to Via' — process data with panel map
     - 'Report' — consolidated process-aware report table
     - 'Analytics <PROC> <BU>' — one analytics sheet per process and Build Up
     - 'Warnings' — parser warnings
@@ -448,57 +459,24 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
         proc_meta = dict(meta)
         proc_meta['process'] = sheet_base
 
-        if 'Side' in proc_df.columns:
-            sides = sorted({str(v).strip() for v in proc_df['Side'].dropna().tolist() if str(v).strip()})
-        else:
-            sides = []
+        _measurement_sheet(proc_display, grid_id_col).to_excel(
+            writer, sheet_name=sheet_base, index=False)
+        _embed_charts(writer.sheets[sheet_base], settings, sheet_base)
 
-        if len(sides) > 1:
-            for side in sides:
-                side_mask = proc_df['Side'] == side
-                side_df = proc_df[side_mask].copy()
-                side_disp = proc_display.loc[proc_display.index.isin(side_df.index)]
-                if side_disp.empty:
-                    continue
-
-                data_sheet = f'{sheet_base} - {side}'
-                _measurement_sheet(side_disp, grid_id_col).to_excel(
-                    writer, sheet_name=data_sheet, index=False)
-                _embed_charts(writer.sheets[data_sheet], settings, data_sheet)
-
-                side_vals = side_df['Side'].values if 'Side' in side_df.columns else None
-                build_vals = side_df['Build Up'].values if 'Build Up' in side_df.columns else None
-                report_frames.append(
-                    _report_sheet(
-                        side_disp,
-                        side_vals,
-                        build_vals,
-                        grid_id_col,
-                        proc_meta,
-                        usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
-                        usl_value=vtp_usl if is_vtp else ptv_usl,
-                        include_xy_usl=is_vtp,
-                    )
-                )
-        else:
-            _measurement_sheet(proc_display, grid_id_col).to_excel(
-                writer, sheet_name=sheet_base, index=False)
-            _embed_charts(writer.sheets[sheet_base], settings, sheet_base)
-
-            side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
-            build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
-            report_frames.append(
-                _report_sheet(
-                    proc_display,
-                    side_vals,
-                    build_vals,
-                    grid_id_col,
-                    proc_meta,
-                    usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
-                    usl_value=vtp_usl if is_vtp else ptv_usl,
-                    include_xy_usl=is_vtp,
-                )
+        side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
+        build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
+        report_frames.append(
+            _report_sheet(
+                proc_display,
+                side_vals,
+                build_vals,
+                grid_id_col,
+                proc_meta,
+                usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
+                usl_value=vtp_usl if is_vtp else ptv_usl,
+                include_xy_usl=is_vtp,
             )
+        )
 
     if report_frames:
         pd.concat(report_frames, ignore_index=True).to_excel(

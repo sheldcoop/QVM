@@ -157,6 +157,8 @@ def test_unified_export_writes_single_workbook_with_mixed_process_data(settings)
 
     assert 'Via to Pad' in wb.sheetnames
     assert 'Pad to Via' in wb.sheetnames
+    assert 'Via to Pad - F' not in wb.sheetnames
+    assert 'Pad to Via - B' not in wb.sheetnames
     assert 'Report' in wb.sheetnames
     assert any(name.startswith('Warnings') for name in wb.sheetnames)
 
@@ -182,6 +184,33 @@ def test_unified_export_process_sheets_embed_panel_map_when_available(settings):
 
     assert len(wb['Via to Pad']._images) >= 1
     assert len(wb['Pad to Via']._images) >= 1
+
+
+def test_unified_export_panel_map_is_anchored_right_of_data(settings):
+    import openpyxl
+    from qvm_dashboard.src import excel_export
+
+    export_cfg = settings.get('EXCEL_EXPORT', {})
+    rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(excel_export.__file__)))
+    abs_path = os.path.join(base_dir, rel_path)
+
+    if not os.path.isfile(abs_path):
+        pytest.skip('Panel map image not available in test environment')
+
+    df = _mixed_process_frame(settings)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        excel_export.write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    ws = wb['Via to Pad']
+    assert ws._images, 'Expected panel-map image on Via to Pad sheet'
+    image_anchor_col = ws._images[0].anchor._from.col
+    # openpyxl columns are 0-based in anchors; image should be at least one column
+    # to the right of the final data column.
+    assert image_anchor_col >= ws.max_column
 
 
 def test_unified_export_creates_analytics_per_process_and_build_up(settings):
@@ -216,3 +245,18 @@ def test_unified_export_report_has_process_specific_usl_columns(settings):
     headers = [cell.value for cell in wb['Report'][1]]
     assert 'VtP_USL' in headers
     assert 'PtV_USL' in headers
+
+
+def test_unified_export_process_sheet_includes_annular_ring(settings):
+    import openpyxl
+    from qvm_dashboard.src.excel_export import write_unified_excel
+
+    df = _mixed_process_frame(settings)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    headers = [cell.value for cell in wb['Via to Pad'][1]]
+    assert 'Annular Ring' in headers
