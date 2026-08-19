@@ -28,6 +28,9 @@ def ingest_uploaded_file(uploaded_file, settings: dict,
     build_up_override = str(file_override.get('build_up_override', '')).strip() or None
     default_build_up = str(default_build_up or '').strip() or None
     filename_info = parse_filename(uploaded_file.name)
+    parsed_build_up = str(filename_info.get('Build Up', '')).strip()
+    if not parsed_build_up or parsed_build_up.lower() == 'unknown':
+        parsed_build_up = None
     content = uploaded_file.getvalue().decode('utf-8')
     df, parse_warnings = parse_qvm_content(content, settings)
     df = calculate_annular_ring(df, settings)
@@ -69,6 +72,7 @@ def ingest_uploaded_file(uploaded_file, settings: dict,
 
     df['Panel'] = resolved.final_panel
     df['Side'] = resolved.final_side
-    df['Build Up'] = build_up_override or default_build_up or 'Unknown'
+    # Build Up precedence: explicit override > filename > sidebar default > Unknown
+    df['Build Up'] = build_up_override or parsed_build_up or default_build_up or 'Unknown'
 
     return df, parse_warnings, ui_warnings, resolved, filename_info
