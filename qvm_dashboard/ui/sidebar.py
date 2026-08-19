@@ -28,6 +28,10 @@ def render_sidebar(settings: Dict) -> Dict:
             type=['txt'],
             accept_multiple_files=True
         )
+        st.caption(
+            "Recommended filename: `PTV_P20_F_BU-01.txt` or `VTP_P20_B_BU-02.txt` "
+            "(PROCESS_PANEL_SIDE_BU). If naming is imperfect, use Optional Per-File Overrides below."
+        )
 
         file_overrides = []
         if uploaded_files:

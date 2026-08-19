@@ -43,8 +43,8 @@ def load_css(file_path: str, settings: dict = None) -> None:
         pass
 
 
-def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> pd.DataFrame:
-    """Render panel/side scope filters and return filtered DataFrame."""
+def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> tuple[pd.DataFrame, str, str]:
+    """Render panel/side scope filters and return filtered DataFrame plus selections."""
     with st.expander("Analysis Scope", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -66,6 +66,16 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> pd.DataFr
     if selected_panel and selected_panel != "All":
         filtered = filtered[filtered['Panel'] == selected_panel]
     if selected_side and selected_side != "Both":
+        filtered = filtered[filtered['Side'] == selected_side]
+    return filtered, selected_panel, selected_side
+
+
+def _apply_scope_filters(df: pd.DataFrame, selected_panel: str, selected_side: str) -> pd.DataFrame:
+    """Apply selected panel/side values to any dataframe using same scope semantics."""
+    filtered = df.copy()
+    if selected_panel and selected_panel != "All" and 'Panel' in filtered.columns:
+        filtered = filtered[filtered['Panel'] == selected_panel]
+    if selected_side and selected_side != "Both" and 'Side' in filtered.columns:
         filtered = filtered[filtered['Side'] == selected_side]
     return filtered
 
@@ -106,7 +116,8 @@ def _build_up_filter(df: pd.DataFrame, state_key: str) -> tuple[pd.DataFrame, st
 
 
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
-                      is_via_to_pad: bool = False, meta: dict = None) -> None:
+                      is_via_to_pad: bool = False, meta: dict = None,
+                      export_df: pd.DataFrame | None = None) -> None:
     """Render whichever sub-view is active."""
     warnings = st.session_state.get('parse_warnings', [])
     if warnings:
@@ -115,7 +126,12 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                 st.warning(w)
 
     if sub_view == "Quality Control":
-        QualityControlView(settings).render(filtered_df, is_via_to_pad=is_via_to_pad, meta=meta or {})
+        QualityControlView(settings).render(
+            filtered_df,
+            is_via_to_pad=is_via_to_pad,
+            meta=meta or {},
+            export_df=export_df if export_df is not None else filtered_df,
+        )
     elif sub_view == "Analytics":
         _render_registration_analytics(filtered_df, settings)
 
@@ -236,7 +252,9 @@ def main() -> None:
             st.info("Please upload a Pad-to-Via file (e.g. 'Post PFC_Pad to Via_Panel 20_F.txt').")
             return
 
-        filtered_df = _scope_filters(ptv_df, panel_key="ptv_panel", side_key="ptv_side")
+        filtered_df, selected_panel, selected_side = _scope_filters(
+            ptv_df, panel_key="ptv_panel", side_key="ptv_side")
+        export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
 
         if filtered_df.empty:
             st.warning("No data matches the selected filters.")
@@ -251,7 +269,9 @@ def main() -> None:
         )
         st.markdown("---")
 
-        _render_sub_views(filtered_df, sub_view, settings, is_via_to_pad=False, meta=meta)
+        _render_sub_views(
+            filtered_df, sub_view, settings,
+            is_via_to_pad=False, meta=meta, export_df=export_scope_df)
 
     elif main_view == "Via to Pad":
         vtp_df = scoped_df[scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
@@ -260,7 +280,9 @@ def main() -> None:
             st.info("Please upload a Via-to-Pad file (e.g. 'Via to Pad_Panel 25_F.txt').")
             return
 
-        filtered_vtp = _scope_filters(vtp_df, panel_key="vtp_panel", side_key="vtp_side")
+        filtered_vtp, selected_panel, selected_side = _scope_filters(
+            vtp_df, panel_key="vtp_panel", side_key="vtp_side")
+        export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
 
         if filtered_vtp.empty:
             st.warning("No data matches the selected filters.")
@@ -275,7 +297,9 @@ def main() -> None:
         )
         st.markdown("---")
 
-        _render_sub_views(filtered_vtp, sub_view, settings, is_via_to_pad=True, meta=meta)
+        _render_sub_views(
+            filtered_vtp, sub_view, settings,
+            is_via_to_pad=True, meta=meta, export_df=export_scope_df)
 
     elif main_view == "Alignment":
         st.markdown("### Alignment — Coming Soon")

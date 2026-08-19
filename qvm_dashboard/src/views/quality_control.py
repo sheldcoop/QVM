@@ -11,7 +11,7 @@ import streamlit as st
 
 from src.views.base import BaseView
 from src.utils import convert_to_microns
-from src.excel_export import write_vtp_excel, write_ptv_excel
+from src.excel_export import write_unified_excel
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class QualityControlView(BaseView):
         """
         is_via_to_pad = kwargs.get('is_via_to_pad', False)
         meta = kwargs.get('meta', {})
+        export_df = kwargs.get('export_df', filtered_df)
 
         col_names    = self.col_names
         annular_col  = col_names.get('annular_ring', 'Annular Ring')
@@ -64,13 +65,10 @@ class QualityControlView(BaseView):
         # --- Excel Export ---
         col_left, col_right = st.columns([3, 1])
         with col_left:
-            if is_via_to_pad:
-                st.write('Via-to-Pad export: Grid ID | Via Ø | Pad Ø | DX | DY | SC  (µm)')
-            else:
-                st.write('Pad-to-Via export: Grid ID | Via Ø | Pad Ø | DX | DY | PtV Distance  (µm)')
+            st.write('Unified export: one workbook for current Build Up, Panel, and Side scope (PTV + VTP together).')
         with col_right:
             self._render_export_button(
-                filtered_df, display_df, is_via_to_pad,
+                filtered_df, export_df, is_via_to_pad,
                 annular_col, threshold, grid_id_col, meta,
             )
 
@@ -158,7 +156,7 @@ component breakdown.
             delta_color='inverse' if fail_count > 0 else 'off',
         )
 
-    def _render_export_button(self, filtered_df: pd.DataFrame, display_df: pd.DataFrame,
+    def _render_export_button(self, filtered_df: pd.DataFrame, export_df: pd.DataFrame,
                               is_via_to_pad: bool, annular_col: str, threshold: float,
                               grid_id_col: str, meta: dict) -> None:
         buffer = BytesIO()
@@ -177,19 +175,18 @@ component breakdown.
         parse_warnings = st.session_state.get('parse_warnings', [])
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             try:
-                if is_via_to_pad:
-                    write_vtp_excel(writer, display_df, filtered_df,
-                                    self.settings, meta, grid_id_col,
-                                    warnings=parse_warnings)
-                else:
-                    write_ptv_excel(writer, display_df, filtered_df,
-                                    self.settings, meta, grid_id_col,
-                                    warnings=parse_warnings)
+                write_unified_excel(
+                    writer,
+                    export_df,
+                    self.settings,
+                    meta,
+                    warnings=parse_warnings,
+                )
             except Exception as exc:
                 logger.warning('Excel export error — writing fallback sheet: %s',
                                exc, exc_info=True)
                 try:
-                    filtered_df.to_excel(writer, sheet_name='Data', index=False)
+                    export_df.to_excel(writer, sheet_name='Data', index=False)
                 except Exception:
                     pd.DataFrame({'error': [str(exc)]}).to_excel(
                         writer, sheet_name='Data', index=False)
@@ -199,7 +196,7 @@ component breakdown.
         st.download_button(
             label='📥 Export to Excel',
             data=buffer,
-            file_name=self._build_filename(filtered_df, is_via_to_pad, meta),
+            file_name=self._build_filename(export_df, is_via_to_pad, meta),
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             type='primary',
         )

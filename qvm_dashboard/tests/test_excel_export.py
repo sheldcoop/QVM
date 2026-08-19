@@ -127,3 +127,67 @@ def test_report_sheet_preserves_row_level_build_up(settings):
     bu_values = {report.cell(row=r, column=bu_col_idx).value for r in range(2, report.max_row + 1)}
 
     assert {'BU-01', 'BU-02'}.issubset(bu_values)
+
+
+def _mixed_process_frame(settings):
+    vtp = _vtp_frame(['F'], settings)
+    vtp['Process'] = 'Via to Pad'
+    ptv = _vtp_frame(['B'], settings)
+    ptv['Process'] = 'Pad to Via'
+    return pd.concat([vtp, ptv], ignore_index=True)
+
+
+def test_unified_export_writes_single_workbook_with_mixed_process_data(settings):
+    import openpyxl
+    from qvm_dashboard.src.excel_export import write_unified_excel
+
+    df = _mixed_process_frame(settings)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(
+            w,
+            df.copy(),
+            settings,
+            {'panel': '20', 'process': 'MIXED', 'build_up': 'BU-ALL'},
+            warnings=['sample warning'],
+        )
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    assert 'All Data' in wb.sheetnames
+    assert 'Report' in wb.sheetnames
+    assert any(name.startswith('Warnings') for name in wb.sheetnames)
+
+
+def test_unified_export_creates_analytics_per_process_and_build_up(settings):
+    import openpyxl
+    from qvm_dashboard.src.excel_export import write_unified_excel
+
+    df = _mixed_process_frame(settings)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    analytics_sheets = [name for name in wb.sheetnames if name.startswith('Analytics')]
+    assert any('VTP' in name and 'BU-01' in name for name in analytics_sheets)
+    assert any('PTV' in name and 'BU-02' in name for name in analytics_sheets)
+    for name in analytics_sheets:
+        assert len(wb[name]._images) == 4
+
+
+def test_unified_export_report_has_process_specific_usl_columns(settings):
+    import openpyxl
+    from qvm_dashboard.src.excel_export import write_unified_excel
+
+    df = _mixed_process_frame(settings)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    headers = [cell.value for cell in wb['Report'][1]]
+    assert 'VtP_USL' in headers
+    assert 'PtV_USL' in headers

@@ -7,6 +7,7 @@ Entry point: write_vtp_excel().
 
 import logging
 import os
+import re
 from io import BytesIO
 
 import pandas as pd
@@ -17,6 +18,7 @@ from openpyxl.drawing.image import Image as XLImage
 from src.visuals import (
     plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
 )
+from src.utils import convert_to_microns
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +218,62 @@ def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
     return df.copy().rename(columns={grid_id_col: 'Grid ID'})
 
 
+def _build_process_display(df: pd.DataFrame, settings: dict,
+                           is_via_to_pad: bool) -> pd.DataFrame:
+    """Build a process-specific display dataframe aligned with QC columns."""
+    col_names = settings.get('COLUMN_NAMES', {})
+    grid_id_col = col_names.get('grid_id', 'Grid ID')
+    via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
+    pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
+    dx_col = col_names.get('x_distance', 'Shift (DX)')
+    dy_col = col_names.get('y_distance', 'Shift (DY)')
+    sc_col = col_names.get('total_shift', 'SC')
+    ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
+    annular_col = col_names.get('annular_ring', 'Annular Ring')
+
+    distance_col = sc_col if is_via_to_pad else ptv_dist_col
+    keep = [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
+    display_df = df[[c for c in keep if c in df.columns]].copy()
+
+    measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
+                        ptv_dist_col, annular_col]
+    display_df = convert_to_microns(display_df, measurement_cols)
+
+    if grid_id_col in display_df.columns:
+        display_df = display_df.sort_values(by=grid_id_col, ascending=True)
+
+    return display_df
+
+
+def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
+    """Return an Excel-safe, unique worksheet name (<=31 chars)."""
+    base = re.sub(r'[\[\]:*?/\\]', '-', str(sheet_name).strip()) or 'Sheet'
+    base = re.sub(r'\s+', ' ', base)
+    candidate = base[:31]
+    counter = 2
+    while candidate in existing:
+        suffix = f' {counter}'
+        candidate = f"{base[:31 - len(suffix)]}{suffix}"
+        counter += 1
+    existing.add(candidate)
+    return candidate
+
+
+def _process_slices(df: pd.DataFrame, meta: dict) -> dict[str, pd.DataFrame]:
+    """Split scoped data into VTP/PTV dataframes for unified exports."""
+    if 'Process' in df.columns:
+        vtp_mask = df['Process'].astype(str).str.contains('Via to Pad', case=False, na=False)
+        return {
+            'VTP': df[vtp_mask].copy(),
+            'PTV': df[~vtp_mask].copy(),
+        }
+
+    process_hint = str(meta.get('process', '')).lower()
+    if 'via to pad' in process_hint or process_hint == 'vtp':
+        return {'VTP': df.copy(), 'PTV': pd.DataFrame(columns=df.columns)}
+    return {'VTP': pd.DataFrame(columns=df.columns), 'PTV': df.copy()}
+
+
 def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
                   build_up_vals: pd.Series | None, grid_id_col: str,
                   meta: dict, usl_col_name: str, usl_value: float,
@@ -342,3 +400,106 @@ def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
         writer, display_df, filtered_df, settings, meta, grid_id_col,
         sheet_base='Pad to Via', usl_col_name='PtV_USL',
         usl_value=usl, include_xy_usl=False, warnings=warnings)
+
+
+def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
+                        settings: dict, meta: dict,
+                        warnings: list = None) -> None:
+    """Write one workbook containing both processes and BU-specific analytics.
+
+    Sheets written:
+    - 'All Data' — scoped rows across all processes
+    - 'Report' — consolidated report table (process-tagged, row-level BU)
+    - 'Analytics <PROC> <BU>' — one analytics sheet per process and Build Up
+    - 'Warnings' — parser warnings
+    """
+    if scoped_df is None or scoped_df.empty:
+        pd.DataFrame({'info': ['No data available for export scope.']}).to_excel(
+            writer, sheet_name='All Data', index=False)
+        ws_warn = writer.book.create_sheet('Warnings')
+        _warnings_sheet(ws_warn, warnings or [])
+        return
+
+    col_names = settings.get('COLUMN_NAMES', {})
+    grid_id_col = col_names.get('grid_id', 'Grid ID')
+
+    all_data = scoped_df.copy()
+    measurement_cols = [
+        col_names.get('outer_diameter', 'Pad Diameter'),
+        col_names.get('inner_diameter', 'Via Parameter'),
+        col_names.get('total_shift', 'SC'),
+        col_names.get('x_distance', 'Shift (DX)'),
+        col_names.get('y_distance', 'Shift (DY)'),
+        col_names.get('ptv_distance', 'PtV Distance'),
+        col_names.get('annular_ring', 'Annular Ring'),
+    ]
+    all_data = convert_to_microns(all_data, measurement_cols)
+    if grid_id_col in all_data.columns:
+        all_data = all_data.sort_values(by=grid_id_col, ascending=True)
+    _measurement_sheet(all_data, grid_id_col).to_excel(writer, sheet_name='All Data', index=False)
+
+    process_frames = _process_slices(scoped_df, meta)
+    vtp_usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
+    ptv_usl = float(settings.get('PTV_REGISTRATION', {}).get('ptv_usl_um', 10.0))
+
+    report_frames = []
+    for process_code, proc_df in process_frames.items():
+        if proc_df.empty:
+            continue
+
+        is_vtp = process_code == 'VTP'
+        proc_display = _build_process_display(proc_df, settings, is_via_to_pad=is_vtp)
+        side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
+        build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
+        proc_meta = dict(meta)
+        proc_meta['process'] = 'Via to Pad' if is_vtp else 'Pad to Via'
+
+        report_frames.append(
+            _report_sheet(
+                proc_display,
+                side_vals,
+                build_vals,
+                grid_id_col,
+                proc_meta,
+                usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
+                usl_value=vtp_usl if is_vtp else ptv_usl,
+                include_xy_usl=is_vtp,
+            )
+        )
+
+    if report_frames:
+        pd.concat(report_frames, ignore_index=True).to_excel(
+            writer, sheet_name='Report', index=False)
+    else:
+        pd.DataFrame({'info': ['No process-specific rows found.']}).to_excel(
+            writer, sheet_name='Report', index=False)
+
+    used_sheet_names = set(writer.book.sheetnames)
+    for process_code, proc_df in process_frames.items():
+        if proc_df.empty:
+            continue
+
+        if 'Build Up' in proc_df.columns:
+            bu_values = sorted({str(v).strip() for v in proc_df['Build Up'].dropna().tolist() if str(v).strip()})
+        else:
+            bu_values = []
+        if not bu_values:
+            bu_values = ['Unknown']
+
+        for bu in bu_values:
+            if 'Build Up' in proc_df.columns:
+                if bu.lower() == 'unknown':
+                    bu_df = proc_df[proc_df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy()
+                else:
+                    bu_df = proc_df[proc_df['Build Up'] == bu].copy()
+            else:
+                bu_df = proc_df.copy()
+
+            if bu_df.empty:
+                continue
+
+            label = _safe_sheet_name(f'Analytics {process_code} {bu}', used_sheet_names)
+            _add_analytics_sheet(writer, bu_df, settings, sheet_label=label)
+
+    ws_warn = writer.book.create_sheet(_safe_sheet_name('Warnings', used_sheet_names))
+    _warnings_sheet(ws_warn, warnings or [])
