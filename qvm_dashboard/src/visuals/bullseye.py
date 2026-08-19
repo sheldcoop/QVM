@@ -25,6 +25,9 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     height = settings.get('CHART_HEIGHTS', {}).get('bullseye', 580)
 
     work = df[[dx_col, dy_col, sc_col, loc_col, grid_col]].dropna().copy()
+    work[grid_col] = pd.to_numeric(work[grid_col], errors='coerce')
+    work = work.dropna(subset=[grid_col])
+    work['grid_label'] = work[grid_col].astype(int).astype(str)
     work['dx_um'] = work[dx_col] * 1000
     work['dy_um'] = work[dy_col] * 1000
     work['sc_um'] = work[sc_col] * 1000
@@ -56,10 +59,10 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         x=work['dx_um'], y=work['dy_um'],
         mode='markers+text',
         marker=dict(size=14, color=work['color'], line=dict(width=0)),
-        text=work[grid_col].astype(str),
+        text=work['grid_label'],
         textposition='top center',
         textfont=dict(size=10, color=theme.TEXT),
-        customdata=work[[grid_col, 'sc_um', 'dx_um', 'dy_um']].values,
+        customdata=work[['grid_label', 'sc_um', 'dx_um', 'dy_um']].values,
         hovertemplate=(
             '<b>%{text}</b><br>'
             'Grid ID: %{customdata[0]}<br>'

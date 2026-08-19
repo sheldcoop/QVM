@@ -232,7 +232,8 @@ def _build_process_display(df: pd.DataFrame, settings: dict,
     annular_col = col_names.get('annular_ring', 'Annular Ring')
 
     distance_col = sc_col if is_via_to_pad else ptv_dist_col
-    keep = [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
+    meta_cols = ['Build Up', 'Panel', 'Side']
+    keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
     display_df = df[[c for c in keep if c in df.columns]].copy()
 
     measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
@@ -285,6 +286,14 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
     is set, blank X/Y USL columns are appended too (Via-to-Pad only).
     """
     s = df.copy()
+    drop_if_present = [
+        'Project_Name', 'Part_Number', 'Lot_Number', 'Lot_Name',
+        'Buildup', 'Build Up', 'Process', 'Panel', 'Side',
+        'Fiducial', 'Fiducial_Number', 'VtP_USL', 'PtV_USL', 'X_USL', 'Y_USL',
+    ]
+    existing = [c for c in drop_if_present if c in s.columns]
+    if existing:
+        s = s.drop(columns=existing)
     grid_str = s[grid_id_col].astype(str).str.zfill(2)
     s.insert(0, 'Fiducial_Number', grid_str.str[1].astype(int))
     s.insert(0, 'Fiducial',        grid_str.str[0].map(_REGION_MAP))
@@ -405,38 +414,24 @@ def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
 def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
                         settings: dict, meta: dict,
                         warnings: list = None) -> None:
-    """Write one workbook containing both processes and BU-specific analytics.
+    """Write one workbook with process-separated sheets and BU analytics.
 
     Sheets written:
-    - 'All Data' — scoped rows across all processes
-    - 'Report' — consolidated report table (process-tagged, row-level BU)
+    - 'Via to Pad' / 'Via to Pad - F/B' — process data with panel map
+    - 'Pad to Via' / 'Pad to Via - F/B' — process data with panel map
+    - 'Report' — consolidated process-aware report table
     - 'Analytics <PROC> <BU>' — one analytics sheet per process and Build Up
     - 'Warnings' — parser warnings
     """
     if scoped_df is None or scoped_df.empty:
         pd.DataFrame({'info': ['No data available for export scope.']}).to_excel(
-            writer, sheet_name='All Data', index=False)
+            writer, sheet_name='Report', index=False)
         ws_warn = writer.book.create_sheet('Warnings')
         _warnings_sheet(ws_warn, warnings or [])
         return
 
     col_names = settings.get('COLUMN_NAMES', {})
     grid_id_col = col_names.get('grid_id', 'Grid ID')
-
-    all_data = scoped_df.copy()
-    measurement_cols = [
-        col_names.get('outer_diameter', 'Pad Diameter'),
-        col_names.get('inner_diameter', 'Via Parameter'),
-        col_names.get('total_shift', 'SC'),
-        col_names.get('x_distance', 'Shift (DX)'),
-        col_names.get('y_distance', 'Shift (DY)'),
-        col_names.get('ptv_distance', 'PtV Distance'),
-        col_names.get('annular_ring', 'Annular Ring'),
-    ]
-    all_data = convert_to_microns(all_data, measurement_cols)
-    if grid_id_col in all_data.columns:
-        all_data = all_data.sort_values(by=grid_id_col, ascending=True)
-    _measurement_sheet(all_data, grid_id_col).to_excel(writer, sheet_name='All Data', index=False)
 
     process_frames = _process_slices(scoped_df, meta)
     vtp_usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
@@ -448,24 +443,62 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
             continue
 
         is_vtp = process_code == 'VTP'
+        sheet_base = 'Via to Pad' if is_vtp else 'Pad to Via'
         proc_display = _build_process_display(proc_df, settings, is_via_to_pad=is_vtp)
-        side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
-        build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
         proc_meta = dict(meta)
-        proc_meta['process'] = 'Via to Pad' if is_vtp else 'Pad to Via'
+        proc_meta['process'] = sheet_base
 
-        report_frames.append(
-            _report_sheet(
-                proc_display,
-                side_vals,
-                build_vals,
-                grid_id_col,
-                proc_meta,
-                usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
-                usl_value=vtp_usl if is_vtp else ptv_usl,
-                include_xy_usl=is_vtp,
+        if 'Side' in proc_df.columns:
+            sides = sorted({str(v).strip() for v in proc_df['Side'].dropna().tolist() if str(v).strip()})
+        else:
+            sides = []
+
+        if len(sides) > 1:
+            for side in sides:
+                side_mask = proc_df['Side'] == side
+                side_df = proc_df[side_mask].copy()
+                side_disp = proc_display.loc[proc_display.index.isin(side_df.index)]
+                if side_disp.empty:
+                    continue
+
+                data_sheet = f'{sheet_base} - {side}'
+                _measurement_sheet(side_disp, grid_id_col).to_excel(
+                    writer, sheet_name=data_sheet, index=False)
+                _embed_charts(writer.sheets[data_sheet], settings, data_sheet)
+
+                side_vals = side_df['Side'].values if 'Side' in side_df.columns else None
+                build_vals = side_df['Build Up'].values if 'Build Up' in side_df.columns else None
+                report_frames.append(
+                    _report_sheet(
+                        side_disp,
+                        side_vals,
+                        build_vals,
+                        grid_id_col,
+                        proc_meta,
+                        usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
+                        usl_value=vtp_usl if is_vtp else ptv_usl,
+                        include_xy_usl=is_vtp,
+                    )
+                )
+        else:
+            _measurement_sheet(proc_display, grid_id_col).to_excel(
+                writer, sheet_name=sheet_base, index=False)
+            _embed_charts(writer.sheets[sheet_base], settings, sheet_base)
+
+            side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
+            build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
+            report_frames.append(
+                _report_sheet(
+                    proc_display,
+                    side_vals,
+                    build_vals,
+                    grid_id_col,
+                    proc_meta,
+                    usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
+                    usl_value=vtp_usl if is_vtp else ptv_usl,
+                    include_xy_usl=is_vtp,
+                )
             )
-        )
 
     if report_frames:
         pd.concat(report_frames, ignore_index=True).to_excel(
