@@ -47,7 +47,8 @@ class QualityControlView(BaseView):
         # native 'PtV Distance'. Coord. X/Y, Pad/Via Pts., Annular Ring, and the
         # Process tag are intentionally excluded from both screen and export.
         distance_col = sc_col if is_via_to_pad else ptv_dist_col
-        keep = [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
+        meta_cols = ['Build Up', 'Panel', 'Side']
+        keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
         display_df = filtered_df[[c for c in keep if c in filtered_df.columns]].copy()
 
         measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
@@ -65,7 +66,7 @@ class QualityControlView(BaseView):
         # --- Excel Export ---
         col_left, col_right = st.columns([3, 1])
         with col_left:
-            st.write('Unified export: one workbook for current Build Up, Panel, and Side scope (PTV + VTP together).')
+            st.write('One workbook export: separate Via-to-Pad and Pad-to-Via sheets for current Build Up, Panel, and Side scope.')
         with col_right:
             self._render_export_button(
                 filtered_df, export_df, is_via_to_pad,
@@ -119,7 +120,7 @@ component breakdown.
         )
         fmt = {col: self.format_to_3_decimals
                for col in display_df.columns
-               if display_df[col].dtype in ('float64', 'float32', 'int64', 'int32')}
+               if col != grid_id_col and display_df[col].dtype in ('float64', 'float32', 'int64', 'int32')}
         if fmt:
             styled = styled.format(fmt)
         st.dataframe(styled, use_container_width=True)

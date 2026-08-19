@@ -76,3 +76,20 @@ def test_bullseye_renders_to_png(vtp_df, settings):
     fig = plot_vtp_bullseye(vtp_df, settings)
     png = fig.to_image(format='png', width=700, height=700, scale=2)
     assert len(png) > 1000
+
+
+def test_bullseye_grid_labels_are_integer_like(settings):
+    """Grid labels on bullseye markers should be 23/33 style, not 23.0/33.0."""
+    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+
+    df = pd.DataFrame({
+        'Location': ['a', 'b', 'c'],
+        'Grid ID': [23.0, 33.0, 34.0],
+        'Shift (DX)': [0.001, -0.002, 0.0015],
+        'Shift (DY)': [0.002, 0.001, -0.0005],
+        'PtV Distance': [0.0022, 0.0022, 0.0025],
+    })
+
+    fig = plot_vtp_bullseye(df, settings)
+    trace = next(t for t in fig.data if isinstance(t, go.Scatter))
+    assert list(trace.text) == ['23', '33', '34']
