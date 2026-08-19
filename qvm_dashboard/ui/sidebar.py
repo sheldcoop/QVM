@@ -45,10 +45,11 @@ def render_sidebar(settings: Dict) -> Dict:
                     inferred_hint = inferred.get('format_hint') or "Unknown"
                     inferred_side = inferred.get('Side', 'Unknown')
                     inferred_panel = inferred.get('Panel Number', 'Unknown')
+                    inferred_build_up = inferred.get('Build Up', 'Unknown')
 
                     st.markdown(f"**{uploaded_file.name}**")
                     st.caption(
-                        f"Inferred: Type={inferred_hint}, Side={inferred_side}, Panel={inferred_panel}"
+                        f"Inferred: Type={inferred_hint}, Side={inferred_side}, Panel={inferred_panel}, BU={inferred_build_up}"
                     )
 
                     selected_process = st.selectbox(
@@ -81,7 +82,7 @@ def render_sidebar(settings: Dict) -> Dict:
                     build_up_text = st.text_input(
                         "Build Up (BU)",
                         value="",
-                        placeholder="Optional, e.g. BU-01",
+                        placeholder="Optional, e.g. 2 (auto -> BU-02)",
                         key=f"override_build_up_{idx}_{uploaded_file.name}",
                     ).strip()
 

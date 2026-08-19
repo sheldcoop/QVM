@@ -1,6 +1,7 @@
 """File ingestion helpers for QVM uploads."""
 
 import logging
+import re
 from typing import Optional, Tuple, List
 
 import pandas as pd
@@ -10,6 +11,31 @@ from src.upload_metadata import UploadMetadata, resolve_upload_metadata
 from src.utils import calculate_annular_ring
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_build_up(value: Optional[str]) -> Optional[str]:
+    """Normalize Build Up values to canonical `BU-XX` when numeric.
+
+    Examples:
+    - `2`, `02`, `BU02`, `bu-2` -> `BU-02`
+    - Unknown/blank -> None
+    - Non-numeric custom values are returned as-is (trimmed).
+    """
+    if value is None:
+        return None
+
+    raw = str(value).strip()
+    if not raw or raw.lower() == 'unknown':
+        return None
+
+    bu_match = re.fullmatch(r'(?i)bu[-_\s]?(\d+)', raw)
+    if bu_match:
+        return f"BU-{bu_match.group(1).zfill(2)}"
+
+    if re.fullmatch(r'\d+', raw):
+        return f"BU-{raw.zfill(2)}"
+
+    return raw
 
 
 def ingest_uploaded_file(uploaded_file, settings: dict,
@@ -25,12 +51,10 @@ def ingest_uploaded_file(uploaded_file, settings: dict,
         filename_info: Raw filename parse metadata.
     """
     file_override = file_override or {}
-    build_up_override = str(file_override.get('build_up_override', '')).strip() or None
-    default_build_up = str(default_build_up or '').strip() or None
+    build_up_override = _normalize_build_up(file_override.get('build_up_override'))
+    default_build_up = _normalize_build_up(default_build_up)
     filename_info = parse_filename(uploaded_file.name)
-    parsed_build_up = str(filename_info.get('Build Up', '')).strip()
-    if not parsed_build_up or parsed_build_up.lower() == 'unknown':
-        parsed_build_up = None
+    parsed_build_up = _normalize_build_up(filename_info.get('Build Up'))
     content = uploaded_file.getvalue().decode('utf-8')
     df, parse_warnings = parse_qvm_content(content, settings)
     df = calculate_annular_ring(df, settings)

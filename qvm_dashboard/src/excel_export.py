@@ -252,7 +252,10 @@ def _build_process_display(df: pd.DataFrame, settings: dict,
     display_df = convert_to_microns(display_df, measurement_cols)
 
     if grid_id_col in display_df.columns:
-        display_df = display_df.sort_values(by=grid_id_col, ascending=True)
+        sort_key = pd.to_numeric(display_df[grid_id_col], errors='coerce')
+        display_df = display_df.assign(_grid_sort_key=sort_key).sort_values(
+            by=['_grid_sort_key', grid_id_col], ascending=True, na_position='last',
+        ).drop(columns=['_grid_sort_key'])
 
     return display_df
 
@@ -305,9 +308,17 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
     existing = [c for c in drop_if_present if c in s.columns]
     if existing:
         s = s.drop(columns=existing)
-    grid_str = s[grid_id_col].astype(str).str.zfill(2)
-    s.insert(0, 'Fiducial_Number', grid_str.str[1].astype(int))
-    s.insert(0, 'Fiducial',        grid_str.str[0].map(_REGION_MAP))
+
+    # Keep report generation resilient when Grid ID is missing/malformed.
+    if grid_id_col in s.columns:
+        grid_str = s[grid_id_col].astype(str).str.replace(r'\D', '', regex=True).str.zfill(2)
+        s.insert(0, 'Fiducial', grid_str.str[0].map(_REGION_MAP))
+        s.insert(0, 'Fiducial_Number', pd.to_numeric(grid_str.str[1], errors='coerce'))
+    else:
+        logger.warning('Report export: missing grid id column "%s"; fiducial fields left blank', grid_id_col)
+        s.insert(0, 'Fiducial', None)
+        s.insert(0, 'Fiducial_Number', None)
+
     s.insert(0, 'Side',        side_vals if side_vals is not None else '')
     s.insert(0, 'Panel',       meta.get('panel', ''))
     s.insert(0, 'Process',     meta.get('process', ''))
@@ -316,7 +327,8 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
     s.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
     s.insert(0, 'Part_Number', meta.get('part_number', ''))
     s.insert(0, 'Project_Name', meta.get('project_name', ''))
-    s = s.drop(columns=[grid_id_col])
+    if grid_id_col in s.columns:
+        s = s.drop(columns=[grid_id_col])
 
     # Append USL reference column(s) (X/Y USL intentionally left blank)
     s[usl_col_name] = usl_value

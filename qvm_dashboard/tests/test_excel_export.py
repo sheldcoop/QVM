@@ -260,3 +260,22 @@ def test_unified_export_process_sheet_includes_annular_ring(settings):
 
     headers = [cell.value for cell in wb['Via to Pad'][1]]
     assert 'Annular Ring' in headers
+
+
+def test_unified_export_handles_malformed_grid_ids(settings):
+    import openpyxl
+    from qvm_dashboard.src.excel_export import write_unified_excel
+
+    df = _mixed_process_frame(settings)
+    grid_col = settings['COLUMN_NAMES']['grid_id']
+    df.loc[df.index[:4], grid_col] = ['A', 'B2', '3X', '']
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    assert 'Report' in wb.sheetnames
+    analytics_sheets = [name for name in wb.sheetnames if name.startswith('Analytics')]
+    assert analytics_sheets
