@@ -75,3 +75,18 @@ def test_ingest_uploaded_file_prefers_filename_build_up_over_sidebar_default(set
 
     assert filename_info['Build Up'] == 'BU-03'
     assert df['Build Up'].iloc[0] == 'BU-03'
+
+
+def test_ingest_uploaded_file_normalizes_numeric_build_up_override(settings):
+    uploaded = SimpleNamespace(
+        name='PTV_Panel_20_F.txt',
+        getvalue=lambda: VALID_CONTENT.encode('utf-8'),
+    )
+    df, _, _, _, _ = ingest_uploaded_file(
+        uploaded,
+        settings,
+        file_override={'build_up_override': '2'},
+        default_build_up='BU-01',
+    )
+
+    assert df['Build Up'].iloc[0] == 'BU-02'
