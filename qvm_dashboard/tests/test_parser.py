@@ -65,6 +65,22 @@ def test_parse_filename_back_alias():
     assert result['Side'] == "B"
 
 
+def test_parse_filename_panel_shorthand_front():
+    result = parse_filename("VTP_P28_F_BU-03.txt")
+    assert result['format_hint'] == "Via to Pad"
+    assert result['Panel Number'] == "28"
+    assert result['Side'] == "F"
+    assert result['Build Up'] == "BU-03"
+
+
+def test_parse_filename_panel_shorthand_back():
+    result = parse_filename("VTP_P28_B_BU-03.txt")
+    assert result['format_hint'] == "Via to Pad"
+    assert result['Panel Number'] == "28"
+    assert result['Side'] == "B"
+    assert result['Build Up'] == "BU-03"
+
+
 def test_parse_filename_no_hint():
     result = parse_filename("random_data.txt")
     assert result['format_hint'] is None

@@ -16,8 +16,10 @@ class QVMParseError(Exception):
 
 
 _PTS_RE = re.compile(r"From\s+(\d+)\s*Pts\.")
-_PANEL_RE = re.compile(r'panel[\s_]*(\d+)', re.IGNORECASE)
-_SIDE_RE = re.compile(r'[_\s](front|back|[fb])\s*$', re.IGNORECASE)
+# Accept both long form (Panel 28 / Panel_28 / Panel28) and shorthand (P28).
+_PANEL_RE = re.compile(r'(?:panel[\s_]*|(?:^|[_\s-])p)(\d+)(?=$|[_\s-])', re.IGNORECASE)
+_SIDE_RE = re.compile(r'(?:^|[_\s-])(front|back|[fb])(?=$|[_\s-])', re.IGNORECASE)
+_BU_RE = re.compile(r'(?:^|[_\s-])bu[-_\s]?(\d+)(?=$|[_\s-])', re.IGNORECASE)
 
 
 def _parse_value(line: str) -> float:
@@ -51,6 +53,7 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
             'format_hint': 'Via to Pad' | 'Pad to Via' | None,
             'Panel Number': str | 'Unknown',
             'Side': 'F' | 'B' | 'Unknown',
+            'Build Up': 'BU-<NN>' | 'Unknown',
         }
     """
     basename = os.path.basename(filename)
@@ -77,10 +80,14 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
     else:
         side = 'Unknown'
 
+    bu_match = _BU_RE.search(name_without_ext)
+    build_up = f"BU-{bu_match.group(1)}" if bu_match else 'Unknown'
+
     return {
         'format_hint': format_hint,
         'Panel Number': panel_number,
         'Side': side,
+        'Build Up': build_up,
     }
 
 

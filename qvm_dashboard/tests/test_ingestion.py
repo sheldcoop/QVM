@@ -63,3 +63,15 @@ def test_ingest_uploaded_file_keeps_filename_defaults_when_no_override(settings)
     assert df['Build Up'].iloc[0] == 'BU-01'
     assert resolved.final_process == 'Pad to Via'
     assert not ui_warnings
+
+
+def test_ingest_uploaded_file_prefers_filename_build_up_over_sidebar_default(settings):
+    uploaded = SimpleNamespace(
+        name='PTV_Panel_20_F_BU-03.txt',
+        getvalue=lambda: VALID_CONTENT.encode('utf-8'),
+    )
+    df, _, _, _, filename_info = ingest_uploaded_file(
+        uploaded, settings, default_build_up='BU-01')
+
+    assert filename_info['Build Up'] == 'BU-03'
+    assert df['Build Up'].iloc[0] == 'BU-03'
