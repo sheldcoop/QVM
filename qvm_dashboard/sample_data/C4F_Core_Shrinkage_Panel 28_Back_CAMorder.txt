@@ -1,0 +1,83 @@
+
+         Element          Actual         Nominal         Deviat.         Up Tol.        Low Tol.       Pass/Fail
+                                                        (TP Dev)        (TP Tol)                                
+Circle: LL_2(ID:1, From 140 Pts.) 
+     Coord. X =        78.864216                                                                                
+     Coord. Y =        84.182429                                                                                
+     Diameter =         0.362690                                                                                
+
+Circle: LL_1(ID:2, From 110 Pts.) 
+     Coord. X =        77.913965                                                                                
+     Coord. Y =       320.045273                                                                                
+     Diameter =         0.363603                                                                                
+
+Circle: LL_4(ID:3, From 167 Pts.) 
+     Coord. X =       278.656797                                                                                
+     Coord. Y =       320.849258                                                                                
+     Diameter =         0.370808                                                                                
+
+Circle: LL_3(ID:4, From 163 Pts.) 
+     Coord. X =       279.603013                                                                                
+     Coord. Y =        84.984164                                                                                
+     Diameter =         0.371227                                                                                
+
+Circle: LR_2(ID:5, From 157 Pts.) 
+     Coord. X =       321.971375                                                                                
+     Coord. Y =        85.152203                                                                                
+     Diameter =         0.371184                                                                                
+
+Circle: LR_1(ID:6, From 151 Pts.) 
+     Coord. X =       321.023811                                                                                
+     Coord. Y =       321.015643                                                                                
+     Diameter =         0.366754                                                                                
+
+Circle: LR_4(ID:7, From 158 Pts.) 
+     Coord. X =       521.768329                                                                                
+     Coord. Y =       321.824157                                                                                
+     Diameter =         0.358990                                                                                
+
+Circle: LR_3(ID:8, From 158 Pts.) 
+     Coord. X =       522.711914                                                                                
+     Coord. Y =        85.958882                                                                                
+     Diameter =         0.366130                                                                                
+
+Circle: UL_2(ID:9, From 166 Pts.) 
+     Coord. X =        77.875690                                                                                
+     Coord. Y =       328.286928                                                                                
+     Diameter =         0.363301                                                                                
+
+Circle: UL_1(ID:10, From 149 Pts.) 
+     Coord. X =        76.931828                                                                                
+     Coord. Y =       564.152696                                                                                
+     Diameter =         0.363511                                                                                
+
+Circle: UL_4(ID:11, From 155 Pts.) 
+     Coord. X =       277.673374                                                                                
+     Coord. Y =       564.957307                                                                                
+     Diameter =         0.362125                                                                                
+
+Circle: UL_3(ID:12, From 155 Pts.) 
+     Coord. X =       278.617873                                                                                
+     Coord. Y =       329.091451                                                                                
+     Diameter =         0.369561                                                                                
+
+Circle: UR_2(ID:13, From 148 Pts.) 
+     Coord. X =       320.989420                                                                                
+     Coord. Y =       329.254620                                                                                
+     Diameter =         0.369081                                                                                
+
+Circle: UR_1(ID:14, From 140 Pts.) 
+     Coord. X =       320.041736                                                                                
+     Coord. Y =       565.116600                                                                                
+     Diameter =         0.365603                                                                                
+
+Circle: UR_4(ID:15, From 170 Pts.) 
+     Coord. X =       520.785406                                                                                
+     Coord. Y =       565.933356                                                                                
+     Diameter =         0.356249                                                                                
+
+Circle: UR_3(ID:16, From 147 Pts.) 
+     Coord. X =       521.733561                                                                                
+     Coord. Y =       330.064443                                                                                
+     Diameter =         0.361422                                                                                
+

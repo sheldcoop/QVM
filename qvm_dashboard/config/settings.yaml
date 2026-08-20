@@ -128,4 +128,34 @@ EXCEL_EXPORT:
   panel_map_image: "assets/Panel_Map.png"   # path relative to qvm_dashboard/
   panel_image_cm: 8.5                        # embed size in cm (width = height)
 
-
+CORE_SHRINKAGE:
+  distance_usl_mm: 0.050    # upper spec limit for front↔back offset (mm) — adjust to taste
+  outlier_cap_mm: 5.0       # offsets above this are flagged as outliers
+  # --- 3-level model thresholds (per-dot residual, classifier, pass/fail) ---
+  outlier_um: 50            # per-dot residual above this = outlier / remeasure
+  rotation_warn_deg: 0.30   # rotation above this is flagged (fixturing, not shrinkage)
+  aniso_ppm: 100            # |Sx-Sy| above this = anisotropic shrinkage
+  shrink_ppm: 50            # |scale| above this counts as real shrinkage
+  shrink_usl_ppm: 1000      # headline-shrinkage pass/fail spec (Quality Control)
+  residual_zones_um:        # per-dot residual colour zones (Distortion Map)
+    exceptional: 10
+    excellent: 20
+    good: 35
+    acceptable: 50
+  NOMINAL_COORDS:
+    UL_1: {x: -222.700, y:  239.875}
+    UL_2: {x: -222.700, y:    4.125}
+    UL_3: {x:  -22.050, y:    4.125}
+    UL_4: {x:  -22.050, y:  239.875}
+    LL_1: {x: -222.700, y:   -4.125}
+    LL_2: {x: -222.700, y: -239.875}
+    LL_3: {x:  -22.050, y: -239.875}
+    LL_4: {x:  -22.050, y:   -4.125}
+    LR_1: {x:   20.300, y:   -4.125}
+    LR_2: {x:   20.300, y: -239.875}
+    LR_3: {x:  220.950, y: -239.875}
+    LR_4: {x:  220.950, y:   -4.125}
+    UR_1: {x:   20.300, y:  239.875}
+    UR_2: {x:   20.300, y:    4.125}
+    UR_3: {x:  220.950, y:    4.125}
+    UR_4: {x:  220.950, y:  239.875}
