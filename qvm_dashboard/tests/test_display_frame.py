@@ -110,3 +110,18 @@ def test_missing_optional_columns_are_tolerated(parsed_df, settings):
         settings, is_via_to_pad=False)
     assert 'Build Up' not in out.columns
     assert settings['COLUMN_NAMES']['grid_id'] in out.columns
+
+
+def test_grid_id_header_is_applied_here_not_by_the_excel_writer(parsed_df, settings):
+    """The Excel writer used to rename Grid ID itself, so a renamed grid_id key
+    would have shown the configured name on screen and 'Grid ID' in the export."""
+    from src.display_frame import GRID_ID_HEADER
+
+    renamed = settings.copy()
+    renamed['COLUMN_NAMES'] = {**settings['COLUMN_NAMES'], 'grid_id': 'Site Code'}
+    parsed = parsed_df.rename(columns={settings['COLUMN_NAMES']['grid_id']: 'Site Code'})
+
+    out = build_display_frame(parsed, renamed, is_via_to_pad=False)
+    assert GRID_ID_HEADER in out.columns
+    assert 'Site Code' not in out.columns
+    assert out[GRID_ID_HEADER].tolist() == [11, 13, 22, 44]

@@ -9,7 +9,7 @@ import streamlit as st
 from src.ingestion import ingest_uploaded_file
 from src.panel_mapping import create_four_quarters_view
 from src.parser import QVMParseError
-from src.utils import load_settings
+from src.utils import is_via_to_pad as is_via_to_pad_mask, load_settings
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
 from src.visuals import plot_quiver, plot_vtp_box
@@ -21,9 +21,16 @@ pd.options.mode.copy_on_write = True
 logger = logging.getLogger(__name__)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)
+def _settings() -> dict:
+    """load_settings() memoised — it reads and validates YAML from disk, and
+    Streamlit reruns this script on every widget interaction."""
+    return load_settings()
+
+
+@st.cache_data(max_entries=16, show_spinner=False)
 def _parse_upload(name: str, data: bytes, settings: dict,
-                  file_override: dict, default_build_up: str) -> tuple:
+                  file_override: dict) -> tuple:
     """Parse one uploaded file, memoised on its content.
 
     Streamlit reruns the whole script on every widget interaction, so without
@@ -34,8 +41,7 @@ def _parse_upload(name: str, data: bytes, settings: dict,
     """
     uploaded = SimpleNamespace(name=name, getvalue=lambda: data)
     df, parse_warnings, ui_warnings, _, _ = ingest_uploaded_file(
-        uploaded, settings, file_override=file_override,
-        default_build_up=default_build_up)
+        uploaded, settings, file_override=file_override)
     return df, parse_warnings, ui_warnings
 
 
@@ -215,7 +221,7 @@ def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
         key_prefix, label = "ptv", "Pad-to-Via"
         example = "Post PFC_Pad to Via_Panel 20_F.txt"
 
-    is_vtp_row = scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)
+    is_vtp_row = is_via_to_pad_mask(scoped_df)
     process_df = scoped_df[is_vtp_row if is_via_to_pad else ~is_vtp_row].copy()
 
     if process_df.empty:
@@ -245,7 +251,7 @@ def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
 
 
 def main() -> None:
-    settings = load_settings()
+    settings = _settings()
     ui_strings = settings.get('UI_STRINGS', {})
 
     st.set_page_config(page_title=ui_strings.get('dashboard_title', 'QVM Dashboard'), layout="wide")
@@ -272,8 +278,7 @@ def main() -> None:
             try:
                 file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
                 df, file_warnings, ui_warnings = _parse_upload(
-                    file.name, file.getvalue(), settings,
-                    file_override, meta.get('build_up'))
+                    file.name, file.getvalue(), settings, file_override)
                 all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),

@@ -39,6 +39,19 @@ def load_settings() -> dict:
     return settings
 
 
+def is_via_to_pad(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of the Via-to-Pad rows in a parsed frame.
+
+    ``Process`` is the parser's source of truth for routing (see
+    ``parser.parse_qvm_content``), so every consumer that splits by process
+    must agree on how it is read. Rows with no usable Process value are
+    treated as Pad-to-Via, matching the dashboard's default tab.
+    """
+    if 'Process' not in df.columns:
+        return pd.Series(False, index=df.index)
+    return df['Process'].astype(str).str.contains('Via to Pad', case=False, na=False)
+
+
 def convert_to_microns(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     """Multiply named columns by 1000 (mm → µm) and round to 3 dp.
 
@@ -85,7 +98,7 @@ _COLUMN_DEFAULTS = {
     'coord_x': 'Coord. X',
     'coord_y': 'Coord. Y',
     'ptv_distance': 'PtV Distance',
-    'total_shift': 'SC',
+    'total_shift': 'VtP Distance (SC)',
     'x_distance': 'Shift (DX)',
     'y_distance': 'Shift (DY)',
     'pad_pts': 'Pad Pts.',

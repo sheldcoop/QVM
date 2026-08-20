@@ -18,7 +18,8 @@ from openpyxl.drawing.image import Image as XLImage
 from src.visuals import (
     plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
 )
-from src.display_frame import build_display_frame
+from src.display_frame import GRID_ID_HEADER, build_display_frame
+from src.utils import is_via_to_pad
 
 logger = logging.getLogger(__name__)
 
@@ -213,11 +214,6 @@ def _warnings_sheet(ws, warnings: list) -> None:
             ws.cell(row=i, column=1, value=msg)
 
 
-def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
-    """Measurement data frame ready to write (Grid ID column renamed)."""
-    return df.copy().rename(columns={grid_id_col: 'Grid ID'})
-
-
 def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
     """Return an Excel-safe, unique worksheet name (<=31 chars)."""
     base = re.sub(r'[\[\]:*?/\\]', '-', str(sheet_name).strip()) or 'Sheet'
@@ -232,19 +228,13 @@ def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
     return candidate
 
 
-def _process_slices(df: pd.DataFrame, meta: dict) -> dict[str, pd.DataFrame]:
+def _process_slices(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Split scoped data into VTP/PTV dataframes for unified exports."""
-    if 'Process' in df.columns:
-        vtp_mask = df['Process'].astype(str).str.contains('Via to Pad', case=False, na=False)
-        return {
-            'VTP': df[vtp_mask].copy(),
-            'PTV': df[~vtp_mask].copy(),
-        }
-
-    process_hint = str(meta.get('process', '')).lower()
-    if 'via to pad' in process_hint or process_hint == 'vtp':
-        return {'VTP': df.copy(), 'PTV': pd.DataFrame(columns=df.columns)}
-    return {'VTP': pd.DataFrame(columns=df.columns), 'PTV': df.copy()}
+    vtp_mask = is_via_to_pad(df)
+    return {
+        'VTP': df[vtp_mask].copy(),
+        'PTV': df[~vtp_mask].copy(),
+    }
 
 
 def _report_sheet(df: pd.DataFrame, grid_id_col: str, meta: dict,
@@ -337,10 +327,7 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
         _warnings_sheet(ws_warn, warnings or [])
         return
 
-    col_names = settings.get('COLUMN_NAMES', {})
-    grid_id_col = col_names.get('grid_id', 'Grid ID')
-
-    process_frames = _process_slices(scoped_df, meta)
+    process_frames = _process_slices(scoped_df)
     vtp_usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
     ptv_usl = float(settings.get('PTV_REGISTRATION', {}).get('ptv_usl_um', 10.0))
 
@@ -355,14 +342,13 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
         proc_meta = dict(meta)
         proc_meta['process'] = sheet_base
 
-        _measurement_sheet(proc_display, grid_id_col).to_excel(
-            writer, sheet_name=sheet_base, index=False)
+        proc_display.to_excel(writer, sheet_name=sheet_base, index=False)
         _add_panel_map(writer.sheets[sheet_base], settings, sheet_base)
 
         report_frames.append(
             _report_sheet(
                 proc_display,
-                grid_id_col,
+                GRID_ID_HEADER,
                 proc_meta,
                 usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
                 usl_value=vtp_usl if is_vtp else ptv_usl,

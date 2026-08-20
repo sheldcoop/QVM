@@ -11,6 +11,7 @@ import streamlit as st
 
 from src.views.base import BaseView
 from src.display_frame import build_display_frame
+from src.utils import is_via_to_pad as is_via_to_pad_mask
 from src.excel_export import write_unified_excel
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 _EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 
-@st.cache_data(show_spinner='Building Excel report…')
+@st.cache_data(max_entries=8, show_spinner='Building Excel report…')
 def build_workbook(export_df: pd.DataFrame, settings: dict, meta: dict,
                    warnings: list) -> tuple:
     """Render the export workbook to bytes. Returns ``(data, error_message)``.
@@ -168,11 +169,8 @@ component breakdown.
     def _render_stats(self, display_df: pd.DataFrame, annular_col: str,
                       threshold: float, grid_id_col: str) -> None:
         """Render the five Annular Ring summary tiles."""
-        if annular_col not in display_df.columns:
-            st.info('Annular Ring is unavailable for this selection.')
-            return
-
-        stats = annular_stats(display_df[annular_col], threshold)
+        stats = (annular_stats(display_df[annular_col], threshold)
+                 if annular_col in display_df.columns else None)
         if stats is None:
             st.info('Annular Ring is unavailable for this selection.')
             return
@@ -234,14 +232,12 @@ component breakdown.
     def _build_filename(cls, filtered_df: pd.DataFrame, is_via_to_pad: bool, meta: dict) -> str:
         process_token = "VTP" if is_via_to_pad else "PTV"
         if 'Process' in filtered_df.columns and not filtered_df.empty:
-            proc_vals = sorted({str(v).strip() for v in filtered_df['Process'].dropna().tolist() if str(v).strip()})
-            if len(proc_vals) == 1:
-                p = proc_vals[0].lower()
-                if 'via to pad' in p:
-                    process_token = 'VTP'
-                elif 'pad to via' in p:
-                    process_token = 'PTV'
-            elif len(proc_vals) > 1:
+            vtp_rows = is_via_to_pad_mask(filtered_df)
+            if vtp_rows.all():
+                process_token = 'VTP'
+            elif not vtp_rows.any():
+                process_token = 'PTV'
+            else:
                 process_token = 'MIXED'
 
         panel_token = None

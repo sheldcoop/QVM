@@ -45,6 +45,9 @@ def ingest_uploaded_file(uploaded_file, settings: dict,
 
     Returns:
         df: Parsed dataframe with annular ring calculated and Panel/Side set.
+        (``default_build_up`` is the lowest tier of the Build Up precedence
+        chain; the dashboard currently derives Build Up per file, so nothing
+        in the app passes it.)
         parse_warnings: Parser warnings returned by parse_qvm_content.
         ui_warnings: User-facing warning strings for filename/override conflicts.
         resolved: Resolved upload metadata object.
