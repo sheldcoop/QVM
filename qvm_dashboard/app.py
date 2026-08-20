@@ -6,10 +6,12 @@ from types import SimpleNamespace
 import pandas as pd
 import streamlit as st
 
+from src.core_shrinkage_parser import parse_cs_filename, parse_core_shrinkage_content
 from src.ingestion import ingest_uploaded_file
 from src.panel_mapping import create_four_quarters_view
 from src.parser import QVMParseError
 from src.utils import is_via_to_pad as is_via_to_pad_mask, load_settings
+from src.views.core_shrinkage import CoreShrinkageView
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
 from src.visuals import plot_quiver, plot_vtp_box
@@ -43,6 +45,21 @@ def _parse_upload(name: str, data: bytes, settings: dict,
     df, parse_warnings, ui_warnings, _, _ = ingest_uploaded_file(
         uploaded, settings, file_override=file_override)
     return df, parse_warnings, ui_warnings
+
+
+@st.cache_data(max_entries=16, show_spinner=False)
+def _parse_cs_upload(name: str, data: bytes, layer: str, panel: str,
+                     grid_mapping: dict) -> pd.DataFrame:
+    """Parse one Core Shrinkage upload, memoised on its content.
+
+    Same reasoning as :func:`_parse_upload` — Streamlit reruns the script on
+    every widget interaction, so keying on the file's bytes keeps a nav click
+    from re-parsing every upload.
+    """
+    cs_df = parse_core_shrinkage_content(data.decode('utf-8'), layer)
+    cs_df['Panel'] = panel
+    cs_df['grid_id'] = cs_df['location'].map(grid_mapping)
+    return cs_df
 
 
 def load_css(file_path: str, settings: dict = None) -> None:
@@ -79,8 +96,16 @@ def _panel_sort_key(panel: str):
     return (0, int(text), '') if text.isdecimal() else (1, 0, text)
 
 
-def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> tuple[pd.DataFrame, str, str]:
-    """Render panel/side scope filters and return filtered DataFrame plus selections."""
+def _scope_filters(df: pd.DataFrame, panel_key: str, filter_key: str, *,
+                   filter_col: str = 'Side',
+                   filter_label: str = 'Side') -> tuple[pd.DataFrame, str, str]:
+    """Render Panel + a secondary scope filter; return the frame plus selections.
+
+    Shared by every analysis tab. Pad-to-Via and Via-to-Pad take the defaults and
+    filter on ``Side``; Core Shrinkage passes ``filter_col='layer'`` to filter on
+    Front/Back instead. The secondary selector only offers "Both" when the data
+    actually holds more than one value.
+    """
     with st.expander("Analysis Scope", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -92,27 +117,28 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> tuple[pd.
             sel_display = render_nav_buttons(panel_display, state_key=panel_key, default=panel_display[0])
             selected_panel = "All" if sel_display == "All" else sel_display.replace("Panel-", "")
         with col2:
-            side_list = sorted(df['Side'].unique().tolist())
-            if len(side_list) > 1:
-                side_list.insert(0, "Both")
-            st.markdown("**Select Side**")
-            selected_side = render_nav_buttons(side_list, state_key=side_key, default=side_list[0])
+            opt_list = sorted(df[filter_col].unique().tolist())
+            if len(opt_list) > 1:
+                opt_list.insert(0, "Both")
+            st.markdown(f"**Select {filter_label}**")
+            selected_opt = render_nav_buttons(opt_list, state_key=filter_key, default=opt_list[0])
 
-    filtered = _apply_scope_filters(df, selected_panel, selected_side)
-    return filtered, selected_panel, selected_side
+    filtered = _apply_scope_filters(df, selected_panel, selected_opt, filter_col=filter_col)
+    return filtered, selected_panel, selected_opt
 
 
-def _apply_scope_filters(df: pd.DataFrame, selected_panel: str, selected_side: str) -> pd.DataFrame:
-    """Apply the panel/side scope selection to any dataframe.
+def _apply_scope_filters(df: pd.DataFrame, selected_panel: str, selected_value: str,
+                         *, filter_col: str = 'Side') -> pd.DataFrame:
+    """Apply the panel + secondary scope selection to any dataframe.
 
-    The single home for the scope rules: "All" panels and "Both" sides mean no
-    filtering, and a dataframe missing either column is passed through.
+    The single home for the scope rules: "All" panels and "Both" secondary values
+    mean no filtering, and a dataframe missing either column is passed through.
     """
     filtered = df.copy()
     if selected_panel and selected_panel != "All" and 'Panel' in filtered.columns:
         filtered = filtered[filtered['Panel'] == selected_panel]
-    if selected_side and selected_side != "Both" and 'Side' in filtered.columns:
-        filtered = filtered[filtered['Side'] == selected_side]
+    if selected_value and selected_value != "Both" and filter_col in filtered.columns:
+        filtered = filtered[filtered[filter_col] == selected_value]
     return filtered
 
 
@@ -229,7 +255,7 @@ def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
         return
 
     filtered_df, selected_panel, selected_side = _scope_filters(
-        process_df, panel_key=f"{key_prefix}_panel", side_key=f"{key_prefix}_side")
+        process_df, panel_key=f"{key_prefix}_panel", filter_key=f"{key_prefix}_side")
     export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
 
     if filtered_df.empty:
@@ -248,6 +274,40 @@ def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
     _render_sub_views(
         filtered_df, sub_view, settings,
         is_via_to_pad=is_via_to_pad, meta=meta, export_df=export_scope_df)
+
+
+def _render_core_shrinkage_tab(cs_data: list, settings: dict, meta: dict) -> None:
+    """Render the Core Shrinkage tab: Panel/Layer scope, then the sub-view.
+
+    Core Shrinkage files carry their own format, parser and frame shape (Front/
+    Back layers rather than F/B sides, and no Process column), so this tab runs
+    on its own data and shares only the scope-filter widgets. It is deliberately
+    outside the Build Up scope selector: CS filenames carry no Build Up token.
+    """
+    if not cs_data:
+        st.info("Please upload Core Shrinkage files "
+                "(e.g. '...Core_Shrinkage_Panel 28_Front_CAMorder.txt' / '...Back...').")
+        return
+
+    master_cs_df = pd.concat(cs_data, ignore_index=True)
+    filtered_cs, _, _ = _scope_filters(
+        master_cs_df, panel_key="cs_panel", filter_key="cs_layer",
+        filter_col='layer', filter_label='Layer')
+
+    if filtered_cs.empty:
+        st.warning("No data matches the selected filters.")
+        return
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    cs_sub_view = render_nav_buttons(
+        ["Quality Control", "Analytics", "Distortion Map", "Method"],
+        state_key="cs_sub_view",
+        default="Quality Control",
+    )
+    st.markdown("---")
+
+    CoreShrinkageView(settings).render(filtered_cs, sub_view=cs_sub_view, meta=meta)
 
 
 def main() -> None:
@@ -272,9 +332,30 @@ def main() -> None:
 
     all_data = []
     all_warnings = []
+    cs_data = []
     if uploaded_files:
         for file_index, file in enumerate(uploaded_files):
             logger.info('Parsing file: %s', file.name)
+
+            # Core Shrinkage files are a different format with a different
+            # parser; they are identified by filename ("core_shrinkage") and
+            # never reach parse_qvm_content.
+            cs_info = parse_cs_filename(file.name)
+            if cs_info['is_core_shrinkage']:
+                try:
+                    cs_data.append(_parse_cs_upload(
+                        file.name, file.getvalue(), cs_info['layer'],
+                        cs_info['Panel Number'], settings.get('GRID_MAPPING', {})))
+                    logger.info('Parsed Core Shrinkage file %s: layer=%s panel=%s',
+                                file.name, cs_info['layer'], cs_info['Panel Number'])
+                except UnicodeDecodeError as e:
+                    logger.warning('Decode failed for %s: %s', file.name, e)
+                    st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
+                except Exception as e:
+                    logger.warning('Core Shrinkage parse failed for %s: %s', file.name, e)
+                    st.sidebar.error(f"❌ `{file.name}`: {e}")
+                continue
+
             try:
                 file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
                 df, file_warnings, ui_warnings = _parse_upload(
@@ -299,7 +380,7 @@ def main() -> None:
     st.session_state['parse_warnings'] = all_warnings
 
     main_view = render_nav_buttons(
-        ["Panel Map", "Pad to Via", "Via to Pad", "Alignment"],
+        ["Panel Map", "Pad to Via", "Via to Pad", "Core Shrinkage"],
         state_key="main_view",
         default="Panel Map",
     )
@@ -307,6 +388,10 @@ def main() -> None:
     if main_view == "Panel Map":
         fig = create_four_quarters_view(settings)
         st.plotly_chart(fig, use_container_width=True)
+        return
+
+    if main_view == "Core Shrinkage":
+        _render_core_shrinkage_tab(cs_data, settings, meta)
         return
 
     if not all_data:
@@ -326,12 +411,6 @@ def main() -> None:
     if main_view in ("Pad to Via", "Via to Pad"):
         _render_process_tab(scoped_df, settings, meta,
                             is_via_to_pad=(main_view == "Via to Pad"))
-
-    elif main_view == "Alignment":
-        st.markdown("### Alignment — Coming Soon")
-        st.info(
-            "Alignment analytics are being developed. This section will include registration skew, machine alignment diagnostics, and system calibration checks soon."
-        )
 
 
 if __name__ == "__main__":
