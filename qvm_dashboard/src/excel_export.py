@@ -190,7 +190,7 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
         return f'{get_column_letter(start_col)}{row}'
 
     for block_idx, side in enumerate(side_values):
-        start_row = 3 + (block_idx * 22)
+        start_row = 3 + (block_idx * 30)
         start_col = 2
         side_df = df if side == 'ALL' else df[df['Side'].astype(str).str.upper() == side].copy()
         if side_df.empty:
