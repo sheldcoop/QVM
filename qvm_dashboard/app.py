@@ -63,9 +63,14 @@ def load_css(file_path: str, settings: dict = None) -> None:
 
 
 def _panel_sort_key(panel: str):
-    """Order panels numerically ("9" before "10"), non-numeric ones last."""
+    """Order panels numerically ("9" before "10"), non-numeric ones last.
+
+    Panel Number is a free-text override, so this has to survive anything the
+    user types. isdecimal() rather than isdigit() because isdigit() accepts
+    characters int() rejects — "²" among them — which would raise here.
+    """
     text = str(panel)
-    return (0, int(text), '') if text.isdigit() else (1, 0, text)
+    return (0, int(text), '') if text.isdecimal() else (1, 0, text)
 
 
 def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> tuple[pd.DataFrame, str, str]:

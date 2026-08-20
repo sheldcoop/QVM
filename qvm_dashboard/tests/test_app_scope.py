@@ -52,3 +52,12 @@ def test_panels_sort_numerically():
 
 def test_non_numeric_panels_sort_last():
     assert sorted(['10', 'Unknown', '9'], key=_panel_sort_key) == ['9', '10', 'Unknown']
+
+
+def test_panel_sort_survives_anything_typed_into_the_override():
+    """Panel Number is free text. "²" is isdigit() but not int()-able, so
+    guarding on isdigit() would raise here instead of sorting."""
+    for odd in ('²', '', ' ', '12a', '-3', 'Panel 4'):
+        assert _panel_sort_key(odd)[0] == 1, f'{odd!r} should sort as non-numeric'
+    # Unicode decimal digits are int()-able and should still sort numerically.
+    assert _panel_sort_key('٢') == (0, 2, '')
