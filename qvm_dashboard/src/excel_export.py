@@ -140,15 +140,19 @@ def _add_panel_map(ws, settings: dict, label: str) -> None:
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
                           settings: dict,
                           sheet_label: str = 'Analytics') -> None:
-    """Create an analytics sheet with all four Via-to-Pad charts in a 2×2 grid.
+    """Create an analytics sheet with side-specific 4-chart analytics blocks.
 
     Layout:
         A1   — title label (includes sheet_label for self-identification)
-        A3   — Bullseye scatter (DX/DY)      K3   — Per-site SC bars
-        A35  — Box plot (SC distribution)    K35  — Quiver (ABF distortion map)
+        For each available side (Front then Back), place one 2×2 chart block:
+            <start>3   — Bullseye scatter (DX/DY)
+            <start+13>3 — Per-site SC bars
+            <start>38  — Box plot (SC distribution)
+            <start+13>38 — Quiver (ABF distortion map)
 
     sheet_label is used as the worksheet name so that when both F and B sides
-    are uploaded, each side gets its own sheet ("Analytics - F", "Analytics - B").
+    are uploaded for the same Build Up, one sheet can still show both sides in
+    separate blocks, avoiding mixed/combined charts.
 
     Each chart is embedded independently so one failed render (or missing
     kaleido) never aborts the rest of the sheet or the workbook.
@@ -166,26 +170,50 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
 
     multiplier = settings.get('PLOT_SETTINGS', {}).get('vector_multiplier_default', 50)
 
-    # 2×2 grid. Each chart is 700px (~11 columns) wide, so the right column
-    # starts at N (col 14: cols L/M are the ~2-cell gap) and the bottom row at
-    # 38 (the top row spans ~29-32 rows from row 3, plus a gap) — keeping all
-    # four images clear of one another.
-    # (anchor, chart name, figure factory, width, height)
-    charts = [
-        ('A3',  'Bullseye',  lambda: plot_vtp_bullseye(df, settings),    700, 580),
-        ('N3',  'Site bars', lambda: plot_vtp_site_bars(df, settings),   700, 450),
-        ('A38', 'Box plot',  lambda: plot_vtp_box(df, settings),         700, 640),
-        ('N38', 'Quiver',    lambda: plot_quiver(df, settings, multiplier), 700, 600),
-    ]
-    for anchor, name, make_fig, w, h in charts:
-        try:
-            ws.add_image(_fig_to_xl_image(make_fig(), width_px=w, height_px=h), anchor)
-        except Exception as exc:
-            logger.warning('%s chart embed failed for %s: %s',
-                           name, sheet_label, exc, exc_info=True)
-            _write_chart_fallback(ws, anchor, name, exc)
-            st.sidebar.warning(
-                f'⚠️ {name} not embedded in "{sheet_label}": {exc}')
+    side_order = {'F': 0, 'B': 1}
+    side_values = []
+    if 'Side' in df.columns:
+        side_values = [
+            str(v).strip().upper() for v in df['Side'].dropna().tolist()
+            if str(v).strip()
+        ]
+        side_values = sorted(set(side_values), key=lambda s: (side_order.get(s, 2), s))
+    if not side_values:
+        side_values = ['ALL']
+
+    # One side block is a 2×2 chart grid spanning ~24 columns.
+    # Start each additional side block further right so Front/Back are horizontal.
+    from openpyxl.utils.cell import get_column_letter
+
+    def _anchor(start_col: int, row: int) -> str:
+        return f'{get_column_letter(start_col)}{row}'
+
+    for block_idx, side in enumerate(side_values):
+        start_col = 1 + (block_idx * 26)
+        right_col = start_col + 13
+        side_df = df if side == 'ALL' else df[df['Side'].astype(str).str.upper() == side].copy()
+        if side_df.empty:
+            continue
+
+        ws[_anchor(start_col, 2)] = f'Side: {side}'
+        ws[_anchor(start_col, 2)].font = openpyxl.styles.Font(bold=True)
+
+        charts = [
+            (_anchor(start_col, 3),  'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    700, 580),
+            (_anchor(right_col, 3),  'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   700, 450),
+            (_anchor(start_col, 38), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         700, 640),
+            (_anchor(right_col, 38), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 700, 600),
+        ]
+        for anchor, name, make_fig, w, h in charts:
+            chart_name = f'{name} [{side}]'
+            try:
+                ws.add_image(_fig_to_xl_image(make_fig(), width_px=w, height_px=h), anchor)
+            except Exception as exc:
+                logger.warning('%s chart embed failed for %s: %s',
+                               chart_name, sheet_label, exc, exc_info=True)
+                _write_chart_fallback(ws, anchor, chart_name, exc)
+                st.sidebar.warning(
+                    f'⚠️ {chart_name} not embedded in "{sheet_label}": {exc}')
 
 
 # ---------------------------------------------------------------------------

@@ -74,6 +74,29 @@ def test_single_build_up_gets_one_analytics_sheet(settings):
     assert len(wb['Analytics VTP BU-01']._images) == 4
 
 
+def test_same_build_up_front_back_embed_eight_side_specific_charts(settings):
+    import openpyxl
+    from src.excel_export import write_unified_excel
+
+    df = _vtp_frame(['F', 'B'], settings)
+    df['Build Up'] = 'BU-01'
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings,
+                            {'panel': '20', 'process': 'Via to Pad'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    assert _analytics_sheets(wb) == ['Analytics VTP BU-01']
+    images = wb['Analytics VTP BU-01']._images
+    assert len(images) == 8
+
+    # Two horizontal side blocks => four distinct anchor columns (A, N, AA, AN)
+    cols = sorted({im.anchor._from.col for im in images})
+    assert len(cols) == 4
+
+
 def test_measurement_sheet_has_no_duplicated_charts(settings):
     """Regression: bullseye + bars moved to Analytics; data sheet keeps only
     the Panel Map (≤1 image), previously 3."""

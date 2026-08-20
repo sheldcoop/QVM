@@ -76,10 +76,29 @@ def build_display_frame(df: pd.DataFrame, settings: dict, *,
         display_df = display_df.rename(columns=renames)
         grid_id_col = renames.get(grid_id_col, grid_id_col)
 
+    sort_cols = []
+
+    if 'Build Up' in display_df.columns:
+        bu_text = display_df['Build Up'].astype(str).str.strip()
+        bu_num = pd.to_numeric(bu_text.str.extract(r'(\d+)')[0], errors='coerce')
+        display_df['_sort_bu_missing'] = bu_num.isna()
+        display_df['_sort_bu_num'] = bu_num
+        display_df['_sort_bu_text'] = bu_text.str.upper()
+        sort_cols.extend(['_sort_bu_missing', '_sort_bu_num', '_sort_bu_text'])
+
+    if 'Side' in display_df.columns:
+        side_text = display_df['Side'].astype(str).str.strip().str.upper()
+        display_df['_sort_side_rank'] = side_text.map({'F': 0, 'FRONT': 0, 'B': 1, 'BACK': 1}).fillna(2)
+        display_df['_sort_side_text'] = side_text
+        sort_cols.extend(['_sort_side_rank', '_sort_side_text'])
+
     if grid_id_col in display_df.columns:
-        display_df = display_df.sort_values(
-            by=grid_id_col, na_position='last',
-            key=lambda col: pd.to_numeric(col, errors='coerce'),
-        )
+        display_df['_sort_grid'] = pd.to_numeric(display_df[grid_id_col], errors='coerce')
+        sort_cols.append('_sort_grid')
+
+    if sort_cols:
+        display_df = display_df.sort_values(by=sort_cols, na_position='last', kind='mergesort')
+        drop_cols = [c for c in sort_cols if c.startswith('_sort_')]
+        display_df = display_df.drop(columns=drop_cols)
 
     return display_df
