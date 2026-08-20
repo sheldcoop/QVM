@@ -38,6 +38,7 @@ def _vtp_frame(sides, settings):
             cn['ptv_distance']: np.abs(rng.normal(0.005, 0.002, n)),
             'Build Up': [bu] * n,
             'Side': [side] * n, 'Panel': ['20'] * n,
+            'Process': ['Via to Pad'] * n,
         }))
     return pd.concat(frames, ignore_index=True)
 
@@ -71,7 +72,10 @@ def test_each_build_up_gets_analytics_sheet_with_four_charts(settings):
 def test_single_build_up_gets_one_analytics_sheet(settings):
     wb = _export(settings, ['F'])
     assert _analytics_sheets(wb) == ['Analytics VTP BU-01']
-    assert len(wb['Analytics VTP BU-01']._images) == 4
+    images = wb['Analytics VTP BU-01']._images
+    assert len(images) == 4
+    assert {im.anchor._from.row for im in images} == {2}
+    assert len({im.anchor._from.col for im in images}) == 4
 
 
 def test_same_build_up_front_back_embed_eight_side_specific_charts(settings):
@@ -92,9 +96,14 @@ def test_same_build_up_front_back_embed_eight_side_specific_charts(settings):
     images = wb['Analytics VTP BU-01']._images
     assert len(images) == 8
 
-    # Two horizontal side blocks => four distinct anchor columns (A, N, AA, AN)
+    # Two side rows, each with four charts across the sheet.
     cols = sorted({im.anchor._from.col for im in images})
+    rows = sorted({im.anchor._from.row for im in images})
     assert len(cols) == 4
+    assert len(rows) == 2
+    report = wb['Analytics VTP BU-01']
+    assert report['A2'].value == 'Side: Front'
+    assert report['A74'].value == 'Side: Back'
 
 
 def test_measurement_sheet_has_no_duplicated_charts(settings):
@@ -107,18 +116,17 @@ def test_measurement_sheet_has_no_duplicated_charts(settings):
 
 
 def test_analytics_charts_do_not_overlap(settings):
-    """Regression: the 2×2 grid must be spaced so a ~11-column-wide image in
-    the left column does not collide with the right column."""
+    """Regression: the four-chart row must be spaced so images do not collide."""
     wb = _export(settings, ['F'])
     anchors = [(im.anchor._from.col, im.anchor._from.row)
                for im in wb['Analytics VTP BU-01']._images]
     cols = sorted({c for c, _ in anchors})
     rows = sorted({r for _, r in anchors})
-    assert len(cols) == 2 and len(rows) == 2, 'charts should form a 2×2 grid'
-    # left image is ~11 columns wide; right column must start ≥2 cols past that
-    assert cols[1] - cols[0] >= 13, 'right column too close (overlap risk)'
-    # bottom row must clear the tallest (~32-row) top image
-    assert rows[1] - rows[0] >= 32, 'bottom row too close (overlap risk)'
+    assert len(cols) == 4 and len(rows) == 1, 'charts should form one row'
+    # neighboring charts must remain separated by a safe gap
+    assert cols[1] - cols[0] >= 13, 'second chart too close (overlap risk)'
+    assert cols[2] - cols[1] >= 13, 'third chart too close (overlap risk)'
+    assert cols[3] - cols[2] >= 13, 'fourth chart too close (overlap risk)'
 
 
 def test_analytics_sheet_falls_back_when_chart_render_fails(settings, monkeypatch):
