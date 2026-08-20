@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# The app imports its own modules as `src.*` / `ui.*` (see app.py), so the test
+# suite has to resolve them the same way. Putting qvm_dashboard/ on the path
+# means each module is imported once, under one name; importing them as
+# `qvm_dashboard.src.*` instead would load every module a second time.
+pythonpath = ["qvm_dashboard"]
+testpaths  = ["qvm_dashboard/tests"]

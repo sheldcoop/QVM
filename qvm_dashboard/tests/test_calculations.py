@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from qvm_dashboard.src.utils import calculate_annular_ring
+from src.utils import calculate_annular_ring
 
 
 def test_calculate_annular_ring():

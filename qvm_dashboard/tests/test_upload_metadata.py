@@ -1,5 +1,5 @@
-from qvm_dashboard.src.upload_metadata import UploadMetadata, resolve_override_value, resolve_upload_metadata
-from qvm_dashboard.src.views.quality_control import QualityControlView
+from src.upload_metadata import UploadMetadata, resolve_override_value, resolve_upload_metadata
+from src.views.quality_control import QualityControlView
 
 
 def test_resolve_override_value_prefers_override():

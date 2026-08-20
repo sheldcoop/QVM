@@ -3,8 +3,8 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from qvm_dashboard.src import theme
-from qvm_dashboard.src.chart_helpers import (
+from src import theme
+from src.chart_helpers import (
     Rings, get_rings, zone_color, zone_colors, apply_dark_layout,
     stats_card_annotation, zone_legend_annotation,
 )
