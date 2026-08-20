@@ -10,10 +10,19 @@ Pure — no Streamlit, no I/O.
 
 import pandas as pd
 
-from src.utils import convert_to_microns
+from src.utils import calculate_annular_ring, convert_to_microns, resolve_columns
 
 # Per-file provenance columns, shown ahead of the measurements.
 META_COLUMNS = ['Build Up', 'Panel', 'Side']
+
+# The Grid ID header users see, on screen and in every Excel sheet. Applying it
+# here rather than in the Excel writer keeps every header decision in one place.
+GRID_ID_HEADER = 'Grid ID'
+
+_COLUMN_KEYS = (
+    'grid_id', 'inner_diameter', 'outer_diameter',
+    'x_distance', 'y_distance', 'ptv_distance', 'annular_ring', 'total_shift',
+)
 
 
 def build_display_frame(df: pd.DataFrame, settings: dict, *,
@@ -24,51 +33,53 @@ def build_display_frame(df: pd.DataFrame, settings: dict, *,
 
     1. Keep the provenance columns plus Grid ID, the two diameters, DX/DY, the
        registration distance, and the Annular Ring.
-    2. Compute the Annular Ring if the caller's frame does not already carry it
-       (parsed frames get it from :func:`src.utils.calculate_annular_ring`).
+    2. Compute the Annular Ring if the caller's frame does not already carry it.
+       Parsed frames get it on the ingest path, so this only fires for frames
+       assembled directly (tests, and any future caller that skips ingestion).
     3. Convert every measurement from mm to µm.
-    4. Rename the distance column to its process-specific header — Via-to-Pad
-       reports it as ``VtP Distance (SC)``, Pad-to-Via as ``PtV Distance``.
-       The parser stores one value under one name; this is the only place that
-       name becomes process-specific.
+    4. Apply the display headers: the distance column takes its process-specific
+       name — Via-to-Pad reports it as ``VtP Distance (SC)``, Pad-to-Via as
+       ``PtV Distance`` — and Grid ID takes ``GRID_ID_HEADER``. The parser
+       stores one distance value under one name; this is the only place any
+       header becomes process- or presentation-specific.
     5. Sort by Grid ID numerically, so a malformed ID sorts last instead of
        reordering the table.
     """
-    col_names    = settings.get('COLUMN_NAMES', {})
-    grid_id_col  = col_names.get('grid_id', 'Grid ID')
-    via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
-    pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
-    dx_col       = col_names.get('x_distance', 'Shift (DX)')
-    dy_col       = col_names.get('y_distance', 'Shift (DY)')
-    distance_col = col_names.get('ptv_distance', 'PtV Distance')
-    annular_col  = col_names.get('annular_ring', 'Annular Ring')
+    cols = resolve_columns(settings, _COLUMN_KEYS)
+    grid_id_col  = cols['grid_id']
+    distance_col = cols['ptv_distance']
+    annular_col  = cols['annular_ring']
 
-    work = df.copy()
-
+    work = df
     if annular_col not in work.columns:
-        required = {pad_diam_col, via_diam_col, distance_col}
+        required = {cols['outer_diameter'], cols['inner_diameter'], distance_col}
         if required.issubset(work.columns):
-            work[annular_col] = ((work[pad_diam_col] / 2)
-                                 - (work[via_diam_col] / 2)
-                                 - work[distance_col])
+            work = calculate_annular_ring(df.copy(), settings)
 
-    keep = META_COLUMNS + [grid_id_col, via_diam_col, pad_diam_col,
-                           dx_col, dy_col, distance_col, annular_col]
+    keep = META_COLUMNS + [grid_id_col, cols['inner_diameter'], cols['outer_diameter'],
+                           cols['x_distance'], cols['y_distance'],
+                           distance_col, annular_col]
     display_df = work[[c for c in keep if c in work.columns]].copy()
 
     display_df = convert_to_microns(
         display_df,
-        [pad_diam_col, via_diam_col, distance_col, dx_col, dy_col, annular_col],
+        [cols['outer_diameter'], cols['inner_diameter'], distance_col,
+         cols['x_distance'], cols['y_distance'], annular_col],
     )
 
+    renames = {}
     if is_via_to_pad:
-        display_df = display_df.rename(
-            columns={distance_col: col_names.get('total_shift', 'VtP Distance (SC)')})
+        renames[distance_col] = cols['total_shift']
+    if grid_id_col != GRID_ID_HEADER:
+        renames[grid_id_col] = GRID_ID_HEADER
+    if renames:
+        display_df = display_df.rename(columns=renames)
+        grid_id_col = renames.get(grid_id_col, grid_id_col)
 
     if grid_id_col in display_df.columns:
-        sort_key = pd.to_numeric(display_df[grid_id_col], errors='coerce')
-        display_df = display_df.assign(_grid_sort_key=sort_key).sort_values(
-            by=['_grid_sort_key', grid_id_col], ascending=True, na_position='last',
-        ).drop(columns=['_grid_sort_key'])
+        display_df = display_df.sort_values(
+            by=grid_id_col, na_position='last',
+            key=lambda col: pd.to_numeric(col, errors='coerce'),
+        )
 
     return display_df

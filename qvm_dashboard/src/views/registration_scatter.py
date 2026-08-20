@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 
 from .base import BaseView
+from src.chart_helpers import get_rings
 from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars
 
 
@@ -26,9 +27,11 @@ class RegistrationScatterView(BaseView):
             "The pad centre is at (0, 0). Color indicates SC magnitude — darker = larger shift."
         )
 
-        vtp_cfg = self.settings.get('VTP_REGISTRATION', {})
-        ring_exceptional = float(vtp_cfg.get('ring_exceptional_um', 2.5))
-        ring_acceptable = float(vtp_cfg.get('ring_acceptable_um', 10.0))
+        # Same ring source the charts use, so the tiles and the bullseye rings
+        # can never disagree about where pass/warn/fail sit.
+        rings = get_rings(self.settings)
+        ring_exceptional = rings.exceptional
+        ring_acceptable = rings.acceptable
 
         sc_col = self.col_names.get('ptv_distance', 'PtV Distance')
 
