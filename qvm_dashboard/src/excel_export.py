@@ -1,8 +1,8 @@
 """
-Excel export helpers for Via-to-Pad quality reports.
+Excel export helpers for QVM quality reports.
 
 Provides chart-to-image rendering (kaleido) and sheet population.
-Entry point: write_vtp_excel().
+Entry point: write_unified_excel().
 """
 
 import logging
@@ -18,7 +18,13 @@ from openpyxl.drawing.image import Image as XLImage
 from src.visuals import (
     plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
 )
-from src.utils import convert_to_microns
+from src.core_shrinkage_parser import (
+    affine_residuals_um, both_frame, compute_affine_analysis,
+    compute_centered_deviation_table, compute_scale_factor,
+    compute_shrinkage_summary, layer_frame, qp_shrinkage_um, summary_frame,
+)
+from src.display_frame import GRID_ID_HEADER, build_display_frame
+from src.utils import is_via_to_pad
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +115,12 @@ def _load_panel_map_image(settings: dict) -> XLImage | None:
 # ---------------------------------------------------------------------------
 
 def _add_panel_map(ws, settings: dict, label: str) -> None:
-    """Embed Panel_Map.png to the right of the data table to avoid overlap."""
+    """Embed Panel_Map.png to the right of the data table to avoid overlap.
+
+    Measurement sheets carry only the data table and this reference image; the
+    bullseye, SC bars, box, and quiver charts live solely on the Analytics
+    sheets built by :func:`_add_analytics_sheet`.
+    """
     try:
         from openpyxl.utils.cell import get_column_letter
 
@@ -126,28 +137,22 @@ def _add_panel_map(ws, settings: dict, label: str) -> None:
         st.sidebar.warning(f"⚠️ Panel map not embedded in '{label}': {exc}")
 
 
-def _embed_charts(ws, settings: dict, label: str) -> None:
-    """Embed the reference Panel Map (PNG) into a measurement worksheet.
-
-    The bullseye, SC bars, box, and quiver charts now live solely on the
-    per-side Analytics sheet, so the measurement sheet keeps only the data
-    table and the Panel Map reference image.
-    """
-    _add_panel_map(ws, settings, label)
-
-
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
                           settings: dict,
                           sheet_label: str = 'Analytics') -> None:
-    """Create an analytics sheet with all four Via-to-Pad charts in a 2×2 grid.
+    """Create an analytics sheet with one horizontal 4-chart row per side.
 
     Layout:
         A1   — title label (includes sheet_label for self-identification)
-        A3   — Bullseye scatter (DX/DY)      K3   — Per-site SC bars
-        A35  — Box plot (SC distribution)    K35  — Quiver (ABF distortion map)
+        For each available side (Front then Back), place one horizontal row:
+            <start>3    — Bullseye scatter (DX/DY)
+            <start+13>3 — Per-site SC bars
+            <start+26>3 — Box plot (SC distribution)
+            <start+39>3 — Quiver (ABF distortion map)
 
     sheet_label is used as the worksheet name so that when both F and B sides
-    are uploaded, each side gets its own sheet ("Analytics - F", "Analytics - B").
+    are uploaded for the same Build Up, one sheet can still show both sides as
+    separate horizontal rows, avoiding mixed/combined charts.
 
     Each chart is embedded independently so one failed render (or missing
     kaleido) never aborts the rest of the sheet or the workbook.
@@ -165,26 +170,52 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
 
     multiplier = settings.get('PLOT_SETTINGS', {}).get('vector_multiplier_default', 50)
 
-    # 2×2 grid. Each chart is 700px (~11 columns) wide, so the right column
-    # starts at N (col 14: cols L/M are the ~2-cell gap) and the bottom row at
-    # 38 (the top row spans ~29-32 rows from row 3, plus a gap) — keeping all
-    # four images clear of one another.
-    # (anchor, chart name, figure factory, width, height)
-    charts = [
-        ('A3',  'Bullseye',  lambda: plot_vtp_bullseye(df, settings),    700, 580),
-        ('N3',  'Site bars', lambda: plot_vtp_site_bars(df, settings),   700, 450),
-        ('A38', 'Box plot',  lambda: plot_vtp_box(df, settings),         700, 640),
-        ('N38', 'Quiver',    lambda: plot_quiver(df, settings, multiplier), 700, 600),
-    ]
-    for anchor, name, make_fig, w, h in charts:
-        try:
-            ws.add_image(_fig_to_xl_image(make_fig(), width_px=w, height_px=h), anchor)
-        except Exception as exc:
-            logger.warning('%s chart embed failed for %s: %s',
-                           name, sheet_label, exc, exc_info=True)
-            _write_chart_fallback(ws, anchor, name, exc)
-            st.sidebar.warning(
-                f'⚠️ {name} not embedded in "{sheet_label}": {exc}')
+    side_order = {'F': 0, 'B': 1}
+    side_labels = {'F': 'Front', 'B': 'Back'}
+    side_values = []
+    if 'Side' in df.columns:
+        side_values = [
+            str(v).strip().upper() for v in df['Side'].dropna().tolist()
+            if str(v).strip()
+        ]
+        side_values = sorted(set(side_values), key=lambda s: (side_order.get(s, 2), s))
+    if not side_values:
+        side_values = ['ALL']
+
+    # One side row spans four charts across the sheet.
+    # Start each additional side row further down so Front/Back are stacked.
+    from openpyxl.utils.cell import get_column_letter
+
+    def _anchor(start_col: int, row: int) -> str:
+        return f'{get_column_letter(start_col)}{row}'
+
+    for block_idx, side in enumerate(side_values):
+        start_row = 3 + (block_idx * 72)
+        start_col = 1
+        side_df = df if side == 'ALL' else df[df['Side'].astype(str).str.upper() == side].copy()
+        if side_df.empty:
+            continue
+
+        side_label = side_labels.get(side, side)
+        ws[_anchor(start_col, start_row - 1)] = f'Side: {side_label}'
+        ws[_anchor(start_col, start_row - 1)].font = openpyxl.styles.Font(bold=True)
+
+        charts = [
+            (_anchor(start_col,     start_row), 'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    700, 580),
+            (_anchor(start_col + 13, start_row), 'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   700, 450),
+            (_anchor(start_col + 26, start_row), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         700, 640),
+            (_anchor(start_col + 39, start_row), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 700, 600),
+        ]
+        for anchor, name, make_fig, w, h in charts:
+            chart_name = f'{name} [{side}]'
+            try:
+                ws.add_image(_fig_to_xl_image(make_fig(), width_px=w, height_px=h), anchor)
+            except Exception as exc:
+                logger.warning('%s chart embed failed for %s: %s',
+                               chart_name, sheet_label, exc, exc_info=True)
+                _write_chart_fallback(ws, anchor, chart_name, exc)
+                st.sidebar.warning(
+                    f'⚠️ {chart_name} not embedded in "{sheet_label}": {exc}')
 
 
 # ---------------------------------------------------------------------------
@@ -218,48 +249,6 @@ def _warnings_sheet(ws, warnings: list) -> None:
             ws.cell(row=i, column=1, value=msg)
 
 
-def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
-    """Measurement data frame ready to write (Grid ID column renamed)."""
-    return df.copy().rename(columns={grid_id_col: 'Grid ID'})
-
-
-def _build_process_display(df: pd.DataFrame, settings: dict,
-                           is_via_to_pad: bool) -> pd.DataFrame:
-    """Build a process-specific display dataframe aligned with QC columns."""
-    col_names = settings.get('COLUMN_NAMES', {})
-    grid_id_col = col_names.get('grid_id', 'Grid ID')
-    via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
-    pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
-    dx_col = col_names.get('x_distance', 'Shift (DX)')
-    dy_col = col_names.get('y_distance', 'Shift (DY)')
-    sc_col = col_names.get('total_shift', 'SC')
-    ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
-    annular_col = col_names.get('annular_ring', 'Annular Ring')
-
-    work = df.copy()
-    if annular_col not in work.columns:
-        required = {pad_diam_col, via_diam_col, ptv_dist_col}
-        if required.issubset(set(work.columns)):
-            work[annular_col] = (work[pad_diam_col] / 2) - (work[via_diam_col] / 2) - work[ptv_dist_col]
-
-    distance_col = sc_col if is_via_to_pad else ptv_dist_col
-    meta_cols = ['Build Up', 'Panel', 'Side']
-    keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col, annular_col]
-    display_df = work[[c for c in keep if c in work.columns]].copy()
-
-    measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
-                        ptv_dist_col, annular_col]
-    display_df = convert_to_microns(display_df, measurement_cols)
-
-    if grid_id_col in display_df.columns:
-        sort_key = pd.to_numeric(display_df[grid_id_col], errors='coerce')
-        display_df = display_df.assign(_grid_sort_key=sort_key).sort_values(
-            by=['_grid_sort_key', grid_id_col], ascending=True, na_position='last',
-        ).drop(columns=['_grid_sort_key'])
-
-    return display_df
-
-
 def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
     """Return an Excel-safe, unique worksheet name (<=31 chars)."""
     base = re.sub(r'[\[\]:*?/\\]', '-', str(sheet_name).strip()) or 'Sheet'
@@ -274,32 +263,43 @@ def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
     return candidate
 
 
-def _process_slices(df: pd.DataFrame, meta: dict) -> dict[str, pd.DataFrame]:
+def _process_slices(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Split scoped data into VTP/PTV dataframes for unified exports."""
-    if 'Process' in df.columns:
-        vtp_mask = df['Process'].astype(str).str.contains('Via to Pad', case=False, na=False)
-        return {
-            'VTP': df[vtp_mask].copy(),
-            'PTV': df[~vtp_mask].copy(),
-        }
-
-    process_hint = str(meta.get('process', '')).lower()
-    if 'via to pad' in process_hint or process_hint == 'vtp':
-        return {'VTP': df.copy(), 'PTV': pd.DataFrame(columns=df.columns)}
-    return {'VTP': pd.DataFrame(columns=df.columns), 'PTV': df.copy()}
+    vtp_mask = is_via_to_pad(df)
+    return {
+        'VTP': df[vtp_mask].copy(),
+        'PTV': df[~vtp_mask].copy(),
+    }
 
 
-def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
-                  build_up_vals: pd.Series | None, grid_id_col: str,
-                  meta: dict, usl_col_name: str, usl_value: float,
+def _report_sheet(df: pd.DataFrame, grid_id_col: str, meta: dict,
+                  usl_col_name: str, usl_value: float,
                   include_xy_usl: bool = False) -> pd.DataFrame:
     """Full report frame: metadata prepended, USL reference column(s) appended.
 
-    `usl_col_name`/`usl_value` name the process-specific spec-limit column
-    ('VtP_USL' for Via-to-Pad, 'PtV_USL' for Pad-to-Via). When `include_xy_usl`
-    is set, blank X/Y USL columns are appended too (Via-to-Pad only).
+    Per-row provenance (Build Up, Panel, Side) is read from ``df`` itself, which
+    build_display_frame has already sorted, so each value stays with its own
+    fiducial. Taking them from a separately-ordered source misattributed them:
+    the display frame is sorted by Grid ID while the parsed frame is grouped by
+    file, so a scope covering both sides interleaved the two orders and half the
+    rows were labelled with the other side's values.
+
+    Job-level metadata (project, part, lot) has no per-row variation and comes
+    from ``meta``. `usl_col_name`/`usl_value` name the process-specific
+    spec-limit column ('VtP_USL' for Via-to-Pad, 'PtV_USL' for Pad-to-Via). When
+    `include_xy_usl` is set, blank X/Y USL columns are appended too
+    (Via-to-Pad only).
     """
     s = df.copy()
+
+    def _per_row(column: str, meta_key: str):
+        """That column's own values when present, else the job-level fallback."""
+        return s[column] if column in s.columns else meta.get(meta_key, '')
+
+    side_vals     = _per_row('Side', 'side')
+    panel_vals    = _per_row('Panel', 'panel')
+    build_up_vals = _per_row('Build Up', 'build_up')
+
     drop_if_present = [
         'Project_Name', 'Part_Number', 'Lot_Number', 'Lot_Name',
         'Buildup', 'Build Up', 'Process', 'Panel', 'Side',
@@ -319,10 +319,10 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
         s.insert(0, 'Fiducial', None)
         s.insert(0, 'Fiducial_Number', None)
 
-    s.insert(0, 'Side',        side_vals if side_vals is not None else '')
-    s.insert(0, 'Panel',       meta.get('panel', ''))
+    s.insert(0, 'Side',        side_vals)
+    s.insert(0, 'Panel',       panel_vals)
     s.insert(0, 'Process',     meta.get('process', ''))
-    s.insert(0, 'Buildup',     build_up_vals if build_up_vals is not None else meta.get('build_up', ''))
+    s.insert(0, 'Buildup',     build_up_vals)
     s.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
     s.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
     s.insert(0, 'Part_Number', meta.get('part_number', ''))
@@ -343,97 +343,6 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                            filtered_df: pd.DataFrame, settings: dict, meta: dict,
-                            grid_id_col: str, sheet_base: str, usl_col_name: str,
-                            usl_value: float, include_xy_usl: bool,
-                            warnings: list = None) -> None:
-    """Shared workbook builder for both Pad-to-Via and Via-to-Pad exports.
-
-    Sheets written:
-    - '<sheet_base>' (or '<sheet_base> - F/B') — measurement data + Panel Map reference
-    - 'Report' — full metadata + measurements + USL reference column(s)
-    - 'Analytics' (or 'Analytics - F/B') — all four registration charts
-    - 'Warnings' — parser warnings (empty message if none)
-
-    `sheet_base` is 'Pad to Via' or 'Via to Pad'; `usl_col_name`/`usl_value`/
-    `include_xy_usl` parametrise the Report sheet's spec-limit columns.
-    """
-    sides       = filtered_df['Side'].unique() if 'Side' in filtered_df.columns else []
-    side_series = filtered_df['Side'].values   if 'Side' in filtered_df.columns else None
-    report_frames = []
-
-    if len(sides) > 1:
-        for side in sorted(sides):
-            mask       = filtered_df['Side'] == side
-            side_disp  = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
-            side_vals  = filtered_df.loc[mask, 'Side'].values
-            build_vals = (filtered_df.loc[mask, 'Build Up'].values
-                          if 'Build Up' in filtered_df.columns else None)
-            sheet_name = f'{sheet_base} - {side}'
-
-            _measurement_sheet(side_disp, grid_id_col).to_excel(
-                writer, sheet_name=sheet_name, index=False)
-            ws = writer.sheets[sheet_name]
-            _embed_charts(ws, settings, sheet_name)
-            report_frames.append(
-                _report_sheet(side_disp, side_vals, build_vals, grid_id_col, meta,
-                              usl_col_name, usl_value, include_xy_usl))
-
-        pd.concat(report_frames, ignore_index=True).to_excel(
-            writer, sheet_name='Report', index=False)
-    else:
-        _measurement_sheet(display_df, grid_id_col).to_excel(
-            writer, sheet_name=sheet_base, index=False)
-        ws = writer.sheets[sheet_base]
-        _embed_charts(ws, settings, sheet_base)
-        build_series = filtered_df['Build Up'].values if 'Build Up' in filtered_df.columns else None
-        _report_sheet(display_df, side_series, build_series, grid_id_col, meta,
-                      usl_col_name, usl_value, include_xy_usl).to_excel(
-            writer, sheet_name='Report', index=False)
-
-    # Analytics sheet — one per side when both F and B are present, otherwise one combined
-    if len(sides) > 1:
-        for side in sorted(sides):
-            mask = filtered_df['Side'] == side
-            _add_analytics_sheet(writer, filtered_df[mask].copy(), settings,
-                                  sheet_label=f'Analytics - {side}')
-    else:
-        _add_analytics_sheet(writer, filtered_df, settings, sheet_label='Analytics')
-
-    # Warnings sheet — parser warnings from all uploaded files
-    ws_warn = writer.book.create_sheet('Warnings')
-    _warnings_sheet(ws_warn, warnings or [])
-
-
-def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                    filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str,
-                    warnings: list = None) -> None:
-    """Write Via-to-Pad data + embedded charts into the given ExcelWriter."""
-    usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
-    _write_process_workbook(
-        writer, display_df, filtered_df, settings, meta, grid_id_col,
-        sheet_base='Via to Pad', usl_col_name='VtP_USL',
-        usl_value=usl, include_xy_usl=True, warnings=warnings)
-
-
-def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                    filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str,
-                    warnings: list = None) -> None:
-    """Write Pad-to-Via data + embedded charts into the given ExcelWriter.
-
-    Mirrors the Via-to-Pad workbook structure (data + Report + Analytics charts),
-    keyed on PtV Distance with a configurable PtV USL reference column.
-    """
-    usl = float(settings.get('PTV_REGISTRATION', {}).get('ptv_usl_um', 10.0))
-    _write_process_workbook(
-        writer, display_df, filtered_df, settings, meta, grid_id_col,
-        sheet_base='Pad to Via', usl_col_name='PtV_USL',
-        usl_value=usl, include_xy_usl=False, warnings=warnings)
-
-
 def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
                         settings: dict, meta: dict,
                         warnings: list = None) -> None:
@@ -453,10 +362,7 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
         _warnings_sheet(ws_warn, warnings or [])
         return
 
-    col_names = settings.get('COLUMN_NAMES', {})
-    grid_id_col = col_names.get('grid_id', 'Grid ID')
-
-    process_frames = _process_slices(scoped_df, meta)
+    process_frames = _process_slices(scoped_df)
     vtp_usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
     ptv_usl = float(settings.get('PTV_REGISTRATION', {}).get('ptv_usl_um', 10.0))
 
@@ -467,22 +373,17 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
 
         is_vtp = process_code == 'VTP'
         sheet_base = 'Via to Pad' if is_vtp else 'Pad to Via'
-        proc_display = _build_process_display(proc_df, settings, is_via_to_pad=is_vtp)
+        proc_display = build_display_frame(proc_df, settings, is_via_to_pad=is_vtp)
         proc_meta = dict(meta)
         proc_meta['process'] = sheet_base
 
-        _measurement_sheet(proc_display, grid_id_col).to_excel(
-            writer, sheet_name=sheet_base, index=False)
-        _embed_charts(writer.sheets[sheet_base], settings, sheet_base)
+        proc_display.to_excel(writer, sheet_name=sheet_base, index=False)
+        _add_panel_map(writer.sheets[sheet_base], settings, sheet_base)
 
-        side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
-        build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
         report_frames.append(
             _report_sheet(
                 proc_display,
-                side_vals,
-                build_vals,
-                grid_id_col,
+                GRID_ID_HEADER,
                 proc_meta,
                 usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',
                 usl_value=vtp_usl if is_vtp else ptv_usl,
@@ -525,4 +426,106 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
             _add_analytics_sheet(writer, bu_df, settings, sheet_label=label)
 
     ws_warn = writer.book.create_sheet(_safe_sheet_name('Warnings', used_sheet_names))
+    _warnings_sheet(ws_warn, warnings or [])
+
+
+def write_core_shrinkage_excel(writer: pd.ExcelWriter,
+                                front_df: pd.DataFrame,
+                                back_df: pd.DataFrame,
+                                meta: dict,
+                                warnings: list = None,
+                                nominal_coords: dict = None,
+                                settings: dict = None) -> None:
+    """Write Core Shrinkage data into the given ExcelWriter.
+
+    Sheets written:
+    - 'Core Shrinkage - Front'  Quarter | Grid | X | Y            (skipped if empty)
+    - 'Core Shrinkage - Back'   Quarter | Grid | X | Y            (skipped if empty)
+    - 'Core Shrinkage'          Quarter | Grid | Front X/Y | Back X/Y (both layers only)
+    - 'CS Summary'              headline ppm / residual µm / outliers, per layer (nominal set)
+    - 'QP Shrinkage - Front'    Quadrant | X1..Y2 pitch error in µm (when nominal_coords set)
+    - 'QP Shrinkage - Back'     same                              (when nominal_coords set)
+    - 'Scale Factor - Front'    Quadrant | X/Y Shrinkage (ppm)     (when nominal_coords set)
+    - 'Scale Factor - Back'     same                              (when nominal_coords set)
+    - 'Affine - Front'          affine decomposition params       (when nominal_coords set)
+    - 'Affine - Back'           same                              (when nominal_coords set)
+    - 'Raw Deviation - Front'   nominal vs physical raw deltas    (when nominal_coords set)
+    - 'Raw Deviation - Back'    same                              (when nominal_coords set)
+    - 'Residuals - Front'       per-fiducial residuals in µm + Outlier (nominal set)
+    - 'Residuals - Back'        same                              (when nominal_coords set)
+    - 'Report'                  job metadata + main measurement table
+    - 'Warnings'                parser warnings
+
+    Units: deviations/residuals/QP in µm, shrinkage in ppm (rationalised).
+    """
+    if not front_df.empty:
+        layer_frame(front_df).to_excel(writer, sheet_name='Core Shrinkage - Front', index=False)
+    if not back_df.empty:
+        layer_frame(back_df).to_excel(writer, sheet_name='Core Shrinkage - Back', index=False)
+
+    # Main table: side-by-side when both layers, else the single available layer
+    if not front_df.empty and not back_df.empty:
+        main = both_frame(front_df, back_df)
+        main.to_excel(writer, sheet_name='Core Shrinkage', index=False)
+    elif not front_df.empty:
+        main = layer_frame(front_df)
+    elif not back_df.empty:
+        main = layer_frame(back_df)
+    else:
+        main = pd.DataFrame()
+
+    # 3-level analysis sheets (only when nominal coords are available)
+    if nominal_coords:
+        outlier_um = float((settings or {}).get('CORE_SHRINKAGE', {}).get('outlier_um', 50.0))
+
+        # CS Summary — headline numbers per layer, Metric | Front | Back
+        summary_cols = {}
+        for lbl, ldf in [('Front', front_df), ('Back', back_df)]:
+            if ldf.empty:
+                continue
+            s = summary_frame(compute_shrinkage_summary(ldf, nominal_coords, settings))
+            if not s.empty:
+                summary_cols[lbl] = s.set_index('Metric')['Value']
+        if summary_cols:
+            cs_summary = pd.DataFrame(summary_cols)
+            cs_summary.index.name = 'Metric'
+            cs_summary.reset_index().to_excel(writer, sheet_name='CS Summary', index=False)
+
+        for lbl, ldf in [('Front', front_df), ('Back', back_df)]:
+            if ldf.empty:
+                continue
+            qp = qp_shrinkage_um(ldf)                       # µm pitch error
+            sf = compute_scale_factor(ldf)
+            if not qp.empty:
+                qp.to_excel(writer, sheet_name=f'QP Shrinkage - {lbl}', index=False)
+            if not sf.empty:
+                # ppm only — drop the bare scale-factor columns
+                sf_ppm = sf[['Quadrant', 'X Shrinkage (ppm)', 'Y Shrinkage (ppm)']]
+                sf_ppm.to_excel(writer, sheet_name=f'Scale Factor - {lbl}', index=False)
+            analysis = compute_affine_analysis(ldf, nominal_coords, settings)
+            if analysis:
+                analysis['params'].to_excel(
+                    writer, sheet_name=f'Affine - {lbl}', index=False)
+                affine_residuals_um(analysis, outlier_um).to_excel(
+                    writer, sheet_name=f'Residuals - {lbl}', index=False)
+                coords = compute_centered_deviation_table(ldf, nominal_coords, settings)
+                if not coords.empty:
+                    coords.to_excel(writer, sheet_name=f'Coordinates - {lbl}', index=False)
+
+    # Report sheet — job metadata prepended to the main table
+    report = main.copy()
+    for meta_key, col_name in [
+        ('project_name', 'Project_Name'),
+        ('part_number',  'Part_Number'),
+        ('lot_number',   'Lot_Number'),
+        ('lot_name',     'Lot_Name'),
+        ('build_up',     'Buildup'),
+        ('process',      'Process'),
+        ('panel',        'Job_Panel'),
+    ]:
+        report.insert(0, col_name, meta.get(meta_key, ''))
+    report.to_excel(writer, sheet_name='Report', index=False)
+
+    # Warnings sheet
+    ws_warn = writer.book.create_sheet('Warnings')
     _warnings_sheet(ws_warn, warnings or [])

@@ -1,8 +1,5 @@
 UI_STRINGS:
   dashboard_title: "QVM Manufacturing Dashboard"
-  tab_1_name: "Quality Control"
-  tab_2_name: "Analytics"
-  tab_3_name: "CAM Compensation"
 
 COLUMN_NAMES:
   outer_diameter: "Pad Diameter"
@@ -57,7 +54,7 @@ GRID_MAPPING:
   UR_4: 44
 
 TOLERANCES:
-  annular_ring_min: 0.0  # Breakout limit
+  annular_ring_min: 0.0  # µm — breakout limit; rows below it fail in Quality Control
 
 PLOT_SETTINGS:
   vector_multiplier_min: 1
@@ -67,18 +64,10 @@ PLOT_SETTINGS:
 DIAGNOSTICS:
   panel_center_x: 255.0
   panel_center_y: 257.5
-  min_signal_um: 2.0
-  strength_scale_um: 12.0
-  score_sharpening_alpha: 1.35
-  offset_primary_penalty: 0.7
-  confidence_high: 0.72
-  confidence_medium: 0.45
   quiver_min_arrow_length: 0.05
   quiver_expansion_dot_threshold: 0.5
   quiver_twist_dot_threshold: 0.2
   quiver_twist_magnitude_um: 10.0
-  sample_quality_full_points: 10.0   # valid-point count that yields full sample-quality score
-  signal_quality_full_um: 8.0        # mean error (µm) that yields full signal-quality score
 
 PANEL_VIEW:
   frame_width: 510.0
@@ -109,43 +98,11 @@ FIGURE_SETTINGS:
   point_marker_size: 35
   point_text_size: 14
 
-CHART_COLORS:
-  traffic_light_blue: "#3498db"       # Exceptional — innermost pass band
-  traffic_light_dark_green: "#1e7e3a" # Excellent — inner pass band
-  traffic_light_green: "#2ecc71"      # Good — outer pass band
-  traffic_light_orange: "#f39c12"     # (legacy, no longer used by the bullseye)
-  traffic_light_red: "#e74c3c"        # Critical (<40 points)
-  traffic_light_gray: "#999999"       # Unknown/Missing
-  chart_background: "#FFFFFF"         # Pure white
-  chart_gridlines_visible: false
-
-QUARTER_COLORS:
-  UL: "#1f77b4"   # blue
-  LL: "#ff7f0e"   # orange
-  LR: "#2ca02c"   # green
-  UR: "#d62728"   # red
-
 CHART_HEIGHTS:
-  health_status: 550                  # Via/Pad health bar charts
-  comparison_plot: 400                # Pad vs Via comparison
-  analytics_plot: 600                 # Pad-to-Via analytics container height
   bullseye: 580                       # DX/DY registration bullseye
   site_bars: 450                      # Per-site SC bar chart
   quiver: 600                         # ABF distortion quiver map
   box: 640                            # SC distribution box plot
-  heatmap: 800                        # PtV distance heatmap (square)
-
-SPATIAL_HEATMAP:
-  axis_max_mm: 600                    # X/Y axis upper bound (mm)
-  axis_dtick_mm: 50                   # axis tick spacing (mm)
-  height: 800
-  width: 900
-
-CAM_COMPENSATION:
-  monitor_ppm: 50.0
-  caution_ppm: 120.0
-  min_valid_points: 12
-  min_valid_ratio: 0.75
 
 VTP_REGISTRATION:
   # Bullseye uses five zones defined by four concentric rings:
@@ -158,12 +115,6 @@ VTP_REGISTRATION:
   ring_excellent_um: 5.0        # Excellent boundary (dark green ring)
   ring_good_um: 7.5             # Good boundary (green ring)
   ring_acceptable_um: 10.0      # Acceptable boundary; > this is fail (red)
-  point_size: 12           # Scatter point size
-  bullseye_axis_half_um: 15.0  # Half-width of bullseye X/Y axes (fixed; outliers report in summary annotation)
-  pad_nominal_um: 312.5    # Nominal pad diameter for caption
-  via_nominal_um: 20.0     # Nominal via diameter for caption
-  annular_ring_min_um: 50.0  # IPC minimum annular ring (caption only)
-  ipc_standard: "IPC-6012 Class 2"
   # USL values added to the Report sheet (X/Y USL are left blank)
   vtp_usl_um: 10.0         # VtP Distance (SC) upper spec limit (µm)
   outlier_cap_um: 1000.0   # SC values above this (µm) are flagged as outliers
@@ -177,4 +128,34 @@ EXCEL_EXPORT:
   panel_map_image: "assets/Panel_Map.png"   # path relative to qvm_dashboard/
   panel_image_cm: 8.5                        # embed size in cm (width = height)
 
-
+CORE_SHRINKAGE:
+  distance_usl_mm: 0.050    # upper spec limit for front↔back offset (mm) — adjust to taste
+  outlier_cap_mm: 5.0       # offsets above this are flagged as outliers
+  # --- 3-level model thresholds (per-dot residual, classifier, pass/fail) ---
+  outlier_um: 50            # per-dot residual above this = outlier / remeasure
+  rotation_warn_deg: 0.30   # rotation above this is flagged (fixturing, not shrinkage)
+  aniso_ppm: 100            # |Sx-Sy| above this = anisotropic shrinkage
+  shrink_ppm: 50            # |scale| above this counts as real shrinkage
+  shrink_usl_ppm: 1000      # headline-shrinkage pass/fail spec (Quality Control)
+  residual_zones_um:        # per-dot residual colour zones (Distortion Map)
+    exceptional: 10
+    excellent: 20
+    good: 35
+    acceptable: 50
+  NOMINAL_COORDS:
+    UL_1: {x: -222.700, y:  239.875}
+    UL_2: {x: -222.700, y:    4.125}
+    UL_3: {x:  -22.050, y:    4.125}
+    UL_4: {x:  -22.050, y:  239.875}
+    LL_1: {x: -222.700, y:   -4.125}
+    LL_2: {x: -222.700, y: -239.875}
+    LL_3: {x:  -22.050, y: -239.875}
+    LL_4: {x:  -22.050, y:   -4.125}
+    LR_1: {x:   20.300, y:   -4.125}
+    LR_2: {x:   20.300, y: -239.875}
+    LR_3: {x:  220.950, y: -239.875}
+    LR_4: {x:  220.950, y:   -4.125}
+    UR_1: {x:   20.300, y:  239.875}
+    UR_2: {x:   20.300, y:    4.125}
+    UR_3: {x:  220.950, y:    4.125}
+    UR_4: {x:  220.950, y:  239.875}

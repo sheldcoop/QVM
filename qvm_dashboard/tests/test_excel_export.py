@@ -12,7 +12,7 @@ pytest.importorskip('kaleido')  # chart embedding renders PNGs via kaleido
 
 @pytest.fixture(autouse=True)
 def _silence_streamlit(monkeypatch):
-    """write_vtp_excel calls st.sidebar.warning on embed failure; stub it."""
+    """The exporter calls st.sidebar.warning on embed failure; stub it."""
     import streamlit as st
     monkeypatch.setattr(st.sidebar, 'warning', lambda *a, **k: None)
 
@@ -36,40 +36,74 @@ def _vtp_frame(sides, settings):
             cn['x_distance']: rng.normal(0, 0.004, n),
             cn['y_distance']: rng.normal(0, 0.004, n),
             cn['ptv_distance']: np.abs(rng.normal(0.005, 0.002, n)),
-            cn['total_shift']: np.abs(rng.normal(0.005, 0.002, n)),
             'Build Up': [bu] * n,
             'Side': [side] * n, 'Panel': ['20'] * n,
+            'Process': ['Via to Pad'] * n,
         }))
     return pd.concat(frames, ignore_index=True)
 
 
-def _export(settings, sides):
+def _export(settings, sides, meta=None):
+    """Run the real export entry point over a Via-to-Pad frame."""
     import openpyxl
-    from qvm_dashboard.src.excel_export import write_vtp_excel
-    cn = settings['COLUMN_NAMES']
+    from src.excel_export import write_unified_excel
     df = _vtp_frame(sides, settings)
-    disp = df[[cn['grid_id'], cn['inner_diameter'], cn['outer_diameter'],
-               cn['x_distance'], cn['y_distance'], cn['total_shift']]].copy()
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as w:
-        write_vtp_excel(w, disp, df.copy(), settings,
-                        {'panel': '20', 'process': 'Via to Pad'}, cn['grid_id'])
+        write_unified_excel(w, df.copy(), settings,
+                            meta or {'panel': '20', 'process': 'Via to Pad'})
     buf.seek(0)
     return openpyxl.load_workbook(buf)
 
 
-def test_both_sides_get_analytics_sheet_with_four_charts(settings):
+def _analytics_sheets(wb):
+    return [n for n in wb.sheetnames if n.startswith('Analytics')]
+
+
+def test_each_build_up_gets_analytics_sheet_with_four_charts(settings):
+    # _vtp_frame tags side F as BU-01 and side B as BU-02.
     wb = _export(settings, ['F', 'B'])
-    assert 'Analytics - F' in wb.sheetnames
-    assert 'Analytics - B' in wb.sheetnames
-    for name in ('Analytics - F', 'Analytics - B'):
+    sheets = _analytics_sheets(wb)
+    assert sorted(sheets) == ['Analytics VTP BU-01', 'Analytics VTP BU-02']
+    for name in sheets:
         assert len(wb[name]._images) == 4, f'{name} should embed all 4 charts'
 
 
-def test_single_side_gets_one_analytics_sheet(settings):
+def test_single_build_up_gets_one_analytics_sheet(settings):
     wb = _export(settings, ['F'])
-    assert 'Analytics' in wb.sheetnames
-    assert len(wb['Analytics']._images) == 4
+    assert _analytics_sheets(wb) == ['Analytics VTP BU-01']
+    images = wb['Analytics VTP BU-01']._images
+    assert len(images) == 4
+    assert {im.anchor._from.row for im in images} == {2}
+    assert len({im.anchor._from.col for im in images}) == 4
+
+
+def test_same_build_up_front_back_embed_eight_side_specific_charts(settings):
+    import openpyxl
+    from src.excel_export import write_unified_excel
+
+    df = _vtp_frame(['F', 'B'], settings)
+    df['Build Up'] = 'BU-01'
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings,
+                            {'panel': '20', 'process': 'Via to Pad'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    assert _analytics_sheets(wb) == ['Analytics VTP BU-01']
+    images = wb['Analytics VTP BU-01']._images
+    assert len(images) == 8
+
+    # Two side rows, each with four charts across the sheet.
+    cols = sorted({im.anchor._from.col for im in images})
+    rows = sorted({im.anchor._from.row for im in images})
+    assert len(cols) == 4
+    assert len(rows) == 2
+    report = wb['Analytics VTP BU-01']
+    assert report['A2'].value == 'Side: Front'
+    assert report['A74'].value == 'Side: Back'
 
 
 def test_measurement_sheet_has_no_duplicated_charts(settings):
@@ -82,52 +116,79 @@ def test_measurement_sheet_has_no_duplicated_charts(settings):
 
 
 def test_analytics_charts_do_not_overlap(settings):
-    """Regression: the 2×2 grid must be spaced so a ~11-column-wide image in
-    the left column does not collide with the right column."""
+    """Regression: the four-chart row must be spaced so images do not collide."""
     wb = _export(settings, ['F'])
     anchors = [(im.anchor._from.col, im.anchor._from.row)
-               for im in wb['Analytics']._images]
+               for im in wb['Analytics VTP BU-01']._images]
     cols = sorted({c for c, _ in anchors})
     rows = sorted({r for _, r in anchors})
-    assert len(cols) == 2 and len(rows) == 2, 'charts should form a 2×2 grid'
-    # left image is ~11 columns wide; right column must start ≥2 cols past that
-    assert cols[1] - cols[0] >= 13, 'right column too close (overlap risk)'
-    # bottom row must clear the tallest (~32-row) top image
-    assert rows[1] - rows[0] >= 32, 'bottom row too close (overlap risk)'
+    assert len(cols) == 4 and len(rows) == 1, 'charts should form one row'
+    # neighboring charts must remain separated by a safe gap
+    assert cols[1] - cols[0] >= 13, 'second chart too close (overlap risk)'
+    assert cols[2] - cols[1] >= 13, 'third chart too close (overlap risk)'
+    assert cols[3] - cols[2] >= 13, 'fourth chart too close (overlap risk)'
 
 
 def test_analytics_sheet_falls_back_when_chart_render_fails(settings, monkeypatch):
+    """A failed render must still leave a placeholder image, not an empty sheet."""
     import openpyxl
-    from qvm_dashboard.src import excel_export
+    from src import excel_export
 
     df = _vtp_frame(['F'], settings)
-    disp = df[[settings['COLUMN_NAMES']['grid_id'], settings['COLUMN_NAMES']['inner_diameter'],
-               settings['COLUMN_NAMES']['outer_diameter'], settings['COLUMN_NAMES']['x_distance'],
-               settings['COLUMN_NAMES']['y_distance'], settings['COLUMN_NAMES']['total_shift']]].copy()
-
-    monkeypatch.setattr(excel_export, '_fig_to_xl_image', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('kaleido blocked')))
+    monkeypatch.setattr(
+        excel_export, '_fig_to_xl_image',
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError('kaleido blocked')))
 
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as w:
-        excel_export.write_vtp_excel(w, disp, df.copy(), settings,
-                                     {'panel': '20', 'process': 'Via to Pad'},
-                                     settings['COLUMN_NAMES']['grid_id'])
+        excel_export.write_unified_excel(w, df.copy(), settings,
+                                         {'panel': '20', 'process': 'Via to Pad'})
     buf.seek(0)
     wb = openpyxl.load_workbook(buf)
 
-    assert 'Analytics' in wb.sheetnames
-    assert len(wb['Analytics']._images) == 4
+    assert 'Analytics VTP BU-01' in wb.sheetnames
+    assert len(wb['Analytics VTP BU-01']._images) == 4
+
+
+def _report_rows(wb):
+    """Report sheet as a list of {header: value} dicts."""
+    report = wb['Report']
+    headers = [c.value for c in report[1]]
+    return [dict(zip(headers, [c.value for c in report[r]]))
+            for r in range(2, report.max_row + 1)]
 
 
 def test_report_sheet_preserves_row_level_build_up(settings):
     wb = _export(settings, ['F', 'B'])
-    report = wb['Report']
-
-    headers = [c.value for c in report[1]]
-    bu_col_idx = headers.index('Buildup') + 1
-    bu_values = {report.cell(row=r, column=bu_col_idx).value for r in range(2, report.max_row + 1)}
-
+    bu_values = {row['Buildup'] for row in _report_rows(wb)}
     assert {'BU-01', 'BU-02'}.issubset(bu_values)
+
+
+def test_report_row_provenance_stays_with_its_own_fiducial(settings):
+    """Regression: Side and Buildup were taken positionally from the parsed
+    frame (grouped by file) and written onto the display frame (sorted by Grid
+    ID). With both sides in scope the two orders interleave, and half the rows
+    were labelled with the other side's values.
+
+    _vtp_frame ties side F to BU-01 and side B to BU-02, so any row pairing
+    F with BU-02 (or B with BU-01) is a misattribution.
+    """
+    wb = _export(settings, ['F', 'B'])
+    rows = _report_rows(wb)
+
+    expected = {'F': 'BU-01', 'B': 'BU-02'}
+    mismatched = [r for r in rows if expected[r['Side']] != r['Buildup']]
+    assert not mismatched, f'{len(mismatched)} of {len(rows)} rows misattributed'
+
+    # Both sides must actually be represented, or the check above is vacuous.
+    assert {r['Side'] for r in rows} == {'F', 'B'}
+
+
+def test_report_panel_comes_from_the_data(settings):
+    """Panel was hardcoded to the (now always empty) job-metadata value even
+    though every row carries its own."""
+    wb = _export(settings, ['F'])
+    assert {r['Panel'] for r in _report_rows(wb)} == {'20'}
 
 
 def _mixed_process_frame(settings):
@@ -140,7 +201,7 @@ def _mixed_process_frame(settings):
 
 def test_unified_export_writes_single_workbook_with_mixed_process_data(settings):
     import openpyxl
-    from qvm_dashboard.src.excel_export import write_unified_excel
+    from src.excel_export import write_unified_excel
 
     df = _mixed_process_frame(settings)
     buf = BytesIO()
@@ -165,7 +226,7 @@ def test_unified_export_writes_single_workbook_with_mixed_process_data(settings)
 
 def test_unified_export_process_sheets_embed_panel_map_when_available(settings):
     import openpyxl
-    from qvm_dashboard.src import excel_export
+    from src import excel_export
 
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
@@ -188,7 +249,7 @@ def test_unified_export_process_sheets_embed_panel_map_when_available(settings):
 
 def test_unified_export_panel_map_is_anchored_right_of_data(settings):
     import openpyxl
-    from qvm_dashboard.src import excel_export
+    from src import excel_export
 
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
@@ -215,7 +276,7 @@ def test_unified_export_panel_map_is_anchored_right_of_data(settings):
 
 def test_unified_export_creates_analytics_per_process_and_build_up(settings):
     import openpyxl
-    from qvm_dashboard.src.excel_export import write_unified_excel
+    from src.excel_export import write_unified_excel
 
     df = _mixed_process_frame(settings)
     buf = BytesIO()
@@ -233,7 +294,7 @@ def test_unified_export_creates_analytics_per_process_and_build_up(settings):
 
 def test_unified_export_report_has_process_specific_usl_columns(settings):
     import openpyxl
-    from qvm_dashboard.src.excel_export import write_unified_excel
+    from src.excel_export import write_unified_excel
 
     df = _mixed_process_frame(settings)
     buf = BytesIO()
@@ -249,7 +310,7 @@ def test_unified_export_report_has_process_specific_usl_columns(settings):
 
 def test_unified_export_process_sheet_includes_annular_ring(settings):
     import openpyxl
-    from qvm_dashboard.src.excel_export import write_unified_excel
+    from src.excel_export import write_unified_excel
 
     df = _mixed_process_frame(settings)
     buf = BytesIO()
@@ -264,7 +325,7 @@ def test_unified_export_process_sheet_includes_annular_ring(settings):
 
 def test_unified_export_handles_malformed_grid_ids(settings):
     import openpyxl
-    from qvm_dashboard.src.excel_export import write_unified_excel
+    from src.excel_export import write_unified_excel
 
     df = _mixed_process_frame(settings)
     grid_col = settings['COLUMN_NAMES']['grid_id']

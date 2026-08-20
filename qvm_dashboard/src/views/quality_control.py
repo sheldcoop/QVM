@@ -10,10 +10,69 @@ import pandas as pd
 import streamlit as st
 
 from src.views.base import BaseView
-from src.utils import convert_to_microns
+from src.display_frame import build_display_frame
+from src.utils import is_via_to_pad as is_via_to_pad_mask
 from src.excel_export import write_unified_excel
 
 logger = logging.getLogger(__name__)
+
+
+_EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+@st.cache_data(max_entries=8, show_spinner='Building Excel report…')
+def build_workbook(export_df: pd.DataFrame, settings: dict, meta: dict,
+                   warnings: list) -> tuple:
+    """Render the export workbook to bytes. Returns ``(data, error_message)``.
+
+    Memoised because Streamlit reruns the whole script on every widget
+    interaction, and this is by far the most expensive thing the page does:
+    each Analytics sheet renders four Plotly figures to PNG through kaleido,
+    and there is one such sheet per process per Build Up. Without the cache
+    that work was repeated on every nav click, whether or not anyone
+    downloaded the file.
+
+    Errors are returned rather than raised so a failed export still yields a
+    downloadable workbook containing the raw data.
+    """
+    buffer = BytesIO()
+    error = None
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        try:
+            write_unified_excel(writer, export_df, settings, meta, warnings=warnings)
+        except Exception as exc:
+            logger.warning('Excel export error — writing fallback sheet: %s',
+                           exc, exc_info=True)
+            error = str(exc)
+            try:
+                export_df.to_excel(writer, sheet_name='Data', index=False)
+            except Exception:
+                pd.DataFrame({'error': [error]}).to_excel(
+                    writer, sheet_name='Data', index=False)
+    return buffer.getvalue(), error
+
+
+def annular_stats(values: pd.Series, threshold: float) -> dict | None:
+    """Summarise a column of Annular Ring measurements (µm).
+
+    Returns None when there is nothing to summarise, so the caller can skip the
+    panel entirely rather than render empty tiles. ``threshold`` is the µm
+    breakout limit from ``TOLERANCES.annular_ring_min``; rows below it are
+    counted as failures.
+    """
+    values = values.dropna()
+    if values.empty:
+        return None
+    fail_count = int((values < threshold).sum())
+    return {
+        'min': float(values.min()),
+        'max': float(values.max()),
+        'mean': float(values.mean()),
+        'std': float(values.std()),
+        'fail_count': fail_count,
+        'fail_pct': fail_count / len(values) * 100,
+        'worst_index': values.idxmin(),
+    }
 
 
 class QualityControlView(BaseView):
@@ -30,33 +89,14 @@ class QualityControlView(BaseView):
         meta = kwargs.get('meta', {})
         export_df = kwargs.get('export_df', filtered_df)
 
-        col_names    = self.col_names
-        annular_col  = col_names.get('annular_ring', 'Annular Ring')
-        threshold    = self.tolerances.get('annular_ring_min', 0.0)
-        grid_id_col  = col_names.get('grid_id', 'Grid ID')
-        via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
-        pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
-        dx_col       = col_names.get('x_distance', 'Shift (DX)')
-        dy_col       = col_names.get('y_distance', 'Shift (DY)')
-        sc_col       = col_names.get('total_shift', 'SC')
-        ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
+        annular_col = self.col_names.get('annular_ring', 'Annular Ring')
+        grid_id_col = self.col_names.get('grid_id', 'Grid ID')
+        threshold   = self.tolerances.get('annular_ring_min', 0.0)
 
-        # --- Build display dataframe ---
-        # Both processes keep a clean, identical column set; the only difference
-        # is the distance metric: VtP uses 'VtP Distance (SC)', PtV uses the
-        # native 'PtV Distance'. Coord. X/Y, Pad/Via Pts., Annular Ring, and the
-        # Process tag are intentionally excluded from both screen and export.
-        distance_col = sc_col if is_via_to_pad else ptv_dist_col
-        meta_cols = ['Build Up', 'Panel', 'Side']
-        keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
-        display_df = filtered_df[[c for c in keep if c in filtered_df.columns]].copy()
-
-        measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
-                            col_names.get('ptv_distance', 'PtV Distance'), annular_col]
-        display_df = convert_to_microns(display_df, measurement_cols)
-
-        if grid_id_col in display_df.columns:
-            display_df = display_df.sort_values(by=grid_id_col, ascending=True)
+        # Shared with every Excel measurement sheet — see src/display_frame.py.
+        # Coord. X/Y, Pad/Via Pts. and the Process tag stay out of both.
+        display_df = build_display_frame(
+            filtered_df, self.settings, is_via_to_pad=is_via_to_pad)
 
         # --- Statistical Summary ---
         st.subheader("📊 Statistical Summary")
@@ -68,10 +108,7 @@ class QualityControlView(BaseView):
         with col_left:
             st.write('One workbook export: separate Via-to-Pad and Pad-to-Via sheets for current Build Up, Panel, and Side scope.')
         with col_right:
-            self._render_export_button(
-                filtered_df, export_df, is_via_to_pad,
-                annular_col, threshold, grid_id_col, meta,
-            )
+            self._render_export_button(filtered_df, export_df, is_via_to_pad, meta)
 
         # --- Grid ID legend ---
         st.info(
@@ -131,74 +168,57 @@ component breakdown.
 
     def _render_stats(self, display_df: pd.DataFrame, annular_col: str,
                       threshold: float, grid_id_col: str) -> None:
-        summary_cols = st.columns(5)
-        if annular_col not in display_df.columns:
+        """Render the five Annular Ring summary tiles."""
+        stats = (annular_stats(display_df[annular_col], threshold)
+                 if annular_col in display_df.columns else None)
+        if stats is None:
+            st.info('Annular Ring is unavailable for this selection.')
             return
 
-        ar_min = display_df[annular_col].min()
-        ar_max = display_df[annular_col].max()
-        ar_mean = display_df[annular_col].mean()
-        ar_std  = display_df[annular_col].std()
-        fail_count = int((display_df[annular_col] < threshold).sum())
-        fail_pct = fail_count / len(display_df) * 100 if len(display_df) > 0 else 0.0
-        worst_idx  = display_df[annular_col].idxmin()
-        worst_grid = (display_df.loc[worst_idx, grid_id_col]
+        worst_grid = (display_df.loc[stats['worst_index'], grid_id_col]
                       if grid_id_col in display_df.columns else 'N/A')
+        fail_count = stats['fail_count']
 
-        summary_cols[0].metric('Min Annular Ring', f'{ar_min:.3f} µm',
-                               delta=f'{ar_min - threshold:.3f}' if ar_min < threshold else None,
-                               delta_color='inverse')
-        summary_cols[1].metric('Max Annular Ring', f'{ar_max:.3f} µm')
-        summary_cols[2].metric('Mean ± StdDev', f'{ar_mean:.3f} ± {ar_std:.3f} µm')
-        summary_cols[3].metric('Worst Point', f'Grid {worst_grid}', f'{ar_min:.3f} µm')
+        summary_cols = st.columns(5)
+        summary_cols[0].metric(
+            'Min Annular Ring', f"{stats['min']:.3f} µm",
+            delta=(f"{stats['min'] - threshold:.3f}" if stats['min'] < threshold else None),
+            delta_color='inverse')
+        summary_cols[1].metric('Max Annular Ring', f"{stats['max']:.3f} µm")
+        summary_cols[2].metric('Mean ± StdDev',
+                               f"{stats['mean']:.3f} ± {stats['std']:.3f} µm")
+        summary_cols[3].metric('Worst Point', f'Grid {worst_grid}',
+                               f"{stats['min']:.3f} µm")
         summary_cols[4].metric(
-            'Failures', f'{fail_count} ({fail_pct:.1f}%)',
+            'Failures', f"{fail_count} ({stats['fail_pct']:.1f}%)",
             delta=f'{fail_count} points' if fail_count > 0 else '✓ All Pass',
             delta_color='inverse' if fail_count > 0 else 'off',
         )
 
     def _render_export_button(self, filtered_df: pd.DataFrame, export_df: pd.DataFrame,
-                              is_via_to_pad: bool, annular_col: str, threshold: float,
-                              grid_id_col: str, meta: dict) -> None:
-        buffer = BytesIO()
-
+                              is_via_to_pad: bool, meta: dict) -> None:
         if filtered_df is None or filtered_df.empty:
             st.download_button(
                 label='📥 Export to Excel',
-                data=buffer,
+                data=b'',
                 file_name='QVM_Quality_Report.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                mime=_EXCEL_MIME,
                 type='primary', disabled=True,
             )
             return
 
-        import openpyxl  # noqa: F401 — ensure engine available
-        parse_warnings = st.session_state.get('parse_warnings', [])
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            try:
-                write_unified_excel(
-                    writer,
-                    export_df,
-                    self.settings,
-                    meta,
-                    warnings=parse_warnings,
-                )
-            except Exception as exc:
-                logger.warning('Excel export error — writing fallback sheet: %s',
-                               exc, exc_info=True)
-                try:
-                    export_df.to_excel(writer, sheet_name='Data', index=False)
-                except Exception:
-                    pd.DataFrame({'error': [str(exc)]}).to_excel(
-                        writer, sheet_name='Data', index=False)
-                st.warning(f'⚠️ Excel export encountered an issue: {exc}')
+        data, error = build_workbook(
+            export_df, self.settings, meta,
+            st.session_state.get('parse_warnings', []),
+        )
+        if error:
+            st.warning(f'⚠️ Excel export encountered an issue: {error}')
 
-        buffer.seek(0)
         st.download_button(
             label='📥 Export to Excel',
-            data=buffer,
+            data=data,
             file_name=self._build_filename(export_df, is_via_to_pad, meta),
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            mime=_EXCEL_MIME,
             type='primary',
         )
 
@@ -212,14 +232,12 @@ component breakdown.
     def _build_filename(cls, filtered_df: pd.DataFrame, is_via_to_pad: bool, meta: dict) -> str:
         process_token = "VTP" if is_via_to_pad else "PTV"
         if 'Process' in filtered_df.columns and not filtered_df.empty:
-            proc_vals = sorted({str(v).strip() for v in filtered_df['Process'].dropna().tolist() if str(v).strip()})
-            if len(proc_vals) == 1:
-                p = proc_vals[0].lower()
-                if 'via to pad' in p:
-                    process_token = 'VTP'
-                elif 'pad to via' in p:
-                    process_token = 'PTV'
-            elif len(proc_vals) > 1:
+            vtp_rows = is_via_to_pad_mask(filtered_df)
+            if vtp_rows.all():
+                process_token = 'VTP'
+            elif not vtp_rows.any():
+                process_token = 'PTV'
+            else:
                 process_token = 'MIXED'
 
         panel_token = None
