@@ -140,19 +140,19 @@ def _add_panel_map(ws, settings: dict, label: str) -> None:
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
                           settings: dict,
                           sheet_label: str = 'Analytics') -> None:
-    """Create an analytics sheet with side-specific 4-chart analytics blocks.
+    """Create an analytics sheet with one horizontal 4-chart row per side.
 
     Layout:
         A1   — title label (includes sheet_label for self-identification)
-        For each available side (Front then Back), place one 2×2 chart block:
-            <start>3   — Bullseye scatter (DX/DY)
+        For each available side (Front then Back), place one horizontal row:
+            <start>3    — Bullseye scatter (DX/DY)
             <start+13>3 — Per-site SC bars
-            <start>38  — Box plot (SC distribution)
-            <start+13>38 — Quiver (ABF distortion map)
+            <start+26>3 — Box plot (SC distribution)
+            <start+39>3 — Quiver (ABF distortion map)
 
     sheet_label is used as the worksheet name so that when both F and B sides
-    are uploaded for the same Build Up, one sheet can still show both sides in
-    separate blocks, avoiding mixed/combined charts.
+    are uploaded for the same Build Up, one sheet can still show both sides as
+    separate horizontal rows, avoiding mixed/combined charts.
 
     Each chart is embedded independently so one failed render (or missing
     kaleido) never aborts the rest of the sheet or the workbook.
@@ -171,6 +171,7 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
     multiplier = settings.get('PLOT_SETTINGS', {}).get('vector_multiplier_default', 50)
 
     side_order = {'F': 0, 'B': 1}
+    side_labels = {'F': 'Front', 'B': 'Back'}
     side_values = []
     if 'Side' in df.columns:
         side_values = [
@@ -181,28 +182,29 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
     if not side_values:
         side_values = ['ALL']
 
-    # One side block is a 2×2 chart grid spanning ~24 columns.
-    # Start each additional side block further right so Front/Back are horizontal.
+    # One side row spans four charts across the sheet.
+    # Start each additional side row further down so Front/Back are stacked.
     from openpyxl.utils.cell import get_column_letter
 
     def _anchor(start_col: int, row: int) -> str:
         return f'{get_column_letter(start_col)}{row}'
 
     for block_idx, side in enumerate(side_values):
-        start_col = 1 + (block_idx * 26)
-        right_col = start_col + 13
+        start_row = 3 + (block_idx * 72)
+        start_col = 1
         side_df = df if side == 'ALL' else df[df['Side'].astype(str).str.upper() == side].copy()
         if side_df.empty:
             continue
 
-        ws[_anchor(start_col, 2)] = f'Side: {side}'
-        ws[_anchor(start_col, 2)].font = openpyxl.styles.Font(bold=True)
+        side_label = side_labels.get(side, side)
+        ws[_anchor(start_col, start_row - 1)] = f'Side: {side_label}'
+        ws[_anchor(start_col, start_row - 1)].font = openpyxl.styles.Font(bold=True)
 
         charts = [
-            (_anchor(start_col, 3),  'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    700, 580),
-            (_anchor(right_col, 3),  'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   700, 450),
-            (_anchor(start_col, 38), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         700, 640),
-            (_anchor(right_col, 38), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 700, 600),
+            (_anchor(start_col,     start_row), 'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    700, 580),
+            (_anchor(start_col + 13, start_row), 'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   700, 450),
+            (_anchor(start_col + 26, start_row), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         700, 640),
+            (_anchor(start_col + 39, start_row), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 700, 600),
         ]
         for anchor, name, make_fig, w, h in charts:
             chart_name = f'{name} [{side}]'
