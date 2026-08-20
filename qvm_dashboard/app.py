@@ -43,12 +43,18 @@ def load_css(file_path: str, settings: dict = None) -> None:
         pass
 
 
+def _panel_sort_key(panel: str):
+    """Order panels numerically ("9" before "10"), non-numeric ones last."""
+    text = str(panel)
+    return (0, int(text), '') if text.isdigit() else (1, 0, text)
+
+
 def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> tuple[pd.DataFrame, str, str]:
     """Render panel/side scope filters and return filtered DataFrame plus selections."""
     with st.expander("Analysis Scope", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            panel_list = sorted(df['Panel'].unique().tolist())
+            panel_list = sorted(df['Panel'].unique().tolist(), key=_panel_sort_key)
             if len(panel_list) > 1:
                 panel_list.insert(0, "All")
             panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
@@ -62,16 +68,16 @@ def _scope_filters(df: pd.DataFrame, panel_key: str, side_key: str) -> tuple[pd.
             st.markdown("**Select Side**")
             selected_side = render_nav_buttons(side_list, state_key=side_key, default=side_list[0])
 
-    filtered = df.copy()
-    if selected_panel and selected_panel != "All":
-        filtered = filtered[filtered['Panel'] == selected_panel]
-    if selected_side and selected_side != "Both":
-        filtered = filtered[filtered['Side'] == selected_side]
+    filtered = _apply_scope_filters(df, selected_panel, selected_side)
     return filtered, selected_panel, selected_side
 
 
 def _apply_scope_filters(df: pd.DataFrame, selected_panel: str, selected_side: str) -> pd.DataFrame:
-    """Apply selected panel/side values to any dataframe using same scope semantics."""
+    """Apply the panel/side scope selection to any dataframe.
+
+    The single home for the scope rules: "All" panels and "Both" sides mean no
+    filtering, and a dataframe missing either column is passed through.
+    """
     filtered = df.copy()
     if selected_panel and selected_panel != "All" and 'Panel' in filtered.columns:
         filtered = filtered[filtered['Panel'] == selected_panel]
@@ -170,6 +176,50 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
         st.plotly_chart(fig, use_container_width=True)
 
 
+def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
+                        is_via_to_pad: bool) -> None:
+    """Render one process tab: scope filters, sub-view nav, then the sub-view.
+
+    Pad-to-Via and Via-to-Pad differ only in which rows they select, which
+    session-state keys they own, and the hint shown when no matching file has
+    been uploaded — so they share one body.
+    """
+    if is_via_to_pad:
+        key_prefix, label = "vtp", "Via-to-Pad"
+        example = "Via to Pad_Panel 25_F.txt"
+    else:
+        key_prefix, label = "ptv", "Pad-to-Via"
+        example = "Post PFC_Pad to Via_Panel 20_F.txt"
+
+    is_vtp_row = scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)
+    process_df = scoped_df[is_vtp_row if is_via_to_pad else ~is_vtp_row].copy()
+
+    if process_df.empty:
+        st.info(f"Please upload a {label} file (e.g. '{example}').")
+        return
+
+    filtered_df, selected_panel, selected_side = _scope_filters(
+        process_df, panel_key=f"{key_prefix}_panel", side_key=f"{key_prefix}_side")
+    export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
+
+    if filtered_df.empty:
+        st.warning("No data matches the selected filters.")
+        return
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    sub_view = render_nav_buttons(
+        ["Quality Control", "Analytics"],
+        state_key=f"{key_prefix}_sub_view",
+        default="Quality Control",
+    )
+    st.markdown("---")
+
+    _render_sub_views(
+        filtered_df, sub_view, settings,
+        is_via_to_pad=is_via_to_pad, meta=meta, export_df=export_scope_df)
+
+
 def main() -> None:
     settings = load_settings()
     ui_strings = settings.get('UI_STRINGS', {})
@@ -178,7 +228,7 @@ def main() -> None:
     load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"), settings)
     st.title(ui_strings.get('dashboard_title', 'QVM Dashboard'))
 
-    sidebar_config = render_sidebar(settings)
+    sidebar_config = render_sidebar()
     uploaded_files = sidebar_config['uploaded_files']
     file_overrides = sidebar_config.get('file_overrides', [])
     meta = {
@@ -244,61 +294,9 @@ def main() -> None:
         st.warning("No data matches the selected Build Up.")
         return
 
-    if main_view == "Pad to Via":
-        ptv_df = scoped_df[~scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
-
-        if ptv_df.empty:
-            st.info("Please upload a Pad-to-Via file (e.g. 'Post PFC_Pad to Via_Panel 20_F.txt').")
-            return
-
-        filtered_df, selected_panel, selected_side = _scope_filters(
-            ptv_df, panel_key="ptv_panel", side_key="ptv_side")
-        export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
-
-        if filtered_df.empty:
-            st.warning("No data matches the selected filters.")
-            return
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics"],
-            state_key="ptv_sub_view",
-            default="Quality Control",
-        )
-        st.markdown("---")
-
-        _render_sub_views(
-            filtered_df, sub_view, settings,
-            is_via_to_pad=False, meta=meta, export_df=export_scope_df)
-
-    elif main_view == "Via to Pad":
-        vtp_df = scoped_df[scoped_df['Process'].str.contains('Via to Pad', case=False, na=False)].copy()
-
-        if vtp_df.empty:
-            st.info("Please upload a Via-to-Pad file (e.g. 'Via to Pad_Panel 25_F.txt').")
-            return
-
-        filtered_vtp, selected_panel, selected_side = _scope_filters(
-            vtp_df, panel_key="vtp_panel", side_key="vtp_side")
-        export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
-
-        if filtered_vtp.empty:
-            st.warning("No data matches the selected filters.")
-            return
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        sub_view = render_nav_buttons(
-            ["Quality Control", "Analytics"],
-            state_key="vtp_sub_view",
-            default="Quality Control",
-        )
-        st.markdown("---")
-
-        _render_sub_views(
-            filtered_vtp, sub_view, settings,
-            is_via_to_pad=True, meta=meta, export_df=export_scope_df)
+    if main_view in ("Pad to Via", "Via to Pad"):
+        _render_process_tab(scoped_df, settings, meta,
+                            is_via_to_pad=(main_view == "Via to Pad"))
 
     elif main_view == "Alignment":
         st.markdown("### Alignment — Coming Soon")

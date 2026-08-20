@@ -18,7 +18,7 @@ from openpyxl.drawing.image import Image as XLImage
 from src.visuals import (
     plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
 )
-from src.utils import convert_to_microns
+from src.display_frame import build_display_frame
 
 logger = logging.getLogger(__name__)
 
@@ -218,43 +218,6 @@ def _measurement_sheet(df: pd.DataFrame, grid_id_col: str) -> pd.DataFrame:
     return df.copy().rename(columns={grid_id_col: 'Grid ID'})
 
 
-def _build_process_display(df: pd.DataFrame, settings: dict,
-                           is_via_to_pad: bool) -> pd.DataFrame:
-    """Build a process-specific display dataframe aligned with QC columns."""
-    col_names = settings.get('COLUMN_NAMES', {})
-    grid_id_col = col_names.get('grid_id', 'Grid ID')
-    via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
-    pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
-    dx_col = col_names.get('x_distance', 'Shift (DX)')
-    dy_col = col_names.get('y_distance', 'Shift (DY)')
-    sc_col = col_names.get('total_shift', 'SC')
-    ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
-    annular_col = col_names.get('annular_ring', 'Annular Ring')
-
-    work = df.copy()
-    if annular_col not in work.columns:
-        required = {pad_diam_col, via_diam_col, ptv_dist_col}
-        if required.issubset(set(work.columns)):
-            work[annular_col] = (work[pad_diam_col] / 2) - (work[via_diam_col] / 2) - work[ptv_dist_col]
-
-    distance_col = sc_col if is_via_to_pad else ptv_dist_col
-    meta_cols = ['Build Up', 'Panel', 'Side']
-    keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col, annular_col]
-    display_df = work[[c for c in keep if c in work.columns]].copy()
-
-    measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
-                        ptv_dist_col, annular_col]
-    display_df = convert_to_microns(display_df, measurement_cols)
-
-    if grid_id_col in display_df.columns:
-        sort_key = pd.to_numeric(display_df[grid_id_col], errors='coerce')
-        display_df = display_df.assign(_grid_sort_key=sort_key).sort_values(
-            by=['_grid_sort_key', grid_id_col], ascending=True, na_position='last',
-        ).drop(columns=['_grid_sort_key'])
-
-    return display_df
-
-
 def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
     """Return an Excel-safe, unique worksheet name (<=31 chars)."""
     base = re.sub(r'[\[\]:*?/\\]', '-', str(sheet_name).strip()) or 'Sheet'
@@ -371,7 +334,7 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
 
         is_vtp = process_code == 'VTP'
         sheet_base = 'Via to Pad' if is_vtp else 'Pad to Via'
-        proc_display = _build_process_display(proc_df, settings, is_via_to_pad=is_vtp)
+        proc_display = build_display_frame(proc_df, settings, is_via_to_pad=is_vtp)
         proc_meta = dict(meta)
         proc_meta['process'] = sheet_base
 

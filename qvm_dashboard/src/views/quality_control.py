@@ -10,10 +10,33 @@ import pandas as pd
 import streamlit as st
 
 from src.views.base import BaseView
-from src.utils import convert_to_microns
+from src.display_frame import build_display_frame
 from src.excel_export import write_unified_excel
 
 logger = logging.getLogger(__name__)
+
+
+def annular_stats(values: pd.Series, threshold: float) -> dict | None:
+    """Summarise a column of Annular Ring measurements (µm).
+
+    Returns None when there is nothing to summarise, so the caller can skip the
+    panel entirely rather than render empty tiles. ``threshold`` is the µm
+    breakout limit from ``TOLERANCES.annular_ring_min``; rows below it are
+    counted as failures.
+    """
+    values = values.dropna()
+    if values.empty:
+        return None
+    fail_count = int((values < threshold).sum())
+    return {
+        'min': float(values.min()),
+        'max': float(values.max()),
+        'mean': float(values.mean()),
+        'std': float(values.std()),
+        'fail_count': fail_count,
+        'fail_pct': fail_count / len(values) * 100,
+        'worst_index': values.idxmin(),
+    }
 
 
 class QualityControlView(BaseView):
@@ -30,33 +53,14 @@ class QualityControlView(BaseView):
         meta = kwargs.get('meta', {})
         export_df = kwargs.get('export_df', filtered_df)
 
-        col_names    = self.col_names
-        annular_col  = col_names.get('annular_ring', 'Annular Ring')
-        threshold    = self.tolerances.get('annular_ring_min', 0.0)
-        grid_id_col  = col_names.get('grid_id', 'Grid ID')
-        via_diam_col = col_names.get('inner_diameter', 'Via Parameter')
-        pad_diam_col = col_names.get('outer_diameter', 'Pad Diameter')
-        dx_col       = col_names.get('x_distance', 'Shift (DX)')
-        dy_col       = col_names.get('y_distance', 'Shift (DY)')
-        sc_col       = col_names.get('total_shift', 'SC')
-        ptv_dist_col = col_names.get('ptv_distance', 'PtV Distance')
+        annular_col = self.col_names.get('annular_ring', 'Annular Ring')
+        grid_id_col = self.col_names.get('grid_id', 'Grid ID')
+        threshold   = self.tolerances.get('annular_ring_min', 0.0)
 
-        # --- Build display dataframe ---
-        # Both processes keep a clean, identical column set; the only difference
-        # is the distance metric: VtP uses 'VtP Distance (SC)', PtV uses the
-        # native 'PtV Distance'. Coord. X/Y, Pad/Via Pts., Annular Ring, and the
-        # Process tag are intentionally excluded from both screen and export.
-        distance_col = sc_col if is_via_to_pad else ptv_dist_col
-        meta_cols = ['Build Up', 'Panel', 'Side']
-        keep = meta_cols + [grid_id_col, via_diam_col, pad_diam_col, dx_col, dy_col, distance_col]
-        display_df = filtered_df[[c for c in keep if c in filtered_df.columns]].copy()
-
-        measurement_cols = [pad_diam_col, via_diam_col, sc_col, dx_col, dy_col,
-                            col_names.get('ptv_distance', 'PtV Distance'), annular_col]
-        display_df = convert_to_microns(display_df, measurement_cols)
-
-        if grid_id_col in display_df.columns:
-            display_df = display_df.sort_values(by=grid_id_col, ascending=True)
+        # Shared with every Excel measurement sheet — see src/display_frame.py.
+        # Coord. X/Y, Pad/Via Pts. and the Process tag stay out of both.
+        display_df = build_display_frame(
+            filtered_df, self.settings, is_via_to_pad=is_via_to_pad)
 
         # --- Statistical Summary ---
         st.subheader("📊 Statistical Summary")
@@ -128,28 +132,32 @@ component breakdown.
 
     def _render_stats(self, display_df: pd.DataFrame, annular_col: str,
                       threshold: float, grid_id_col: str) -> None:
-        summary_cols = st.columns(5)
+        """Render the five Annular Ring summary tiles."""
         if annular_col not in display_df.columns:
+            st.info('Annular Ring is unavailable for this selection.')
             return
 
-        ar_min = display_df[annular_col].min()
-        ar_max = display_df[annular_col].max()
-        ar_mean = display_df[annular_col].mean()
-        ar_std  = display_df[annular_col].std()
-        fail_count = int((display_df[annular_col] < threshold).sum())
-        fail_pct = fail_count / len(display_df) * 100 if len(display_df) > 0 else 0.0
-        worst_idx  = display_df[annular_col].idxmin()
-        worst_grid = (display_df.loc[worst_idx, grid_id_col]
-                      if grid_id_col in display_df.columns else 'N/A')
+        stats = annular_stats(display_df[annular_col], threshold)
+        if stats is None:
+            st.info('Annular Ring is unavailable for this selection.')
+            return
 
-        summary_cols[0].metric('Min Annular Ring', f'{ar_min:.3f} µm',
-                               delta=f'{ar_min - threshold:.3f}' if ar_min < threshold else None,
-                               delta_color='inverse')
-        summary_cols[1].metric('Max Annular Ring', f'{ar_max:.3f} µm')
-        summary_cols[2].metric('Mean ± StdDev', f'{ar_mean:.3f} ± {ar_std:.3f} µm')
-        summary_cols[3].metric('Worst Point', f'Grid {worst_grid}', f'{ar_min:.3f} µm')
+        worst_grid = (display_df.loc[stats['worst_index'], grid_id_col]
+                      if grid_id_col in display_df.columns else 'N/A')
+        fail_count = stats['fail_count']
+
+        summary_cols = st.columns(5)
+        summary_cols[0].metric(
+            'Min Annular Ring', f"{stats['min']:.3f} µm",
+            delta=(f"{stats['min'] - threshold:.3f}" if stats['min'] < threshold else None),
+            delta_color='inverse')
+        summary_cols[1].metric('Max Annular Ring', f"{stats['max']:.3f} µm")
+        summary_cols[2].metric('Mean ± StdDev',
+                               f"{stats['mean']:.3f} ± {stats['std']:.3f} µm")
+        summary_cols[3].metric('Worst Point', f'Grid {worst_grid}',
+                               f"{stats['min']:.3f} µm")
         summary_cols[4].metric(
-            'Failures', f'{fail_count} ({fail_pct:.1f}%)',
+            'Failures', f"{fail_count} ({stats['fail_pct']:.1f}%)",
             delta=f'{fail_count} points' if fail_count > 0 else '✓ All Pass',
             delta_color='inverse' if fail_count > 0 else 'off',
         )
