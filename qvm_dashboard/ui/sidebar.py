@@ -119,11 +119,9 @@ def render_sidebar(settings: Dict) -> Dict:
             part_number  = st.text_input("Part Number", "")
             lot_number   = st.text_input("Lot Number", "")
             lot_name     = st.text_input("Lot Name", "")
-            # Build Up/Process/Panel are file-derived now and managed through
-            # per-file overrides and scope filters, not manual Job Information.
-            build_up     = ""
-            process      = ""
-            panel        = ""
+            # Build Up / Process / Panel are file-derived: they come from the
+            # filename, the per-file overrides, and the scope filters — never
+            # from manual Job Information entry.
         
         sidebar_config = {
             'uploaded_files': uploaded_files,
@@ -132,9 +130,6 @@ def render_sidebar(settings: Dict) -> Dict:
             'part_number':   part_number,
             'lot_number':    lot_number,
             'lot_name':      lot_name,
-            'build_up':      build_up,
-            'process':       process,
-            'panel':         panel,
         }
 
         return sidebar_config

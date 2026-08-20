@@ -1,8 +1,8 @@
 """
-Excel export helpers for Via-to-Pad quality reports.
+Excel export helpers for QVM quality reports.
 
 Provides chart-to-image rendering (kaleido) and sheet population.
-Entry point: write_vtp_excel().
+Entry point: write_unified_excel().
 """
 
 import logging
@@ -109,7 +109,12 @@ def _load_panel_map_image(settings: dict) -> XLImage | None:
 # ---------------------------------------------------------------------------
 
 def _add_panel_map(ws, settings: dict, label: str) -> None:
-    """Embed Panel_Map.png to the right of the data table to avoid overlap."""
+    """Embed Panel_Map.png to the right of the data table to avoid overlap.
+
+    Measurement sheets carry only the data table and this reference image; the
+    bullseye, SC bars, box, and quiver charts live solely on the Analytics
+    sheets built by :func:`_add_analytics_sheet`.
+    """
     try:
         from openpyxl.utils.cell import get_column_letter
 
@@ -124,16 +129,6 @@ def _add_panel_map(ws, settings: dict, label: str) -> None:
     except Exception as exc:
         logger.warning('Panel map embed failed for %s: %s', label, exc, exc_info=True)
         st.sidebar.warning(f"⚠️ Panel map not embedded in '{label}': {exc}")
-
-
-def _embed_charts(ws, settings: dict, label: str) -> None:
-    """Embed the reference Panel Map (PNG) into a measurement worksheet.
-
-    The bullseye, SC bars, box, and quiver charts now live solely on the
-    per-side Analytics sheet, so the measurement sheet keeps only the data
-    table and the Panel Map reference image.
-    """
-    _add_panel_map(ws, settings, label)
 
 
 def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
@@ -343,97 +338,6 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def _write_process_workbook(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                            filtered_df: pd.DataFrame, settings: dict, meta: dict,
-                            grid_id_col: str, sheet_base: str, usl_col_name: str,
-                            usl_value: float, include_xy_usl: bool,
-                            warnings: list = None) -> None:
-    """Shared workbook builder for both Pad-to-Via and Via-to-Pad exports.
-
-    Sheets written:
-    - '<sheet_base>' (or '<sheet_base> - F/B') — measurement data + Panel Map reference
-    - 'Report' — full metadata + measurements + USL reference column(s)
-    - 'Analytics' (or 'Analytics - F/B') — all four registration charts
-    - 'Warnings' — parser warnings (empty message if none)
-
-    `sheet_base` is 'Pad to Via' or 'Via to Pad'; `usl_col_name`/`usl_value`/
-    `include_xy_usl` parametrise the Report sheet's spec-limit columns.
-    """
-    sides       = filtered_df['Side'].unique() if 'Side' in filtered_df.columns else []
-    side_series = filtered_df['Side'].values   if 'Side' in filtered_df.columns else None
-    report_frames = []
-
-    if len(sides) > 1:
-        for side in sorted(sides):
-            mask       = filtered_df['Side'] == side
-            side_disp  = display_df.loc[display_df.index.isin(filtered_df[mask].index)]
-            side_vals  = filtered_df.loc[mask, 'Side'].values
-            build_vals = (filtered_df.loc[mask, 'Build Up'].values
-                          if 'Build Up' in filtered_df.columns else None)
-            sheet_name = f'{sheet_base} - {side}'
-
-            _measurement_sheet(side_disp, grid_id_col).to_excel(
-                writer, sheet_name=sheet_name, index=False)
-            ws = writer.sheets[sheet_name]
-            _embed_charts(ws, settings, sheet_name)
-            report_frames.append(
-                _report_sheet(side_disp, side_vals, build_vals, grid_id_col, meta,
-                              usl_col_name, usl_value, include_xy_usl))
-
-        pd.concat(report_frames, ignore_index=True).to_excel(
-            writer, sheet_name='Report', index=False)
-    else:
-        _measurement_sheet(display_df, grid_id_col).to_excel(
-            writer, sheet_name=sheet_base, index=False)
-        ws = writer.sheets[sheet_base]
-        _embed_charts(ws, settings, sheet_base)
-        build_series = filtered_df['Build Up'].values if 'Build Up' in filtered_df.columns else None
-        _report_sheet(display_df, side_series, build_series, grid_id_col, meta,
-                      usl_col_name, usl_value, include_xy_usl).to_excel(
-            writer, sheet_name='Report', index=False)
-
-    # Analytics sheet — one per side when both F and B are present, otherwise one combined
-    if len(sides) > 1:
-        for side in sorted(sides):
-            mask = filtered_df['Side'] == side
-            _add_analytics_sheet(writer, filtered_df[mask].copy(), settings,
-                                  sheet_label=f'Analytics - {side}')
-    else:
-        _add_analytics_sheet(writer, filtered_df, settings, sheet_label='Analytics')
-
-    # Warnings sheet — parser warnings from all uploaded files
-    ws_warn = writer.book.create_sheet('Warnings')
-    _warnings_sheet(ws_warn, warnings or [])
-
-
-def write_vtp_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                    filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str,
-                    warnings: list = None) -> None:
-    """Write Via-to-Pad data + embedded charts into the given ExcelWriter."""
-    usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
-    _write_process_workbook(
-        writer, display_df, filtered_df, settings, meta, grid_id_col,
-        sheet_base='Via to Pad', usl_col_name='VtP_USL',
-        usl_value=usl, include_xy_usl=True, warnings=warnings)
-
-
-def write_ptv_excel(writer: pd.ExcelWriter, display_df: pd.DataFrame,
-                    filtered_df: pd.DataFrame, settings: dict,
-                    meta: dict, grid_id_col: str,
-                    warnings: list = None) -> None:
-    """Write Pad-to-Via data + embedded charts into the given ExcelWriter.
-
-    Mirrors the Via-to-Pad workbook structure (data + Report + Analytics charts),
-    keyed on PtV Distance with a configurable PtV USL reference column.
-    """
-    usl = float(settings.get('PTV_REGISTRATION', {}).get('ptv_usl_um', 10.0))
-    _write_process_workbook(
-        writer, display_df, filtered_df, settings, meta, grid_id_col,
-        sheet_base='Pad to Via', usl_col_name='PtV_USL',
-        usl_value=usl, include_xy_usl=False, warnings=warnings)
-
-
 def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
                         settings: dict, meta: dict,
                         warnings: list = None) -> None:
@@ -473,7 +377,7 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
 
         _measurement_sheet(proc_display, grid_id_col).to_excel(
             writer, sheet_name=sheet_base, index=False)
-        _embed_charts(writer.sheets[sheet_base], settings, sheet_base)
+        _add_panel_map(writer.sheets[sheet_base], settings, sheet_base)
 
         side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
         build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None

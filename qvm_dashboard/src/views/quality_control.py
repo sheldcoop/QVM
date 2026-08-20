@@ -68,10 +68,7 @@ class QualityControlView(BaseView):
         with col_left:
             st.write('One workbook export: separate Via-to-Pad and Pad-to-Via sheets for current Build Up, Panel, and Side scope.')
         with col_right:
-            self._render_export_button(
-                filtered_df, export_df, is_via_to_pad,
-                annular_col, threshold, grid_id_col, meta,
-            )
+            self._render_export_button(filtered_df, export_df, is_via_to_pad, meta)
 
         # --- Grid ID legend ---
         st.info(
@@ -158,8 +155,7 @@ component breakdown.
         )
 
     def _render_export_button(self, filtered_df: pd.DataFrame, export_df: pd.DataFrame,
-                              is_via_to_pad: bool, annular_col: str, threshold: float,
-                              grid_id_col: str, meta: dict) -> None:
+                              is_via_to_pad: bool, meta: dict) -> None:
         buffer = BytesIO()
 
         if filtered_df is None or filtered_df.empty:
