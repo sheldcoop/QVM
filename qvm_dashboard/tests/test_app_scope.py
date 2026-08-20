@@ -29,6 +29,28 @@ def test_single_side(scoped_df):
     assert out['value'].tolist() == [1, 3]
 
 
+def test_secondary_column_is_selectable(scoped_df):
+    """Core Shrinkage filters on 'layer' (Front/Back) rather than 'Side', so the
+    same helper has to take the column name."""
+    cs = pd.DataFrame({
+        'Panel': ['28', '28', '29', '29'],
+        'layer': ['Front', 'Back', 'Front', 'Back'],
+        'value': [1, 2, 3, 4],
+    })
+    out = _apply_scope_filters(cs, 'All', 'Front', filter_col='layer')
+    assert out['value'].tolist() == [1, 3]
+
+    out = _apply_scope_filters(cs, '28', 'Back', filter_col='layer')
+    assert out['value'].tolist() == [2]
+
+    assert len(_apply_scope_filters(cs, 'All', 'Both', filter_col='layer')) == 4
+
+
+def test_side_remains_the_default_column(scoped_df):
+    """Pad-to-Via / Via-to-Pad call sites pass no filter_col and must be unaffected."""
+    assert _apply_scope_filters(scoped_df, 'All', 'F')['value'].tolist() == [1, 3]
+
+
 def test_panel_and_side_together(scoped_df):
     out = _apply_scope_filters(scoped_df, '9', 'B')
     assert out['value'].tolist() == [2]
