@@ -4,9 +4,9 @@ Runtime / user-tunable numbers (thresholds, slider ranges, chart heights) live
 in ``config/settings.yaml``.  Pure design tokens — colours, grid geometry,
 quarter maps — live here so a re-theme touches a single file.
 
-Every chart module and ``diagnostics.py`` imports from this module; nothing
-here imports from the rest of the codebase, so it sits at the bottom of the
-dependency graph with no risk of cycles.
+Every chart module imports from this module; nothing here imports from the rest
+of the codebase, so it sits at the bottom of the dependency graph with no risk
+of cycles.
 """
 
 from typing import Dict, Tuple
@@ -70,7 +70,7 @@ QUARTER_COLORS: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Structural grid constants (shared by quiver + heatmap + diagnostics)
+# Structural grid constants (shared by the quiver and box charts)
 # ---------------------------------------------------------------------------
 
 # Grid ID → (plot_x, plot_y) on the 4×4 grid (1-indexed, origin bottom-left).
