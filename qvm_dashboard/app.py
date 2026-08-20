@@ -186,9 +186,8 @@ def main() -> None:
         'part_number': sidebar_config.get('part_number', ''),
         'lot_number': sidebar_config.get('lot_number', ''),
         'lot_name': sidebar_config.get('lot_name', ''),
-        'build_up': sidebar_config.get('build_up', ''),
-        'process': sidebar_config.get('process', ''),
-        'panel': sidebar_config.get('panel', ''),
+        # Build Up is file-derived; the Build Up scope selector fills it in below.
+        'build_up': '',
     }
 
     all_data = []
