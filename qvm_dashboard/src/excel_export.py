@@ -190,7 +190,7 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
         return f'{get_column_letter(start_col)}{row}'
 
     for block_idx, side in enumerate(side_values):
-        start_row = 3 + (block_idx * 14)
+        start_row = 3 + (block_idx * 36)
         start_col = 1
         side_df = df if side == 'ALL' else df[df['Side'].astype(str).str.upper() == side].copy()
         if side_df.empty:
@@ -201,9 +201,9 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
         ws[_anchor(start_col, start_row - 1)].font = openpyxl.styles.Font(bold=True)
 
         charts = [
-            (_anchor(start_col,     start_row), 'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    300, 300),
-            (_anchor(start_col + 10, start_row), 'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   300, 400),
-            (_anchor(start_col + 20, start_row), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         300, 600),
+            (_anchor(start_col,     start_row), 'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    400, 400),
+            (_anchor(start_col + 10, start_row), 'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   500, 400),
+            (_anchor(start_col + 20, start_row), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         500, 600),
             (_anchor(start_col + 30, start_row), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 400, 400),
         ]
         for anchor, name, make_fig, w, h in charts:
