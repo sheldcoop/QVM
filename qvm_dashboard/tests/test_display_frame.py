@@ -125,3 +125,24 @@ def test_grid_id_header_is_applied_here_not_by_the_excel_writer(parsed_df, setti
     assert GRID_ID_HEADER in out.columns
     assert 'Site Code' not in out.columns
     assert out[GRID_ID_HEADER].tolist() == [11, 13, 22, 44]
+
+
+def test_rows_are_sorted_by_build_up_side_then_grid_id(settings):
+    cn = settings['COLUMN_NAMES']
+    df = pd.DataFrame({
+        cn['grid_id']: [44, 11, 22, 33],
+        cn['inner_diameter']: [0.02] * 4,
+        cn['outer_diameter']: [0.3125] * 4,
+        cn['x_distance']: [0.001] * 4,
+        cn['y_distance']: [0.001] * 4,
+        cn['ptv_distance']: [0.005] * 4,
+        'Build Up': ['BU-02', 'BU-01', 'BU-01', 'BU-02'],
+        'Panel': ['20'] * 4,
+        'Side': ['B', 'B', 'F', 'F'],
+    })
+
+    out = build_display_frame(df, settings, is_via_to_pad=False)
+
+    assert out['Build Up'].tolist() == ['BU-01', 'BU-01', 'BU-02', 'BU-02']
+    assert out['Side'].tolist() == ['F', 'B', 'F', 'B']
+    assert out[cn['grid_id']].tolist() == [22, 11, 33, 44]
