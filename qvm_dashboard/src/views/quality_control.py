@@ -16,6 +16,41 @@ from src.excel_export import write_unified_excel
 logger = logging.getLogger(__name__)
 
 
+_EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+@st.cache_data(show_spinner='Building Excel report…')
+def build_workbook(export_df: pd.DataFrame, settings: dict, meta: dict,
+                   warnings: list) -> tuple:
+    """Render the export workbook to bytes. Returns ``(data, error_message)``.
+
+    Memoised because Streamlit reruns the whole script on every widget
+    interaction, and this is by far the most expensive thing the page does:
+    each Analytics sheet renders four Plotly figures to PNG through kaleido,
+    and there is one such sheet per process per Build Up. Without the cache
+    that work was repeated on every nav click, whether or not anyone
+    downloaded the file.
+
+    Errors are returned rather than raised so a failed export still yields a
+    downloadable workbook containing the raw data.
+    """
+    buffer = BytesIO()
+    error = None
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        try:
+            write_unified_excel(writer, export_df, settings, meta, warnings=warnings)
+        except Exception as exc:
+            logger.warning('Excel export error — writing fallback sheet: %s',
+                           exc, exc_info=True)
+            error = str(exc)
+            try:
+                export_df.to_excel(writer, sheet_name='Data', index=False)
+            except Exception:
+                pd.DataFrame({'error': [error]}).to_excel(
+                    writer, sheet_name='Data', index=False)
+    return buffer.getvalue(), error
+
+
 def annular_stats(values: pd.Series, threshold: float) -> dict | None:
     """Summarise a column of Annular Ring measurements (µm).
 
@@ -164,45 +199,28 @@ component breakdown.
 
     def _render_export_button(self, filtered_df: pd.DataFrame, export_df: pd.DataFrame,
                               is_via_to_pad: bool, meta: dict) -> None:
-        buffer = BytesIO()
-
         if filtered_df is None or filtered_df.empty:
             st.download_button(
                 label='📥 Export to Excel',
-                data=buffer,
+                data=b'',
                 file_name='QVM_Quality_Report.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                mime=_EXCEL_MIME,
                 type='primary', disabled=True,
             )
             return
 
-        import openpyxl  # noqa: F401 — ensure engine available
-        parse_warnings = st.session_state.get('parse_warnings', [])
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            try:
-                write_unified_excel(
-                    writer,
-                    export_df,
-                    self.settings,
-                    meta,
-                    warnings=parse_warnings,
-                )
-            except Exception as exc:
-                logger.warning('Excel export error — writing fallback sheet: %s',
-                               exc, exc_info=True)
-                try:
-                    export_df.to_excel(writer, sheet_name='Data', index=False)
-                except Exception:
-                    pd.DataFrame({'error': [str(exc)]}).to_excel(
-                        writer, sheet_name='Data', index=False)
-                st.warning(f'⚠️ Excel export encountered an issue: {exc}')
+        data, error = build_workbook(
+            export_df, self.settings, meta,
+            st.session_state.get('parse_warnings', []),
+        )
+        if error:
+            st.warning(f'⚠️ Excel export encountered an issue: {error}')
 
-        buffer.seek(0)
         st.download_button(
             label='📥 Export to Excel',
-            data=buffer,
+            data=data,
             file_name=self._build_filename(export_df, is_via_to_pad, meta),
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            mime=_EXCEL_MIME,
             type='primary',
         )
 

@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import streamlit as st
@@ -18,6 +19,24 @@ from ui.sidebar import render_nav_buttons, render_sidebar
 pd.options.mode.copy_on_write = True
 
 logger = logging.getLogger(__name__)
+
+
+@st.cache_data(show_spinner=False)
+def _parse_upload(name: str, data: bytes, settings: dict,
+                  file_override: dict, default_build_up: str) -> tuple:
+    """Parse one uploaded file, memoised on its content.
+
+    Streamlit reruns the whole script on every widget interaction, so without
+    this every nav click re-parsed every uploaded file. ``data`` is the file's
+    bytes, which makes the cache key change exactly when the upload does.
+
+    Returns the (df, parse_warnings, ui_warnings) slice that main() consumes.
+    """
+    uploaded = SimpleNamespace(name=name, getvalue=lambda: data)
+    df, parse_warnings, ui_warnings, _, _ = ingest_uploaded_file(
+        uploaded, settings, file_override=file_override,
+        default_build_up=default_build_up)
+    return df, parse_warnings, ui_warnings
 
 
 def load_css(file_path: str, settings: dict = None) -> None:
@@ -247,9 +266,9 @@ def main() -> None:
             logger.info('Parsing file: %s', file.name)
             try:
                 file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
-                df, file_warnings, ui_warnings, _, _ = ingest_uploaded_file(
-                    file, settings, file_override=file_override,
-                    default_build_up=meta.get('build_up'))
+                df, file_warnings, ui_warnings = _parse_upload(
+                    file.name, file.getvalue(), settings,
+                    file_override, meta.get('build_up'))
                 all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),
