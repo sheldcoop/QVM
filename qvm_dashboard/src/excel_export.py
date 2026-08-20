@@ -201,10 +201,10 @@ def _add_analytics_sheet(writer: pd.ExcelWriter, df: pd.DataFrame,
         ws[_anchor(start_col, start_row - 1)].font = openpyxl.styles.Font(bold=True)
 
         charts = [
-            (_anchor(start_col,     start_row), 'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    400, 400),
-            (_anchor(start_col + 5, start_row), 'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   500, 400),
-            (_anchor(start_col + 18, start_row), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         700, 400),
-            (_anchor(start_col + 30, start_row), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 400, 400),
+            (_anchor(start_col,     start_row), 'Bullseye',  lambda d=side_df: plot_vtp_bullseye(d, settings),    500, 500),
+            (_anchor(start_col + 5, start_row), 'Site bars', lambda d=side_df: plot_vtp_site_bars(d, settings),   700, 500),
+            (_anchor(start_col + 18, start_row), 'Box plot',  lambda d=side_df: plot_vtp_box(d, settings),         700, 500),
+            (_anchor(start_col + 30, start_row), 'Quiver',    lambda d=side_df: plot_quiver(d, settings, multiplier), 500, 500),
         ]
         for anchor, name, make_fig, w, h in charts:
             chart_name = f'{name} [{side}]'
