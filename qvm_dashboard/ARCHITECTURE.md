@@ -13,28 +13,37 @@ sits at the bottom — it imports nothing from the project, so there are no cycl
 graph TD
     app[app.py] --> views[src/views/*]
     app --> sidebar[ui/sidebar.py]
-    app --> parser[src/parser.py]
+    app --> ingest[src/ingestion.py]
     app --> panelmap[src/panel_mapping.py]
     app --> visuals[src/visuals/*]
     app --> utils[src/utils.py]
 
+    ingest --> parser[src/parser.py]
+    ingest --> meta[src/upload_metadata.py]
+    ingest --> utils
+    sidebar --> parser
+
     views --> visuals
     views --> excel[src/excel_export.py]
+    views --> display[src/display_frame.py]
     views --> base[src/views/base.py]
-    views --> utils
 
     excel --> visuals
+    excel --> display
+    display --> utils
     visuals --> theme[src/theme.py]
     visuals --> helpers[src/chart_helpers.py]
     helpers --> theme
     panelmap --> utils
+    parser --> utils
     utils --> config[(config/settings.yaml)]
-    base --> config
 
     classDef cfg fill:#89b4fa,stroke:#1e1e2e,color:#1e1e2e;
     classDef tok fill:#a6e3a1,stroke:#1e1e2e,color:#1e1e2e;
+    classDef one fill:#f9e2af,stroke:#1e1e2e,color:#1e1e2e;
     class config cfg;
     class theme,helpers tok;
+    class display one;
 ```
 
 **Two sources of truth, by design:**
@@ -47,13 +56,23 @@ graph TD
 
 ```mermaid
 flowchart LR
-    upload([Upload .txt logs]) --> parse[parser.parse_qvm_content<br/>auto-detects PtV vs VtP]
-    parse --> annular[utils.calculate_annular_ring]
-    annular --> scope[app: panel / side filters]
+    upload([Upload .txt logs]) --> parse[ingestion.ingest_uploaded_file<br/>parse + resolve overrides]
+    parse --> scope[app: Build Up / panel / side filters]
     scope --> view[View.render]
+    view --> display[display_frame.build_display_frame]
+    display --> table[Quality Control table]
+    display --> xlsx[excel_export.write_unified_excel<br/>→ .xlsx with embedded charts]
     view --> charts[visuals.plot_*<br/>→ Plotly figure]
-    view --> xlsx[excel_export.write_vtp_excel / write_ptv_excel<br/>→ .xlsx with embedded charts]
 ```
+
+Both the on-screen table and the Excel measurement sheets are built by
+`display_frame.build_display_frame`, so they cannot disagree about which
+columns exist, what units they are in, or how they are sorted.
+
+Parsing and workbook construction are both memoised with `st.cache_data`
+(`app._parse_upload`, `quality_control.build_workbook`). Streamlit reruns the
+whole script on every widget interaction, so without that the app re-parsed
+every file and re-rendered every Excel chart on each nav click.
 
 Routing is **content-driven**: `parser.parse_qvm_content` decides Pad-to-Via vs
 Via-to-Pad from the file body. The filename only contributes Panel / Side metadata.
@@ -71,8 +90,9 @@ The package `__init__.py` re-exports every public name, so
 | `bullseye.py` | `plot_vtp_bullseye`, `plot_vtp_site_bars` |
 | `quiver.py` | `plot_quiver` (ABF distortion map) |
 | `distribution.py` | `plot_vtp_box` (SC distribution by quarter) |
-| `heatmap.py` | `plot_heatmap` (PtV distance grid) |
-| `panel_image.py` | `get_panel_image_path` |
+
+`__all__` lists exactly the charts the dashboard renders — a test enforces it,
+so a chart that loses its last caller shows up rather than lingering.
 
 Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 (`get_rings`, `zone_color`/`zone_colors`, `apply_dark_layout`,
@@ -89,7 +109,9 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 | How a **specific chart looks** | `src/visuals/<chart>.py` |
 | Logic shared by all charts (rings, zone colours, layout) | `src/chart_helpers.py` |
 | **Add a new chart** | new module in `src/visuals/`, then re-export it in `src/visuals/__init__.py` |
-| The **data table / Excel export** | `src/views/quality_control.py`, `src/excel_export.py` |
+| Which **columns appear in the table or the export** | `src/display_frame.py` (both read from it) |
+| The **Excel sheet layout** | `src/excel_export.py` |
+| The QC **stats tiles / fail highlighting** | `src/views/quality_control.py` |
 | **Parsing** of the QVM log format | `src/parser.py` |
 | **Navigation / tabs / ingestion** | `app.py` |
 | The **panel-map** figure | `src/panel_mapping.py` |
@@ -99,13 +121,19 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 ## Conventions
 
 - Chart functions are **pure**: `(df, settings) -> go.Figure`. No Streamlit, no I/O.
+  So are `display_frame.build_display_frame` and `quality_control.annular_stats`,
+  which is what makes them testable without a Streamlit runtime.
 - Views subclass `BaseView` and read their config slices in `__init__`.
 - All measurements are stored in **mm** and converted to **µm** (`× 1000`) at display time.
-- Excel chart embedding requires **`kaleido`** (`fig.to_image`). Without it the
-  export still runs but chart images are skipped with a sidebar warning.
+- The instrument's centre-to-centre distance is stored **once**, under
+  `COLUMN_NAMES.ptv_distance`. The Via-to-Pad header `VtP Distance (SC)` is a
+  display label applied in `build_display_frame` — not a second column.
+- Excel chart embedding requires **`kaleido`** (`fig.to_image`). Each chart is
+  embedded independently: if one fails, a placeholder image is written in its
+  place with a sidebar warning, and the rest of the workbook is unaffected.
 
 ## Running tests
 
 ```bash
-PYTHONPATH=. pytest tests/      # run from the qvm_dashboard/ directory
+pytest      # run from the repository root; see pyproject.toml
 ```
