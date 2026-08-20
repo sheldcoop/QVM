@@ -2,7 +2,7 @@
 
 import re
 
-from qvm_dashboard.src import theme
+from src import theme
 
 _HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
 

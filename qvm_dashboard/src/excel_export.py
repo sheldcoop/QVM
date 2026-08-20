@@ -247,17 +247,34 @@ def _process_slices(df: pd.DataFrame, meta: dict) -> dict[str, pd.DataFrame]:
     return {'VTP': pd.DataFrame(columns=df.columns), 'PTV': df.copy()}
 
 
-def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
-                  build_up_vals: pd.Series | None, grid_id_col: str,
-                  meta: dict, usl_col_name: str, usl_value: float,
+def _report_sheet(df: pd.DataFrame, grid_id_col: str, meta: dict,
+                  usl_col_name: str, usl_value: float,
                   include_xy_usl: bool = False) -> pd.DataFrame:
     """Full report frame: metadata prepended, USL reference column(s) appended.
 
-    `usl_col_name`/`usl_value` name the process-specific spec-limit column
-    ('VtP_USL' for Via-to-Pad, 'PtV_USL' for Pad-to-Via). When `include_xy_usl`
-    is set, blank X/Y USL columns are appended too (Via-to-Pad only).
+    Per-row provenance (Build Up, Panel, Side) is read from ``df`` itself, which
+    build_display_frame has already sorted, so each value stays with its own
+    fiducial. Taking them from a separately-ordered source misattributed them:
+    the display frame is sorted by Grid ID while the parsed frame is grouped by
+    file, so a scope covering both sides interleaved the two orders and half the
+    rows were labelled with the other side's values.
+
+    Job-level metadata (project, part, lot) has no per-row variation and comes
+    from ``meta``. `usl_col_name`/`usl_value` name the process-specific
+    spec-limit column ('VtP_USL' for Via-to-Pad, 'PtV_USL' for Pad-to-Via). When
+    `include_xy_usl` is set, blank X/Y USL columns are appended too
+    (Via-to-Pad only).
     """
     s = df.copy()
+
+    def _per_row(column: str, meta_key: str):
+        """That column's own values when present, else the job-level fallback."""
+        return s[column] if column in s.columns else meta.get(meta_key, '')
+
+    side_vals     = _per_row('Side', 'side')
+    panel_vals    = _per_row('Panel', 'panel')
+    build_up_vals = _per_row('Build Up', 'build_up')
+
     drop_if_present = [
         'Project_Name', 'Part_Number', 'Lot_Number', 'Lot_Name',
         'Buildup', 'Build Up', 'Process', 'Panel', 'Side',
@@ -277,10 +294,10 @@ def _report_sheet(df: pd.DataFrame, side_vals: pd.Series | None,
         s.insert(0, 'Fiducial', None)
         s.insert(0, 'Fiducial_Number', None)
 
-    s.insert(0, 'Side',        side_vals if side_vals is not None else '')
-    s.insert(0, 'Panel',       meta.get('panel', ''))
+    s.insert(0, 'Side',        side_vals)
+    s.insert(0, 'Panel',       panel_vals)
     s.insert(0, 'Process',     meta.get('process', ''))
-    s.insert(0, 'Buildup',     build_up_vals if build_up_vals is not None else meta.get('build_up', ''))
+    s.insert(0, 'Buildup',     build_up_vals)
     s.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
     s.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
     s.insert(0, 'Part_Number', meta.get('part_number', ''))
@@ -342,13 +359,9 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
             writer, sheet_name=sheet_base, index=False)
         _add_panel_map(writer.sheets[sheet_base], settings, sheet_base)
 
-        side_vals = proc_df['Side'].values if 'Side' in proc_df.columns else None
-        build_vals = proc_df['Build Up'].values if 'Build Up' in proc_df.columns else None
         report_frames.append(
             _report_sheet(
                 proc_display,
-                side_vals,
-                build_vals,
                 grid_id_col,
                 proc_meta,
                 usl_col_name='VtP_USL' if is_vtp else 'PtV_USL',

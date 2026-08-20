@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from qvm_dashboard.src.ingestion import ingest_uploaded_file
+from src.ingestion import ingest_uploaded_file
 
 
 VALID_CONTENT = """

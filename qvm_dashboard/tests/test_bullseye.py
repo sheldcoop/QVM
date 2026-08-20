@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 
 def test_bullseye_draws_four_tolerance_rings(vtp_df, settings):
     """Regression: 4 rings (exceptional/excellent/good/acceptable) are drawn."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+    from src.visuals import plot_vtp_bullseye
 
     fig = plot_vtp_bullseye(vtp_df, settings)
     circles = [s for s in fig.layout.shapes if s.type == 'circle']
@@ -21,7 +21,7 @@ def test_bullseye_draws_four_tolerance_rings(vtp_df, settings):
 
 def test_bullseye_axes_reach_past_outermost_ring(settings):
     """Regression: axis must always show the outermost ring even with tight data."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+    from src.visuals import plot_vtp_bullseye
 
     df = pd.DataFrame({
         'Location': ['a', 'b'],
@@ -37,7 +37,7 @@ def test_bullseye_axes_reach_past_outermost_ring(settings):
 
 def test_bullseye_has_summary_and_legend_annotations(vtp_df, settings):
     """Regression: summary stats + zone legend present for the Excel export."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+    from src.visuals import plot_vtp_bullseye
 
     fig = plot_vtp_bullseye(vtp_df, settings)
     texts = [a.text for a in fig.layout.annotations]
@@ -48,8 +48,8 @@ def test_bullseye_has_summary_and_legend_annotations(vtp_df, settings):
 
 def test_bullseye_point_colors_match_dark_zone_palette(vtp_df, settings):
     """Regression: point colours use the Catppuccin Mocha theme.ZONE palette."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye
-    from qvm_dashboard.src.theme import ZONE
+    from src.visuals import plot_vtp_bullseye
+    from src.theme import ZONE
 
     fig = plot_vtp_bullseye(vtp_df, settings)
     trace = next(t for t in fig.data if isinstance(t, go.Scatter))
@@ -71,7 +71,7 @@ def test_bullseye_renders_to_png(vtp_df, settings):
     """End-to-end: figure must convert to PNG (path used by the Excel export)."""
     import pytest
     pytest.importorskip('kaleido')
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+    from src.visuals import plot_vtp_bullseye
 
     fig = plot_vtp_bullseye(vtp_df, settings)
     png = fig.to_image(format='png', width=700, height=700, scale=2)
@@ -80,7 +80,7 @@ def test_bullseye_renders_to_png(vtp_df, settings):
 
 def test_bullseye_grid_labels_are_integer_like(settings):
     """Grid labels on bullseye markers should be 23/33 style, not 23.0/33.0."""
-    from qvm_dashboard.src.visuals import plot_vtp_bullseye
+    from src.visuals import plot_vtp_bullseye
 
     df = pd.DataFrame({
         'Location': ['a', 'b', 'c'],

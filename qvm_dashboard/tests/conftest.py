@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from qvm_dashboard.src.utils import load_settings
+from src.utils import load_settings
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def vtp_df() -> pd.DataFrame:
         'Shift (DX)': rng.normal(0, 0.004, 16),
         'Shift (DY)': rng.normal(0, 0.004, 16),
     })
-    sc = np.sqrt(df['Shift (DX)'] ** 2 + df['Shift (DY)'] ** 2)
-    df['PtV Distance'] = sc
-    df['VtP Distance (SC)'] = sc
+    # One distance column, matching what the parser emits; the process-specific
+    # header is applied later by src.display_frame.build_display_frame.
+    df['PtV Distance'] = np.sqrt(df['Shift (DX)'] ** 2 + df['Shift (DY)'] ** 2)
     return df

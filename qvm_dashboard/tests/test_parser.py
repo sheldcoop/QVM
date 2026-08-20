@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 from unittest.mock import patch
-from qvm_dashboard.src.parser import parse_qvm_content, parse_filename, QVMParseError
+from src.parser import parse_qvm_content, parse_filename, QVMParseError
 
 # Sample valid content (excerpt from user's file)
 VALID_CONTENT = """
@@ -85,7 +85,7 @@ def test_parse_filename_no_hint():
     result = parse_filename("random_data.txt")
     assert result['format_hint'] is None
 
-@patch('qvm_dashboard.src.parser.load_settings')
+@patch('src.parser.load_settings')
 def test_parse_qvm_content_valid(mock_settings):
     mock_settings.return_value = {
         'COLUMN_NAMES': {
@@ -205,7 +205,6 @@ _MOCK_SETTINGS = {
         'ptv_distance': 'PtV Distance',
         'x_distance': 'X Distance',
         'y_distance': 'Y Distance',
-        'total_shift': 'SC',
         'pad_pts': 'Pad Pts.',
         'via_pts': 'Via Pts.',
     },
@@ -441,7 +440,7 @@ Distance: VtP_LL_2(ID:6) between Pad_LL_2 and Via_LL_2
 def test_vtp_order_matches_no_warning(caplog):
     """When header locations agree with POSITIONAL_MAPPING order, no warning is logged."""
     import logging
-    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+    with caplog.at_level(logging.WARNING, logger='src.parser'):
         df, _ = parse_qvm_content(_VTP_ORDER_MATCHES, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
     assert df['Location'].tolist() == ['LL_2', 'LL_1']
@@ -453,7 +452,7 @@ def test_vtp_order_mismatch_warns_and_uses_header_location(caplog):
     """When fiducials arrive in a different order than POSITIONAL_MAPPING, a warning
     is logged and the header-derived location is used (not the positional one)."""
     import logging
-    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+    with caplog.at_level(logging.WARNING, logger='src.parser'):
         df, _ = parse_qvm_content(_VTP_ORDER_SWAPPED, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
     # Locations follow the headers (LL_1 arrived first in the file).
@@ -477,7 +476,7 @@ Distance: VtP(ID:3)
            DX =        -0.0004
            DY =         0.0005
 """
-    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+    with caplog.at_level(logging.WARNING, logger='src.parser'):
         df, _ = parse_qvm_content(content, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 1
     assert df.iloc[0]['Grid ID'] == 22       # from POSITIONAL_MAPPING[0]
@@ -551,7 +550,7 @@ Distance: PtV_LL_2(ID:6) between Via_LL_2 and Pad_LL_2
 def test_ptv_order_matches_no_warning(caplog):
     """Pad-to-Via: when header locations agree with POSITIONAL_MAPPING, no warning."""
     import logging
-    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+    with caplog.at_level(logging.WARNING, logger='src.parser'):
         df, _ = parse_qvm_content(_PTV_ORDER_MATCHES, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
     assert (df['Process'] == 'Pad to Via').all()
@@ -563,10 +562,21 @@ def test_ptv_order_matches_no_warning(caplog):
 def test_ptv_order_mismatch_warns_and_uses_header_location(caplog):
     """Pad-to-Via: when fiducials arrive out of order, warn and follow the header label."""
     import logging
-    with caplog.at_level(logging.WARNING, logger='qvm_dashboard.src.parser'):
+    with caplog.at_level(logging.WARNING, logger='src.parser'):
         df, _ = parse_qvm_content(_PTV_ORDER_SWAPPED, _MOCK_SETTINGS_WITH_GRID)
     assert len(df) == 2
     # Locations follow the headers (LL_1 arrived first in the file).
     assert df['Location'].tolist() == ['LL_1', 'LL_2']
     mismatch_warnings = [r for r in caplog.records if 'fiducial order' in r.message.lower()]
     assert len(mismatch_warnings) >= 1
+
+
+def test_parser_emits_exactly_one_distance_column(settings):
+    """Regression: SC used to be written into both COLUMN_NAMES.ptv_distance
+    and COLUMN_NAMES.total_shift. Charts read one, tables the other, and the
+    two drifted. It is stored once now; the Via-to-Pad header is applied later
+    by src.display_frame.build_display_frame."""
+    df, _ = parse_qvm_content(VALID_CONTENT, settings)
+    cn = settings['COLUMN_NAMES']
+    assert cn['ptv_distance'] in df.columns
+    assert cn['total_shift'] not in df.columns

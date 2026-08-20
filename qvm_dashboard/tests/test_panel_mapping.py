@@ -30,7 +30,7 @@ _SETTINGS = {
 
 
 def test_panel_map_renders_16_points():
-    from qvm_dashboard.src.panel_mapping import create_four_quarters_view
+    from src.panel_mapping import create_four_quarters_view
 
     fig = create_four_quarters_view(_SETTINGS)
     assert isinstance(fig, go.Figure)
@@ -41,7 +41,7 @@ def test_panel_map_renders_16_points():
 
 def test_panel_map_hover_has_no_vtp_index():
     """Regression test: 'VtP Index' was removed from the hover text."""
-    from qvm_dashboard.src.panel_mapping import create_four_quarters_view
+    from src.panel_mapping import create_four_quarters_view
 
     fig = create_four_quarters_view(_SETTINGS)
     customdata = fig.data[0].customdata
