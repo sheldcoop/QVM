@@ -17,7 +17,8 @@ Navigate to `http://localhost:8501` in your browser.
 
 ## File Formats
 
-The dashboard accepts QVM text log files (`.txt`). Two formats are supported, distinguished by filename convention.
+The dashboard accepts text log files (`.txt`) in three formats: the two QVM
+registration formats, and Core Shrinkage CAM-order files.
 
 ### Filename Convention
 
@@ -25,8 +26,12 @@ The dashboard accepts QVM text log files (`.txt`). Two formats are supported, di
 |---|---|---|
 | Pad-to-Via | `Post PFC_Pad to Via_Panel 20_F.txt` | `<process>_<type>_<panel>_<side>.txt` |
 | Via-to-Pad | `Via to Pad_Panel 25_F.txt` | `<type>_<panel>_<side>.txt` |
+| Core Shrinkage | `C4F_Core_Shrinkage_Panel 28_Front_CAMorder.txt` | matched on `core_shrinkage` + `Front`/`Back` |
 
-The parser extracts Panel number, Side (F/B), and Process type from the filename automatically. Files that contain `Via to Pad` anywhere in the name are treated as Via-to-Pad format.
+Panel number and Side (F/B) come from the filename. **Pad-to-Via vs Via-to-Pad
+is decided by file content**, not the name — the name only supplies a hint used
+to warn you when the two disagree. Core Shrinkage is the exception: it is a
+different format with a different parser, so it is routed by filename alone.
 
 ### Pad-to-Via (PtV) Format
 
@@ -77,6 +82,28 @@ each `DY` closes a site — so a stray value can only disturb its own site.
 VtP files carry no absolute coordinates, so `Coord. X` / `Coord. Y` are absent
 from VtP data and are dropped from its Excel sheets.
 
+### Core Shrinkage (CS) Format
+
+A different measurement entirely: the *as-built* position of each of the 16
+fiducials on a core layer, compared against its nominal CAM design coordinate.
+The difference across the panel is the core's shrinkage.
+
+These files are routed by **filename**, not by content — any name containing
+`core_shrinkage` or `core shrinkage` goes to the Core Shrinkage parser and never
+reaches the QVM parser. `Front` or `Back` in the name sets the layer, and the
+panel number is read the same way as for QVM files.
+
+```
+C4F_Core_Shrinkage_Panel 28_Front_CAMorder.txt
+C4F_Core_Shrinkage_Panel 28_Back_CAMorder.txt
+```
+
+Front and Back are separate uploads. Upload both to get front↔back registration
+and the side-by-side comparison sheets; either alone still analyses on its own.
+
+Sample files for both layers, plus the reference calculation workbook, are in
+[`sample_data/`](sample_data/).
+
 ---
 
 ## Uploading Files
@@ -111,13 +138,14 @@ The top navigation bar has four tabs:
 | **Panel Map** | Visual layout of all 16 fiducial sites on a PCB panel (always available) |
 | **Pad to Via** | Analysis of PtV files — Quality Control and Analytics |
 | **Via to Pad** | Analysis of VtP files — Quality Control and Analytics |
-| **Alignment** | Coming soon |
+| **Core Shrinkage** | Analysis of Core Shrinkage CAM-order files — 4 sub-views |
 
 ---
 
-## Sub-Views
+## Pad-to-Via / Via-to-Pad Sub-Views
 
-Both process tabs expose the same two sub-views.
+Both QVM process tabs expose the same two sub-views. (Core Shrinkage has its
+own four — see [below](#core-shrinkage-sub-views).)
 
 ### Quality Control
 Table of all measurements with pass/fail colour coding against the Annular Ring
@@ -142,6 +170,43 @@ Three tabs, identical for both processes:
 
 ---
 
+## Core Shrinkage Sub-Views
+
+Scope this tab with its own **Panel** and **Layer** (Front / Back / Both)
+filters. It is independent of the Build Up selector — Core Shrinkage filenames
+carry no Build Up token.
+
+All analysis is measured against `CORE_SHRINKAGE.NOMINAL_COORDS`. Without that
+config the tab degrades gracefully: it warns and shows the raw coordinate tables
+instead of failing.
+
+### Quality Control
+Headline shrinkage in ppm per layer, checked against `shrink_usl_ppm`, with the
+per-fiducial residual table. Residuals above `outlier_um` are flagged as
+outliers to remeasure rather than silently averaged into the fit.
+
+### Analytics
+The three-level model, per layer:
+
+1. **QP Shrinkage** — raw pitch error between fiducial pairs, in µm.
+2. **Scale Factor** — X and Y shrinkage per quadrant, in ppm.
+3. **Affine Analysis** — a least-squares affine fit decomposed into scale,
+   rotation and shear, so fixturing rotation is separated from real shrinkage
+   (`rotation_warn_deg`) and anisotropic shrinkage is called out
+   (`aniso_ppm`). Includes front↔back registration when both layers are loaded.
+
+### Distortion Map
+The deviation field drawn on the panel layout — each fiducial's measured
+displacement from nominal, exaggerated for visibility and coloured by the
+`residual_zones_um` bands, plus a warp surface.
+
+### Method
+A static explainer of how the numbers are derived. No export button.
+
+Every sub-view except Method offers an Excel export — see below.
+
+---
+
 ## Excel Export
 
 One workbook per download, containing:
@@ -160,6 +225,12 @@ image is embedded in its place and the rest of the workbook is unaffected.
 
 The filename is built from the data in scope, e.g.
 `QVM_VTP_P20_F_BU-01_Lot-1234.xlsx`.
+
+**Core Shrinkage** exports its own workbook: per-layer measurement sheets, the
+side-by-side Front/Back table when both are loaded, and — when
+`NOMINAL_COORDS` is configured — `CS Summary`, `QP Shrinkage`, `Scale Factor`,
+`Affine`, `Coordinates` and `Residuals` sheets per layer, plus `Report` and
+`Warnings`. Deviations and residuals are in µm, shrinkage in ppm.
 
 ## Configuration (`config/settings.yaml`)
 
@@ -220,6 +291,20 @@ Constants for the quiver plot's distortion classification: `panel_center_x` /
 outward or inward), `quiver_min_arrow_length`, `quiver_expansion_dot_threshold`,
 `quiver_twist_dot_threshold` and `quiver_twist_magnitude_um`.
 
+### CORE_SHRINKAGE
+Everything the Core Shrinkage tab measures against.
+
+| Key | Meaning |
+|---|---|
+| `NOMINAL_COORDS` | Nominal CAM design position (mm) of each of the 16 fiducials. All shrinkage is measured against this; every site in `GRID_MAPPING` needs an entry. |
+| `shrink_usl_ppm` | Headline-shrinkage pass/fail spec (ppm) |
+| `shrink_ppm` | Below this, a scale reading is noise rather than real shrinkage |
+| `aniso_ppm` | Above this, X and Y differ enough to call it anisotropic |
+| `rotation_warn_deg` | Rotation above this is flagged as fixturing, not shrinkage |
+| `outlier_um` | Per-dot residual above this = outlier / remeasure |
+| `residual_zones_um` | Colour bands for the Distortion Map (must be ascending, and within `outlier_um`) |
+| `distance_usl_mm` / `outlier_cap_mm` | Front↔back offset spec and outlier cap |
+
 ### PLOT_SETTINGS, CHART_HEIGHTS, PANEL_VIEW, FIGURE_SETTINGS, COLORS, EXCEL_EXPORT
 Vector-multiplier slider range; per-chart heights in pixels; panel-map geometry
 and colours; and the Panel Map image path and embed size.
@@ -271,6 +356,7 @@ QVM/
     ├── requirements.txt
     ├── config/
     │   └── settings.yaml           # Runtime config: tolerances, limits, column names, mappings, heights
+    ├── sample_data/                # Core Shrinkage example logs + reference workbook
     ├── assets/
     │   ├── styles.css              # Custom CSS for dark theme and nav button styling
     │   └── Panel_Map.png           # Reference image embedded in Excel measurement sheets
@@ -278,6 +364,7 @@ QVM/
     │   └── sidebar.py              # Upload, per-file overrides, job info, nav button renderer
     ├── src/
     │   ├── parser.py               # QVM text log parser (auto-detects PtV vs VtP)
+    │   ├── core_shrinkage_parser.py # CS log parser + affine / shrinkage maths
     │   ├── ingestion.py            # Parse one upload + resolve its metadata overrides
     │   ├── upload_metadata.py      # Override > filename > Unknown precedence rules
     │   ├── display_frame.py        # THE display table builder (screen + Excel share it)
@@ -292,6 +379,7 @@ QVM/
     │   │   └── distribution.py     #   plot_vtp_box (SC distribution by quarter)
     │   └── views/
     │       ├── base.py             # BaseView: settings slices + shared number formatting
+    │       ├── core_shrinkage.py   # Core Shrinkage: QC, Analytics, Distortion Map, Method
     │       ├── quality_control.py  # QC table, stats tiles, Excel export button
     │       └── registration_scatter.py  # Bullseye + per-site SC bars (shared PtV/VtP)
     └── tests/
