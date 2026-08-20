@@ -19,7 +19,7 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
     Stats card top-right. Zone legend bottom-left.
     """
     col_names = settings.get('COLUMN_NAMES', {})
-    sc_col   = col_names.get('total_shift', 'VtP Distance (SC)')
+    sc_col   = col_names.get('ptv_distance', 'PtV Distance')
     grid_col = col_names.get('grid_id', 'Grid ID')
     loc_col  = col_names.get('location', 'Location')
 
@@ -190,7 +190,7 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
             visible=False,
         ),
         yaxis=dict(
-            title=dict(text='VtP Distance SC (µm)', font=dict(color=theme.TEXT)),
+            title=dict(text='Registration SC (µm)', font=dict(color=theme.TEXT)),
             zeroline=False,
             showgrid=False,
             tickfont=dict(color=theme.TEXT),

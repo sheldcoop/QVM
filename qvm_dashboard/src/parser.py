@@ -93,7 +93,7 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
 
 _EMIT_KEYS = (
     'location', 'grid_id', 'outer_diameter', 'inner_diameter',
-    'coord_x', 'coord_y', 'ptv_distance', 'total_shift',
+    'coord_x', 'coord_y', 'ptv_distance',
     'x_distance', 'y_distance', 'pad_pts', 'via_pts',
 )
 
@@ -157,7 +157,14 @@ def _resolve_location_with_order_check(header_location: Optional[str],
 
 def _emit_row(current: Dict[str, Any], block_index: int, settings: dict,
               warnings: list = None) -> dict:
-    """Build a single output row dict from the accumulated parser state."""
+    """Build a single output row dict from the accumulated parser state.
+
+    The instrument reports one centre-to-centre distance per site (the ``SC``
+    field). It is stored once, under ``COLUMN_NAMES.ptv_distance``, for both
+    processes; the process-specific *display* header (``VtP Distance (SC)`` vs
+    ``PtV Distance``) is applied later by
+    :func:`src.display_frame.build_display_frame`.
+    """
     cols = resolve_columns(settings, _EMIT_KEYS)
     grid_id: Optional[int] = _resolve_grid_id(
         current.get('location', ''), block_index, settings, warnings)
@@ -169,7 +176,6 @@ def _emit_row(current: Dict[str, Any], block_index: int, settings: dict,
         cols['coord_x']: current.get('via_coord_x'),
         cols['coord_y']: current.get('via_coord_y'),
         cols['ptv_distance']: current['sc'],
-        cols['total_shift']: current['sc'],
         cols['x_distance']: current['dx'],
         cols['y_distance']: current['dy'],
         cols['pad_pts']: current.get('pad_pts'),
