@@ -33,6 +33,10 @@ is decided by file content**, not the name — the name only supplies a hint use
 to warn you when the two disagree. Core Shrinkage is the exception: it is a
 different format with a different parser, so it is routed by filename alone.
 
+Both QVM registration formats are handled by one unified parser engine. It does
+not depend on strict location naming (`Via_LL_2` vs `LL2_Via`) or fixed block
+order. Site identity (`UL_1` ... `UR_4`) is assigned from measured coordinates.
+
 ### Pad-to-Via (PtV) Format
 
 Measures the offset between a pad center (absolute X/Y coordinates on the panel) and the drilled via center. Each block corresponds to one hole and contains:
@@ -60,7 +64,7 @@ the optical edge-point count and is optional.
 
 ### Via-to-Pad (VtP) Format
 
-Measures the registration between a laser-drilled via and its target pad in the **local reference frame** of each fiducial site. No absolute X/Y coordinates are available. Each block contains:
+Measures the registration between a laser-drilled via and its target pad in the local reference frame of each fiducial site. Each block contains:
 
 ```
 Circle: Via_LL_2(ID:1, From 65 Pts.)
@@ -73,14 +77,13 @@ Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
            DY =         0.003681
 ```
 
-Via-to-Pad files are parsed **by value position, not by header**, because the
-machine's exporter is unreliable about label lines: back-side files often drop
-the `Circle: Pad`, `Distance:` and location-suffix labels entirely. Per site the
-values always appear in the order *via diameter, pad diameter, SC, DX, DY*, and
-each `DY` closes a site — so a stray value can only disturb its own site.
+Via-to-Pad files are parsed by a format-agnostic extractor because exporter
+headers can vary (for example missing `Circle: Pad` / `Distance:` labels, or
+suffix naming like `LL2_Via`). The parser reads values and coordinates from
+what is present, then resolves canonical site identity geometrically.
 
-VtP files carry no absolute coordinates, so `Coord. X` / `Coord. Y` are absent
-from VtP data and are dropped from its Excel sheets.
+If coordinates are present in VtP logs, they are retained; if they are missing,
+the parser still emits rows from the available measurement values.
 
 ### Core Shrinkage (CS) Format
 
@@ -235,7 +238,10 @@ side-by-side Front/Back table when both are loaded, and — when
 ## Configuration (`config/settings.yaml`)
 
 ### POSITIONAL_MAPPING
-Maps block index (0–15, in the order blocks appear in the file top-to-bottom) to Grid ID. Grid IDs are two-digit codes where the tens digit is the quarter (1=UL, 2=LL, 3=LR, 4=UR) and the units digit is the hole number within that quarter (1–4).
+Legacy compatibility mapping for historical workflows. The current unified QVM
+parser no longer assigns identity by block order; it assigns locations from
+coordinates. Keep this map consistent with your panel layout for any external
+tools that still consume it.
 
 ```yaml
 POSITIONAL_MAPPING:
@@ -257,10 +263,11 @@ POSITIONAL_MAPPING:
   - "44"   # block 15 → UR_4
 ```
 
-Change this list if the machine's block output order changes.
+Changing this list is no longer required for normal QVM parsing.
 
 ### GRID_MAPPING
-Maps location strings (e.g., `UL_1`) to Grid IDs (e.g., `11`). Used for display and filtering. Must be consistent with `POSITIONAL_MAPPING`.
+Maps canonical location strings (e.g., `UL_1`) to Grid IDs (e.g., `11`). Used
+for parser assignment output, display, sorting and filtering.
 
 ### TOLERANCES
 Pass/fail threshold for Quality Control colouring.
@@ -290,6 +297,10 @@ Constants for the quiver plot's distortion classification: `panel_center_x` /
 `panel_center_y` (panel centre in mm, used to decide whether an error points
 outward or inward), `quiver_min_arrow_length`, `quiver_expansion_dot_threshold`,
 `quiver_twist_dot_threshold` and `quiver_twist_magnitude_um`.
+
+For parsing, coordinate-based site assignment primarily estimates panel center
+from observed points; `panel_center_x`/`panel_center_y` are a sparse-data
+fallback.
 
 ### CORE_SHRINKAGE
 Everything the Core Shrinkage tab measures against.

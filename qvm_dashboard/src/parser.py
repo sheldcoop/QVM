@@ -1,8 +1,23 @@
-import re
+"""Unified QVM registration parser.
+
+This module parses both Pad-to-Via and Via-to-Pad exports through one
+coordinate-first engine:
+
+- Extract site measurements from loosely formatted Circle/Distance blocks.
+- Infer process as a row tag (Via to Pad / Pad to Via).
+- Assign canonical site identity (UL/LL/LR/UR + 1..4) from coordinates,
+  independent of naming conventions and block order.
+
+Location strings in headers are treated only as weak hints for diagnostics.
+"""
+
 import os
+import re
 import logging
+import itertools
+from typing import Dict, Any, Optional, List, Tuple
+
 import pandas as pd
-from typing import Dict, Any, Optional
 
 from src.utils import load_settings, resolve_columns
 
@@ -16,17 +31,20 @@ class QVMParseError(Exception):
 
 
 _PTS_RE = re.compile(r"From\s+(\d+)\s*Pts\.")
-# Accept both long form (Panel 28 / Panel_28 / Panel28) and shorthand (P28).
 _PANEL_RE = re.compile(r'(?:panel[\s_]*|(?:^|[_\s-])p)(\d+)(?=$|[_\s-])', re.IGNORECASE)
 _SIDE_RE = re.compile(r'(?:^|[_\s-])(front|back|[fb])(?=$|[_\s-])', re.IGNORECASE)
 _BU_RE = re.compile(r'(?:^|[_\s-])bu[-_\s]?(\d+)(?=$|[_\s-])', re.IGNORECASE)
+_CIRCLE_RE = re.compile(r'^Circle:\s*(.+?)\s*\(')
+_LOC_RE = re.compile(r'\b([UL][LR])[_\s-]?(\d)\b', re.IGNORECASE)
+
+_EMIT_KEYS = (
+    'location', 'grid_id', 'outer_diameter', 'inner_diameter',
+    'coord_x', 'coord_y', 'ptv_distance',
+    'x_distance', 'y_distance', 'pad_pts', 'via_pts',
+)
 
 
 def _parse_value(line: str) -> float:
-    """Parse `<label> = <number>` and return the number.
-
-    Raises QVMParseError with the offending line if the format is malformed.
-    """
     if '=' not in line:
         raise QVMParseError(f"Malformed measurement line (missing '='): {line!r}")
     try:
@@ -35,27 +53,14 @@ def _parse_value(line: str) -> float:
         raise QVMParseError(f"Could not parse number from line {line!r}: {e}")
 
 
+def _value_after_equals(s: str) -> Optional[float]:
+    try:
+        return float(s.split('=', 1)[1].strip())
+    except (IndexError, ValueError):
+        return None
+
+
 def parse_filename(filename: str) -> Dict[str, Optional[str]]:
-    """Extract a format hint, Panel Number, and Side from an uploaded filename.
-
-    Naming is lenient — any casing of 'VTP'/'PTV' (or the longer 'Via to Pad' /
-    'Pad to Via') is accepted, anywhere in the name:
-
-      Pad-to-Via:  ...PTV..._Panel <N>_<Side>.txt   e.g. PostPFC_PTV_Panel20_F.txt
-      Via-to-Pad:  ...VTP..._Panel <N>_<Side>.txt   e.g. vtp_panel_25_f.txt
-
-    Routing in the dashboard is content-driven (see parse_qvm_content). The
-    format_hint here is informational — used by the upload code to warn when
-    the filename and the parsed content disagree, or when no hint is present.
-
-    Returns:
-        {
-            'format_hint': 'Via to Pad' | 'Pad to Via' | None,
-            'Panel Number': str | 'Unknown',
-            'Side': 'F' | 'B' | 'Unknown',
-            'Build Up': 'BU-<NN>' | 'Unknown',
-        }
-    """
     basename = os.path.basename(filename)
     name_without_ext, _ = os.path.splitext(basename)
     lower = name_without_ext.lower()
@@ -68,7 +73,7 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
     elif has_ptv and not has_vtp:
         format_hint = 'Pad to Via'
     else:
-        format_hint = None  # absent or ambiguous (both)
+        format_hint = None
 
     panel_match = _PANEL_RE.search(name_without_ext)
     panel_number = panel_match.group(1) if panel_match else 'Unknown'
@@ -91,326 +96,383 @@ def parse_filename(filename: str) -> Dict[str, Optional[str]]:
     }
 
 
-_EMIT_KEYS = (
-    'location', 'grid_id', 'outer_diameter', 'inner_diameter',
-    'coord_x', 'coord_y', 'ptv_distance',
-    'x_distance', 'y_distance', 'pad_pts', 'via_pts',
-)
+def _canonical_location(raw: str) -> str:
+    m = _LOC_RE.search(raw or '')
+    if not m:
+        return ''
+    quad, idx = m.group(1).upper(), m.group(2)
+    return f"{quad}_{idx}"
 
 
-def _resolve_grid_id(location: str, block_index: int, settings: dict,
-                     warnings: list = None) -> Optional[int]:
-    """Resolve a site's Grid ID.
+def _extract_location_from_circle(label: str) -> str:
+    if not label:
+        return ''
+    base = label.strip()
+    direct = _canonical_location(base)
+    if direct:
+        return direct
+    lowered = base.lower()
+    for token in ('via', 'pad'):
+        lowered = re.sub(rf'(^|[_\s-]){token}($|[_\s-])', '_', lowered, flags=re.IGNORECASE)
+    return _canonical_location(lowered)
 
-    The location name is the source of truth: it maps directly to a Grid ID via
-    GRID_MAPPING and is recoverable from any of the Via/Pad/Distance lines, so
-    this survives an engineer stripping the suffix off some lines or the blocks
-    arriving out of order. POSITIONAL_MAPPING (block order) is the fallback used
-    only when no location could be read at all.
-    """
-    grid_mapping = settings.get('GRID_MAPPING', {})
-    if location and location in grid_mapping:
-        return int(grid_mapping[location])
-    positional_mapping = settings.get('POSITIONAL_MAPPING', [])
-    if block_index < len(positional_mapping):
-        return int(positional_mapping[block_index])
-    msg = (
-        "Location %r not in GRID_MAPPING and block index %d exceeds "
-        "POSITIONAL_MAPPING length %d; Grid ID will be None."
-        % (location, block_index, len(positional_mapping))
-    )
-    logger.warning(msg)
-    if warnings is not None:
-        warnings.append(msg)
+
+def _circle_kind(label: str) -> Optional[str]:
+    s = (label or '').lower()
+    has_via = 'via' in s
+    has_pad = 'pad' in s
+    if has_via and not has_pad:
+        return 'via'
+    if has_pad and not has_via:
+        return 'pad'
     return None
 
 
-def _resolve_location_with_order_check(header_location: Optional[str],
-                                       block_index: int, settings: dict,
-                                       process_label: str,
-                                       warnings: list = None) -> str:
-    """Resolve a site's location, label-first, warning if the order changed.
+def _distance_process_hint(label: str) -> Optional[str]:
+    s = (label or '').lower()
+    if 'ptv' in s:
+        return 'Pad to Via'
+    if 'vtp' in s or 'btp' in s:
+        return 'Via to Pad'
+    return None
 
-    The location read from the file's header label is the source of truth. It is
-    cross-checked against the location POSITIONAL_MAPPING expects for this block
-    position; if they disagree, the fiducials likely arrived out of order, so a
-    warning is logged and the header-derived location is used. When no header
-    label is present, the positional (expected) location is used as a fallback.
-    """
-    positional = settings.get('POSITIONAL_MAPPING', [])
-    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
-    expected_grid_id = int(positional[block_index]) if block_index < len(positional) else None
-    expected_location = reverse_grid.get(expected_grid_id, '')
-    if header_location:
-        if header_location != expected_location:
+
+def _new_site() -> Dict[str, Any]:
+    return {
+        'circles': [],
+        'active_idx': None,
+        'untyped_diams': [],
+        'untyped_coords': [],
+        'pending_x': None,
+        'distance_label': '',
+        'sc': None,
+        'dx': None,
+        'dy': None,
+    }
+
+
+def _add_coord(site: Dict[str, Any], axis: str, value: Optional[float]) -> None:
+    if value is None:
+        return
+    idx = site.get('active_idx')
+    if idx is not None and 0 <= idx < len(site['circles']):
+        site['circles'][idx][axis] = value
+        return
+
+    if axis == 'x':
+        site['pending_x'] = value
+        return
+
+    px = site.get('pending_x')
+    if px is None:
+        return
+    site['untyped_coords'].append((px, value))
+    site['pending_x'] = None
+
+
+def _extract_sites(content: str) -> List[Dict[str, Any]]:
+    sites: List[Dict[str, Any]] = []
+    site = _new_site()
+
+    for line in content.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+
+        m = _CIRCLE_RE.match(s)
+        if m:
+            label = m.group(1).strip()
+            pts_m = _PTS_RE.search(s)
+            site['circles'].append({
+                'label': label,
+                'kind': _circle_kind(label),
+                'location': _extract_location_from_circle(label),
+                'pts': int(pts_m.group(1)) if pts_m else None,
+                'x': None,
+                'y': None,
+                'diameter': None,
+            })
+            site['active_idx'] = len(site['circles']) - 1
+            continue
+
+        if s.startswith('Distance:'):
+            site['distance_label'] = s
+            site['active_idx'] = None
+            continue
+
+        if s.startswith('Coord.') and 'X' in s:
+            _add_coord(site, 'x', _value_after_equals(s))
+            continue
+
+        if s.startswith('Coord.') and 'Y' in s:
+            _add_coord(site, 'y', _value_after_equals(s))
+            continue
+
+        if 'Diameter' in s:
+            val = _value_after_equals(s)
+            idx = site.get('active_idx')
+            if idx is not None and 0 <= idx < len(site['circles']):
+                site['circles'][idx]['diameter'] = val
+            else:
+                site['untyped_diams'].append(val)
+            continue
+
+        if s.startswith('SC'):
+            site['sc'] = _value_after_equals(s)
+            continue
+
+        if s.startswith('DX'):
+            site['dx'] = _value_after_equals(s)
+            continue
+
+        if s.startswith('DY'):
+            site['dy'] = _value_after_equals(s)
+            sites.append(site)
+            site = _new_site()
+
+    return sites
+
+
+def _resolve_site_measurements(site: Dict[str, Any]) -> Dict[str, Any]:
+    circles = site['circles']
+    via_circle = next((c for c in circles if c.get('kind') == 'via'), None)
+    pad_circle = next((c for c in circles if c.get('kind') == 'pad'), None)
+
+    if via_circle is None and circles:
+        via_circle = circles[0]
+    if pad_circle is None and len(circles) > 1:
+        pad_circle = circles[1]
+
+    untyped_diams = list(site.get('untyped_diams') or [])
+    untyped_coords = list(site.get('untyped_coords') or [])
+
+    via_diam = via_circle.get('diameter') if via_circle else None
+    pad_diam = pad_circle.get('diameter') if pad_circle else None
+    if via_diam is None and untyped_diams:
+        via_diam = untyped_diams.pop(0)
+    if pad_diam is None and untyped_diams:
+        pad_diam = untyped_diams.pop(0)
+
+    via_xy = None
+    if via_circle and via_circle.get('x') is not None and via_circle.get('y') is not None:
+        via_xy = (via_circle['x'], via_circle['y'])
+    elif untyped_coords:
+        via_xy = untyped_coords.pop(0)
+
+    pad_xy = None
+    if pad_circle and pad_circle.get('x') is not None and pad_circle.get('y') is not None:
+        pad_xy = (pad_circle['x'], pad_circle['y'])
+    elif untyped_coords:
+        pad_xy = untyped_coords.pop(0)
+
+    location_hint = ''
+    if via_circle and via_circle.get('location'):
+        location_hint = via_circle['location']
+    elif pad_circle and pad_circle.get('location'):
+        location_hint = pad_circle['location']
+
+    process_hint = _distance_process_hint(site.get('distance_label', ''))
+    if process_hint is None:
+        via_idx = next((i for i, c in enumerate(circles) if c.get('kind') == 'via'), None)
+        pad_idx = next((i for i, c in enumerate(circles) if c.get('kind') == 'pad'), None)
+        if via_idx is not None and pad_idx is not None:
+            process_hint = 'Via to Pad' if via_idx < pad_idx else 'Pad to Via'
+
+    return {
+        'location_hint': location_hint,
+        'via_diameter': via_diam,
+        'pad_diameter': pad_diam,
+        'via_coord_x': via_xy[0] if via_xy else None,
+        'via_coord_y': via_xy[1] if via_xy else None,
+        'pad_coord_x': pad_xy[0] if pad_xy else None,
+        'pad_coord_y': pad_xy[1] if pad_xy else None,
+        'via_pts': via_circle.get('pts') if via_circle else None,
+        'pad_pts': pad_circle.get('pts') if pad_circle else None,
+        'sc': site.get('sc'),
+        'dx': site.get('dx'),
+        'dy': site.get('dy'),
+        'process_hint': process_hint,
+    }
+
+
+def _pick_process(sites: List[Dict[str, Any]]) -> str:
+    via_to_pad = sum(1 for s in sites if s.get('process_hint') == 'Via to Pad')
+    pad_to_via = sum(1 for s in sites if s.get('process_hint') == 'Pad to Via')
+    if via_to_pad >= pad_to_via:
+        return 'Via to Pad'
+    return 'Pad to Via'
+
+
+def _quadrant(cx: float, cy: float, x: float, y: float) -> str:
+    if x < cx and y >= cy:
+        return 'UL'
+    if x < cx and y < cy:
+        return 'LL'
+    if x >= cx and y < cy:
+        return 'LR'
+    return 'UR'
+
+
+def _assign_indexes(points: List[Tuple[int, float, float]]) -> Dict[int, int]:
+    if not points:
+        return {}
+    if len(points) == 1:
+        return {points[0][0]: 1}
+
+    xs = [p[1] for p in points]
+    ys = [p[2] for p in points]
+    x_left, x_right = min(xs), max(xs)
+    y_top, y_bottom = max(ys), min(ys)
+
+    templates = {
+        1: (x_left, y_top),
+        2: (x_left, y_bottom),
+        3: (x_right, y_bottom),
+        4: (x_right, y_top),
+    }
+
+    n = min(len(points), 4)
+    best_cost = None
+    best_assign: Dict[int, int] = {}
+
+    for idx_perm in itertools.permutations((1, 2, 3, 4), n):
+        total = 0.0
+        local = {}
+        for (site_idx, x, y), idx in zip(points[:n], idx_perm):
+            tx, ty = templates[idx]
+            total += (x - tx) ** 2 + (y - ty) ** 2
+            local[site_idx] = idx
+        if best_cost is None or total < best_cost:
+            best_cost = total
+            best_assign = local
+
+    if len(points) > 4:
+        # Best effort for unexpected extras: assign by nearest template.
+        used = set(best_assign.values())
+        for site_idx, x, y in points[4:]:
+            nearest = min(
+                (idx for idx in templates if idx not in used),
+                key=lambda idx: (x - templates[idx][0]) ** 2 + (y - templates[idx][1]) ** 2,
+                default=1,
+            )
+            best_assign[site_idx] = nearest
+            used.add(nearest)
+
+    return best_assign
+
+
+def _assign_locations(sites: List[Dict[str, Any]], settings: dict, warnings: List[str]) -> None:
+    grid_mapping = settings.get('GRID_MAPPING', {})
+    diag_cfg = settings.get('DIAGNOSTICS', {})
+    fallback_cx = float(diag_cfg.get('panel_center_x', 255.0))
+    fallback_cy = float(diag_cfg.get('panel_center_y', 257.5))
+
+    observed: List[Tuple[float, float]] = []
+    for s in sites:
+        x = s.get('via_coord_x')
+        y = s.get('via_coord_y')
+        if x is None or y is None:
+            x = s.get('pad_coord_x')
+            y = s.get('pad_coord_y')
+        if x is not None and y is not None:
+            observed.append((x, y))
+
+    if len(observed) >= 4:
+        xs = sorted(p[0] for p in observed)
+        ys = sorted(p[1] for p in observed)
+        mid = len(observed) // 2
+        if len(observed) % 2 == 0:
+            cx = (xs[mid - 1] + xs[mid]) / 2.0
+            cy = (ys[mid - 1] + ys[mid]) / 2.0
+        else:
+            cx = xs[mid]
+            cy = ys[mid]
+    else:
+        cx = fallback_cx
+        cy = fallback_cy
+
+    quadrant_points: Dict[str, List[Tuple[int, float, float]]] = {'UL': [], 'LL': [], 'LR': [], 'UR': []}
+
+    for i, s in enumerate(sites):
+        x = s.get('via_coord_x')
+        y = s.get('via_coord_y')
+        if x is None or y is None:
+            x = s.get('pad_coord_x')
+            y = s.get('pad_coord_y')
+        if x is None or y is None:
+            continue
+        q = _quadrant(cx, cy, x, y)
+        quadrant_points[q].append((i, x, y))
+
+    resolved: Dict[int, str] = {}
+    for q, points in quadrant_points.items():
+        assigned = _assign_indexes(points)
+        for site_idx, idx in assigned.items():
+            resolved[site_idx] = f"{q}_{idx}"
+
+    for i, s in enumerate(sites):
+        loc = resolved.get(i, '')
+        hint = s.get('location_hint', '')
+        if hint and not loc:
+            loc = hint
+        if hint and loc and hint != loc:
             msg = (
-                "%s block %d: header says %r but POSITIONAL_MAPPING expected %r — "
-                "fiducial order may have changed. Using header-derived location."
-                % (process_label, block_index, header_location, expected_location)
+                f"Site {i}: coordinate-based location {loc!r} differs from header location {hint!r}; "
+                "using coordinates."
             )
             logger.warning(msg)
-            if warnings is not None:
-                warnings.append(msg)
-        return header_location
-    return expected_location
+            warnings.append(msg)
+
+        s['location'] = loc
+        s['grid_id'] = int(grid_mapping[loc]) if loc in grid_mapping else None
+        if not loc:
+            msg = f"Site {i}: could not resolve location from coordinates."
+            logger.warning(msg)
+            warnings.append(msg)
 
 
-def _emit_row(current: Dict[str, Any], block_index: int, settings: dict,
-              warnings: list = None) -> dict:
-    """Build a single output row dict from the accumulated parser state.
-
-    The instrument reports one centre-to-centre distance per site (the ``SC``
-    field). It is stored once, under ``COLUMN_NAMES.ptv_distance``, for both
-    processes; the process-specific *display* header (``VtP Distance (SC)`` vs
-    ``PtV Distance``) is applied later by
-    :func:`src.display_frame.build_display_frame`.
-    """
+def _emit_row(current: Dict[str, Any], settings: dict) -> dict:
     cols = resolve_columns(settings, _EMIT_KEYS)
-    grid_id: Optional[int] = _resolve_grid_id(
-        current.get('location', ''), block_index, settings, warnings)
     return {
         cols['location']: current.get('location', ''),
-        cols['grid_id']: grid_id,
+        cols['grid_id']: current.get('grid_id'),
         cols['outer_diameter']: current.get('pad_diameter'),
         cols['inner_diameter']: current.get('via_diameter'),
         cols['coord_x']: current.get('via_coord_x'),
         cols['coord_y']: current.get('via_coord_y'),
-        cols['ptv_distance']: current['sc'],
-        cols['x_distance']: current['dx'],
-        cols['y_distance']: current['dy'],
+        cols['ptv_distance']: current.get('sc'),
+        cols['x_distance']: current.get('dx'),
+        cols['y_distance']: current.get('dy'),
         cols['pad_pts']: current.get('pad_pts'),
         cols['via_pts']: current.get('via_pts'),
     }
 
 
-def _step_distance_tail(s: str, state: str, current: Dict[str, Any]):
-    """Advance the shared DIST_HEADER → SC → DX → DY tail by one line.
-
-    Returns (new_state, completed) where completed=True signals the block
-    is fully parsed and the caller should emit a row.
-    """
-    if state == "DIST_HEADER" and s.startswith("Distance:"):
-        return "SC", False
-    if state == "SC" and s.startswith("SC"):
-        current['sc'] = _parse_value(s)
-        return "DX", False
-    if state == "DX" and s.startswith("DX"):
-        current['dx'] = _parse_value(s)
-        return "DY", False
-    if state == "DY" and s.startswith("DY"):
-        current['dy'] = _parse_value(s)
-        return "IDLE", True
-    return state, False
-
-
-def _parse_pad_to_via(content: str, settings: dict, warnings: list) -> pd.DataFrame:
-    """Parse a Pad-to-Via QVM log.
-
-    Per-block order in source: Pad circle → Via circle → Distance.
-    """
-    rows: list = []
-    current: Dict[str, Any] = {}
-    block_index = 0
-    state = "IDLE"
-
-    for line in content.splitlines():
-        s = line.strip()
-
-        if state == "IDLE":
-            if s.startswith("Circle: Pad_"):
-                pts_m = _PTS_RE.search(s)
-                current = {
-                    'location': s.split('(')[0].replace('Circle: Pad_', '').strip(),
-                    'pad_pts': int(pts_m.group(1)) if pts_m else None,
-                }
-                state = "PAD_X"
-
-        elif state == "PAD_X":
-            if s.startswith("Coord.") and 'X' in s:
-                current['pad_coord_x'] = _parse_value(s)
-                state = "PAD_Y"
-
-        elif state == "PAD_Y":
-            if s.startswith("Coord.") and 'Y' in s:
-                current['pad_coord_y'] = _parse_value(s)
-                state = "PAD_DIAM"
-
-        elif state == "PAD_DIAM":
-            if 'Diameter' in s:
-                current['pad_diameter'] = _parse_value(s)
-                state = "VIA_HEADER"
-
-        elif state == "VIA_HEADER":
-            if s.startswith("Circle: Via_"):
-                pts_m = _PTS_RE.search(s)
-                current['via_pts'] = int(pts_m.group(1)) if pts_m else None
-                state = "VIA_X"
-
-        elif state == "VIA_X":
-            if s.startswith("Coord.") and 'X' in s:
-                current['via_coord_x'] = _parse_value(s)
-                state = "VIA_Y"
-
-        elif state == "VIA_Y":
-            if s.startswith("Coord.") and 'Y' in s:
-                current['via_coord_y'] = _parse_value(s)
-                state = "VIA_DIAM"
-
-        elif state == "VIA_DIAM":
-            if 'Diameter' in s:
-                current['via_diameter'] = _parse_value(s)
-                state = "DIST_HEADER"
-
-        else:
-            state, completed = _step_distance_tail(s, state, current)
-            if completed:
-                # Label-first identity with a warning if the file's fiducial
-                # order disagrees with POSITIONAL_MAPPING (mirrors Via-to-Pad).
-                current['location'] = _resolve_location_with_order_check(
-                    current.get('location', ''), block_index, settings, "Pad-to-Via", warnings)
-                rows.append(_emit_row(current, block_index, settings, warnings))
-                block_index += 1
-                current = {}
-
-    if state != "IDLE":
-        msg = f"Pad-to-Via file ended mid-block in state {state}; trailing data discarded."
-        logger.warning(msg)
-        warnings.append(msg)
-    if not rows:
-        raise QVMParseError("No valid measurement blocks found in the file.")
-    return pd.DataFrame(rows)
-
-
-def _value_after_equals(s: str) -> Optional[float]:
-    """Parse the number after '=' on a measurement line, or None if malformed."""
-    try:
-        return float(s.split('=', 1)[1].strip())
-    except (IndexError, ValueError):
-        return None
-
-
-def _parse_via_to_pad(content: str, settings: dict, warnings: list) -> pd.DataFrame:
-    """Parse a Via-to-Pad QVM log purely by VALUE position — never by headers.
-
-    The exporter is unreliable about header/label lines: the back-side files drop
-    the 'Circle: Pad' and 'Distance:' headers (and sometimes the 'Circle: Via'
-    header and the 'LL_*' location suffix) entirely. The measurement VALUES,
-    however, are always complete and always in the same order, so this parser
-    reads only the value lines and ignores every header, location, and ID:
-
-        per site, in order:   Diameter(via)  Diameter(pad)  SC  DX  DY
-
-    The first diameter belongs to the Via (inner), the second to the Pad (outer);
-    SC/DX/DY are that site's shift. Each DY closes a site, so a stray value can
-    only disturb its own site, not the ones after it.
-
-    When 'Circle: Via_<loc>' headers are present, the location suffix is extracted
-    and cross-checked against POSITIONAL_MAPPING. A warning is logged if the order
-    in the file differs from what POSITIONAL_MAPPING expects. When the suffix is
-    absent (back-side files), site identity falls back to block order as before.
-
-    Coord. X/Y lines are present in the file but intentionally not captured (the
-    downstream VtP views work from shifts). Point counts ('From N Pts.') are read
-    from Circle headers when present, on a best-effort basis.
-    """
-    rows: list = []
-    block_index = 0
-    diams: list = []          # diameters seen in the current site, in order
-    pending_pts: list = []    # 'From N Pts.' from Circle headers in the current site
-    header_location: Optional[str] = None   # location suffix from Circle: Via_ header
-    sc = dx = dy = None
-
-    for line in content.splitlines():
-        s = line.strip()
-        if s.startswith("Circle:"):
-            m = _PTS_RE.search(s)
-            pending_pts.append(int(m.group(1)) if m else None)
-            # Best-effort: extract location suffix from Via header when present.
-            if "Via_" in s:
-                loc = s.split('(')[0].replace('Circle: Via_', '').strip()
-                if loc:
-                    header_location = loc
-        elif s.startswith("Diameter"):
-            diams.append(_value_after_equals(s))
-        elif s.startswith("SC"):
-            sc = _value_after_equals(s)
-        elif s.startswith("DX"):
-            dx = _value_after_equals(s)
-        elif s.startswith("DY"):
-            # DY is the last value of a site — close it out and emit.
-            dy = _value_after_equals(s)
-            location = _resolve_location_with_order_check(
-                header_location, block_index, settings, "Via-to-Pad", warnings)
-            current: Dict[str, Any] = {
-                'location': location,
-                'via_diameter': diams[0] if len(diams) > 0 else None,
-                'pad_diameter': diams[1] if len(diams) > 1 else None,
-                'via_pts': pending_pts[0] if len(pending_pts) > 0 else None,
-                'pad_pts': pending_pts[1] if len(pending_pts) > 1 else None,
-                'sc': sc, 'dx': dx, 'dy': dy,
-            }
-            rows.append(_emit_row(current, block_index, settings, warnings))
-            block_index += 1
-            diams = []
-            pending_pts = []
-            header_location = None
-            sc = dx = dy = None
-
-    if not rows:
-        raise QVMParseError("No valid measurement blocks found in the file.")
-    return pd.DataFrame(rows)
-
-
 def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
-    """Parse raw QVM text log content into a DataFrame plus a list of warnings.
-
-    Auto-detects format by checking whether the first 'Circle: Via_' marker
-    appears before any 'Circle: Pad_' marker (Via-to-Pad) or after one
-    (Pad-to-Via). The resulting DataFrame carries a 'Process' column tagged
-    'Via to Pad' or 'Pad to Via' — this is the source of truth for routing,
-    regardless of what the user named the file.
-
-    Returns:
-        (df, warnings) where warnings is a list of human-readable warning strings
-        covering: fiducial order mismatches, unresolvable Grid IDs, missing sites,
-        outlier SC distances, and mid-block file truncation.
-    """
     if settings is None:
         settings = load_settings()
-    warnings: list = []
-    # Underscore-agnostic so a circle missing its location suffix (e.g. a bare
-    # 'Circle: Via(ID:1, ...)') is still detected and routed correctly.
-    first_via = content.find('Circle: Via')
-    first_pad = content.find('Circle: Pad')
-    via_first = first_via != -1 and (first_pad == -1 or first_via < first_pad)
-    if via_first or 'VtP[' in content:
-        df = _parse_via_to_pad(content, settings, warnings)
-        df['Process'] = 'Via to Pad'
-    else:
-        df = _parse_pad_to_via(content, settings, warnings)
-        df['Process'] = 'Pad to Via'
+    warnings: List[str] = []
+
+    raw_sites = _extract_sites(content)
+    if not raw_sites:
+        raise QVMParseError("No valid measurement blocks found in the file.")
+
+    sites = [_resolve_site_measurements(s) for s in raw_sites]
+    if not sites:
+        raise QVMParseError("No valid measurement blocks found in the file.")
+
+    process = _pick_process(sites)
+    _assign_locations(sites, settings, warnings)
+
+    rows = [_emit_row(s, settings) for s in sites]
+    df = pd.DataFrame(rows)
+    df['Process'] = process
 
     col_names = settings.get('COLUMN_NAMES', {})
     grid_id_col_name = col_names.get('grid_id', 'Grid ID')
-    positional = settings.get('POSITIONAL_MAPPING', [])
-    reverse_grid = {int(v): k for k, v in settings.get('GRID_MAPPING', {}).items()}
 
-    # Warn about fiducials expected by POSITIONAL_MAPPING but absent in the file.
-    if grid_id_col_name in df.columns and positional:
-        present_gids = set(df[grid_id_col_name].dropna().astype(int).tolist())
-        for gid_str in positional:
-            gid = int(gid_str)
-            if gid not in present_gids:
-                loc = reverse_grid.get(gid, f'Grid {gid}')
-                msg = (f"Fiducial {gid} ({loc}) expected by POSITIONAL_MAPPING "
-                       f"but not found in file.")
-                logger.warning(msg)
-                warnings.append(msg)
-
-    # Warn about outlier SC distances (> configurable cap).
     dist_col_name = col_names.get('ptv_distance', 'PtV Distance')
-    is_vtp = not df.empty and df['Process'].iloc[0] == 'Via to Pad'
-    cfg_key = 'VTP_REGISTRATION' if is_vtp else 'PTV_REGISTRATION'
+    cfg_key = 'VTP_REGISTRATION' if process == 'Via to Pad' else 'PTV_REGISTRATION'
     cap_um = float(settings.get(cfg_key, {}).get('outlier_cap_um', 1000.0))
     cap_mm = cap_um / 1000.0
     if dist_col_name in df.columns:
@@ -423,11 +485,13 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
             logger.warning(msg)
             warnings.append(msg)
 
+    if df.empty:
+        raise QVMParseError("No valid measurement blocks found in the file.")
+
     return df, warnings
 
 
 def parse_qvm_file(filepath: str, settings: Optional[dict] = None) -> tuple:
-    """Read a file and parse it. Returns (df, warnings) — see parse_qvm_content."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()

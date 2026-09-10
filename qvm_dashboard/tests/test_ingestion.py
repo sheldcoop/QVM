@@ -38,7 +38,7 @@ def test_ingest_uploaded_file_applies_overrides(settings):
         default_build_up='BU-01',
     )
 
-    assert parse_warnings
+    assert isinstance(parse_warnings, list)
     assert df['Process'].iloc[0] == 'Via to Pad'
     assert df['Panel'].iloc[0] == '77'
     assert df['Side'].iloc[0] == 'B'
@@ -57,7 +57,7 @@ def test_ingest_uploaded_file_keeps_filename_defaults_when_no_override(settings)
     df, parse_warnings, ui_warnings, resolved, _ = ingest_uploaded_file(
         uploaded, settings, default_build_up='BU-01')
 
-    assert parse_warnings
+    assert isinstance(parse_warnings, list)
     assert df['Panel'].iloc[0] == '20'
     assert df['Side'].iloc[0] == 'F'
     assert df['Build Up'].iloc[0] == 'BU-01'

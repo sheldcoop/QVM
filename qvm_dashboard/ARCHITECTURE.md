@@ -79,9 +79,11 @@ Parsing and workbook construction are both memoised with `st.cache_data`
 whole script on every widget interaction, so without that the app re-parsed
 every file and re-rendered every Excel chart on each nav click.
 
-Routing is **content-driven** for the two QVM formats: `parser.parse_qvm_content`
-decides Pad-to-Via vs Via-to-Pad from the file body, and the filename only
-contributes Panel / Side metadata.
+Routing is content-driven for the two QVM formats, but parsing now runs through
+one unified engine: `parser.parse_qvm_content` extracts site measurements from
+both formats, tags each row with process (`Pad to Via` / `Via to Pad`), then
+assigns canonical site identity from coordinates. Filename metadata still only
+contributes Panel / Side hints.
 
 **Core Shrinkage is the exception** — a different log format with a different
 parser, so it is routed by filename (`core_shrinkage`) *before* the QVM parser
@@ -131,7 +133,7 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 | Which **columns appear in the table or the export** | `src/display_frame.py` (both read from it) |
 | The **Excel sheet layout** | `src/excel_export.py` |
 | The QC **stats tiles / fail highlighting** | `src/views/quality_control.py` |
-| **Parsing** of the QVM log format | `src/parser.py` |
+| Unified coordinate-first parsing of both QVM formats | `src/parser.py` |
 | Core Shrinkage **parsing or maths** | `src/core_shrinkage_parser.py` |
 | A Core Shrinkage **sub-view** | `src/views/core_shrinkage.py` |
 | **Nominal panel geometry / shrinkage specs** | `config/settings.yaml` → `CORE_SHRINKAGE` |
@@ -150,6 +152,8 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 - The instrument's centre-to-centre distance is stored **once**, under
   `COLUMN_NAMES.ptv_distance`. The Via-to-Pad header `VtP Distance (SC)` is a
   display label applied in `build_display_frame` — not a second column.
+- QVM site identity is coordinate-first: parser output location (`UL_1` ...
+  `UR_4`) is derived from geometry, not strict header naming or block order.
 - Core Shrinkage measures against `CORE_SHRINKAGE.NOMINAL_COORDS`. Without it
   the view degrades to raw coordinate tables rather than failing, and every
   reader accesses the block through `.get()` defaults — which is why it is
