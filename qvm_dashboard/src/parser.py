@@ -13,6 +13,7 @@ Location strings in headers are treated only as weak hints for diagnostics.
 
 import os
 import re
+import math
 import logging
 import itertools
 from typing import Dict, Any, Optional, List, Tuple
@@ -448,6 +449,65 @@ def _emit_row(current: Dict[str, Any], settings: dict) -> dict:
     }
 
 
+def _normalize_sc_values(
+    sites: List[Dict[str, Any]],
+    settings: dict,
+    process: str,
+    warnings: List[str],
+) -> None:
+    cfg_key = 'VTP_REGISTRATION' if process == 'Via to Pad' else 'PTV_REGISTRATION'
+    cfg = settings.get(cfg_key, {})
+
+    override_enabled = bool(cfg.get('sc_override_enabled', True))
+    abs_threshold_um = float(cfg.get('sc_override_abs_error_um', 100.0))
+    rel_threshold_pct = float(cfg.get('sc_override_rel_error_pct', 10.0))
+
+    for i, site in enumerate(sites):
+        dx = site.get('dx')
+        dy = site.get('dy')
+        if dx is None or dy is None:
+            continue
+
+        calc_sc = math.hypot(dx, dy)
+        parsed_sc = site.get('sc')
+
+        if parsed_sc is None:
+            site['sc'] = calc_sc
+            msg = (
+                f"Site {i}: SC missing in source; replaced with sqrt(DX^2+DY^2) = "
+                f"{calc_sc * 1000:.1f} um."
+            )
+            logger.warning(msg)
+            warnings.append(msg)
+            continue
+
+        abs_error_um = abs(parsed_sc - calc_sc) * 1000.0
+        calc_um = abs(calc_sc) * 1000.0
+        if calc_um > 0.0:
+            rel_error_pct = (abs_error_um / calc_um) * 100.0
+        else:
+            rel_error_pct = 0.0 if abs_error_um == 0.0 else float('inf')
+
+        is_large_mismatch = abs_error_um > abs_threshold_um and rel_error_pct > rel_threshold_pct
+        if is_large_mismatch and override_enabled:
+            site['sc'] = calc_sc
+            msg = (
+                f"Site {i}: SC mismatch detected (parsed={parsed_sc * 1000:.1f} um, "
+                f"calculated={calc_um:.1f} um, abs_error={abs_error_um:.1f} um, "
+                f"rel_error={rel_error_pct:.1f}%). Using calculated SC."
+            )
+            logger.warning(msg)
+            warnings.append(msg)
+        elif is_large_mismatch and not override_enabled:
+            msg = (
+                f"Site {i}: SC mismatch detected (parsed={parsed_sc * 1000:.1f} um, "
+                f"calculated={calc_um:.1f} um, abs_error={abs_error_um:.1f} um, "
+                f"rel_error={rel_error_pct:.1f}%). Keeping parsed SC per configuration."
+            )
+            logger.warning(msg)
+            warnings.append(msg)
+
+
 def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
     if settings is None:
         settings = load_settings()
@@ -463,6 +523,7 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
 
     process = _pick_process(sites)
     _assign_locations(sites, settings, warnings)
+    _normalize_sc_values(sites, settings, process, warnings)
 
     rows = [_emit_row(s, settings) for s in sites]
     df = pd.DataFrame(rows)

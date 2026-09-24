@@ -128,3 +128,74 @@ Distance: LL2_VtP(ID:3) between LL2_Pad(ID:2) and LL2_Via(ID:1)
     assert len(df) == 2
     assert (df['Process'] == 'Via to Pad').all()
     assert df['Grid ID'].notna().any()
+
+
+def test_sc_is_overridden_when_mismatch_is_large(settings):
+    content = """
+Circle: LL2_Via(ID:1, From 111 Pts.)
+     Coord. X =        65.658627
+     Coord. Y =       104.842738
+     Diameter =         0.027020
+
+Circle: LL2_Pad(ID:2, From 95 Pts.)
+     Coord. X =        65.657937
+     Coord. Y =       104.839409
+     Diameter =         0.395066
+
+Distance: LL2_VtP(ID:3) between LL2_Pad(ID:2) and LL2_Via(ID:1)
+           SC =         0.500000
+           DX =         0.001000
+           DY =         0.002000
+"""
+    df, warnings = parse_qvm_content(content, settings)
+
+    assert len(df) == 1
+    assert df.iloc[0]['PtV Distance'] == pytest.approx((0.001 ** 2 + 0.002 ** 2) ** 0.5)
+    assert any('Using calculated SC' in w for w in warnings)
+
+
+def test_sc_is_not_overridden_when_mismatch_is_small(settings):
+    content = """
+Circle: LL2_Via(ID:1, From 111 Pts.)
+     Coord. X =        65.658627
+     Coord. Y =       104.842738
+     Diameter =         0.027020
+
+Circle: LL2_Pad(ID:2, From 95 Pts.)
+     Coord. X =        65.657937
+     Coord. Y =       104.839409
+     Diameter =         0.395066
+
+Distance: LL2_VtP(ID:3) between LL2_Pad(ID:2) and LL2_Via(ID:1)
+           SC =         0.002250
+           DX =         0.001000
+           DY =         0.002000
+"""
+    df, warnings = parse_qvm_content(content, settings)
+
+    assert len(df) == 1
+    assert df.iloc[0]['PtV Distance'] == pytest.approx(0.002250)
+    assert not any('Using calculated SC' in w for w in warnings)
+
+
+def test_sc_missing_is_filled_from_dx_dy(settings):
+    content = """
+Circle: LL2_Via(ID:1, From 111 Pts.)
+     Coord. X =        65.658627
+     Coord. Y =       104.842738
+     Diameter =         0.027020
+
+Circle: LL2_Pad(ID:2, From 95 Pts.)
+     Coord. X =        65.657937
+     Coord. Y =       104.839409
+     Diameter =         0.395066
+
+Distance: LL2_VtP(ID:3) between LL2_Pad(ID:2) and LL2_Via(ID:1)
+           DX =         0.001000
+           DY =         0.002000
+"""
+    df, warnings = parse_qvm_content(content, settings)
+
+    assert len(df) == 1
+    assert df.iloc[0]['PtV Distance'] == pytest.approx((0.001 ** 2 + 0.002 ** 2) ** 0.5)
+    assert any('SC missing in source' in w for w in warnings)

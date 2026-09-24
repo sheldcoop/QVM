@@ -118,11 +118,17 @@ VTP_REGISTRATION:
   # USL values added to the Report sheet (X/Y USL are left blank)
   vtp_usl_um: 10.0         # VtP Distance (SC) upper spec limit (µm)
   outlier_cap_um: 1000.0   # SC values above this (µm) are flagged as outliers
+  sc_override_enabled: true          # If true, replace SC with sqrt(DX^2 + DY^2) when mismatch is large
+  sc_override_abs_error_um: 100.0    # Minimum absolute mismatch (µm) to allow override
+  sc_override_rel_error_pct: 10.0    # Minimum relative mismatch (%) to allow override
 
 PTV_REGISTRATION:
   # USL value added to the Pad-to-Via Report sheet (keyed on PtV Distance).
   ptv_usl_um: 10.0         # PtV Distance upper spec limit (µm) — adjust to taste
   outlier_cap_um: 1000.0   # SC values above this (µm) are flagged as outliers
+  sc_override_enabled: true          # If true, replace SC with sqrt(DX^2 + DY^2) when mismatch is large
+  sc_override_abs_error_um: 100.0    # Minimum absolute mismatch (µm) to allow override
+  sc_override_rel_error_pct: 10.0    # Minimum relative mismatch (%) to allow override
 
 EXCEL_EXPORT:
   panel_map_image: "assets/Panel_Map.png"   # path relative to qvm_dashboard/
