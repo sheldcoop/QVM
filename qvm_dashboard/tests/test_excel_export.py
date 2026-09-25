@@ -217,6 +217,30 @@ def _mixed_process_frame(settings):
     return pd.concat([vtp, ptv], ignore_index=True)
 
 
+def _valid_loc_frame(settings, process: str, build_up: str, side: str = 'F'):
+    nominal = settings['CORE_SHRINKAGE']['NOMINAL_COORDS']
+    cn = settings['COLUMN_NAMES']
+    grid_map = settings['GRID_MAPPING']
+    rows = []
+    for loc, xy in nominal.items():
+        rows.append({
+            cn['grid_id']: int(grid_map[loc]),
+            cn['location']: loc,
+            cn['inner_diameter']: 0.02,
+            cn['outer_diameter']: 0.3125,
+            cn['coord_x']: float(xy['x']),
+            cn['coord_y']: float(xy['y']),
+            cn['x_distance']: 0.001,
+            cn['y_distance']: 0.001,
+            cn['ptv_distance']: 0.002,
+            'Build Up': build_up,
+            'Side': side,
+            'Panel': '20',
+            'Process': process,
+        })
+    return pd.DataFrame(rows)
+
+
 def test_unified_export_writes_single_workbook_with_mixed_process_data(settings):
     import openpyxl
     from src.excel_export import write_unified_excel
@@ -358,3 +382,32 @@ def test_unified_export_handles_malformed_grid_ids(settings):
     assert 'Report' in wb.sheetnames
     analytics_sheets = [name for name in wb.sheetnames if name.startswith('Analytics')]
     assert analytics_sheets
+
+
+def test_unified_export_writes_combined_shrinkage_summary_sheet(settings):
+    import openpyxl
+    from src.excel_export import write_unified_excel
+
+    df = pd.concat([
+        _valid_loc_frame(settings, process='Via to Pad', build_up='BU-01', side='F'),
+        _valid_loc_frame(settings, process='Pad to Via', build_up='Unknown', side='B'),
+    ], ignore_index=True)
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+
+    shrink_sheets = [name for name in wb.sheetnames if name.startswith('Shrinkage')]
+    assert len(shrink_sheets) == 1
+    ws = wb[shrink_sheets[0]]
+
+    values = []
+    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=1):
+        cell_val = row[0].value
+        if isinstance(cell_val, str):
+            values.append(cell_val)
+
+    assert any('VTP | Build Up: BU-01' in v for v in values)
+    assert any('PTV | Build Up: Unknown' in v for v in values)

@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.core_shrinkage_parser import parse_cs_filename, parse_core_shrinkage_content
@@ -14,6 +15,7 @@ from src.utils import is_via_to_pad as is_via_to_pad_mask, load_settings
 from src.views.core_shrinkage import CoreShrinkageView
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
+from src.registration_shrinkage import compute_distance_shrinkage_by_group
 from src.visuals import plot_quiver, plot_vtp_box
 from ui.sidebar import render_nav_buttons, render_sidebar
 
@@ -200,7 +202,79 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
 
 def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
     """Render the shared 3-tab registration analytics used by both processes."""
-    tab1, tab2, tab3 = st.tabs(["Registration Scatter", "Quiver Plot", "Box Plot"])
+
+    def _shrinkage_quiver_figure(res, title: str) -> go.Figure:
+        qdf = res.quadrant.copy()
+        if qdf.empty:
+            return go.Figure()
+
+        fp = res.full_panel.iloc[0]
+        fp_x = float(fp.get('Shrinkage X (FP PPM)', fp.get('Shrinkage X (FP)', 0.0)))
+        fp_y = float(fp.get('Shrinkage Y (FP PPM)', fp.get('Shrinkage Y (FP)', 0.0)))
+        qdf['dx'] = qdf['QP Shrinkage X (PPM)'] - fp_x
+        qdf['dy'] = qdf['QP Shrinkage Y (PPM)'] - fp_y
+
+        positions = {
+            'UL': (-1.0, 1.0),
+            'LL': (-1.0, -1.0),
+            'LR': (1.0, -1.0),
+            'UR': (1.0, 1.0),
+        }
+        max_dev = float(max(qdf['dx'].abs().max(), qdf['dy'].abs().max(), 1.0))
+        arrow_scale = 0.8 / max_dev
+
+        fig = go.Figure()
+        xs, ys, labels, hover = [], [], [], []
+        for _, row in qdf.iterrows():
+            quad = str(row['Quadrant'])
+            if quad not in positions:
+                continue
+            x0, y0 = positions[quad]
+            xs.append(x0)
+            ys.append(y0)
+            labels.append(quad)
+            hover.append(
+                f"{quad}<br>ΔX from FP: {row['dx']:.1f} ppm<br>ΔY from FP: {row['dy']:.1f} ppm"
+            )
+            x1 = x0 + float(row['dx']) * arrow_scale
+            y1 = y0 + float(row['dy']) * arrow_scale
+            fig.add_annotation(
+                x=x1,
+                y=y1,
+                ax=x0,
+                ay=y0,
+                xref='x',
+                yref='y',
+                axref='x',
+                ayref='y',
+                showarrow=True,
+                arrowhead=3,
+                arrowsize=1,
+                arrowwidth=2,
+                arrowcolor='#F4B486',
+            )
+
+        fig.add_trace(go.Scatter(
+            x=xs,
+            y=ys,
+            mode='markers+text',
+            text=labels,
+            textposition='top center',
+            marker=dict(size=12, color='#8B4513'),
+            hovertemplate='%{customdata}<extra></extra>',
+            customdata=hover,
+            name='Quadrant center',
+        ))
+        fig.update_layout(
+            title=title,
+            xaxis=dict(visible=False, range=[-2.0, 2.0]),
+            yaxis=dict(visible=False, range=[-2.0, 2.0], scaleanchor='x', scaleratio=1),
+            margin=dict(l=20, r=20, t=50, b=20),
+            showlegend=False,
+        )
+        return fig
+
+    tab1, tab2, tab3, tab4 = st.tabs(["Registration Scatter", "Quiver Plot", "Box Plot", "Shrinkage"])
     with tab1:
         if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
             side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
@@ -230,6 +304,80 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
     with tab3:
         fig = plot_vtp_box(filtered_df, settings)
         st.plotly_chart(fig, use_container_width=True)
+
+    with tab4:
+        cs_cfg = settings.get('CORE_SHRINKAGE', {})
+        nominal_coords = (
+            settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
+            or cs_cfg.get('NOMINAL_COORDS', {})
+        )
+        if not nominal_coords:
+            st.info('Nominal coordinates are not configured for shrinkage analytics.')
+        else:
+            col_names = settings.get('COLUMN_NAMES', {})
+            loc_col = col_names.get('location', 'Location')
+            x_col = col_names.get('coord_x', 'Coord. X')
+            y_col = col_names.get('coord_y', 'Coord. Y')
+            if any(c not in filtered_df.columns for c in (loc_col, x_col, y_col)):
+                st.info('Shrinkage analytics requires Location, Coord. X, and Coord. Y columns.')
+            else:
+                outlier_ppm = float(settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
+                groups = compute_distance_shrinkage_by_group(
+                    filtered_df,
+                    nominal_coords,
+                    location_col=loc_col,
+                    x_col=x_col,
+                    y_col=y_col,
+                    outlier_ppm=outlier_ppm,
+                    group_cols=['Build Up', 'Panel', 'Side'],
+                )
+                st.caption('Distance-based only; no coordinate transform/alignment is applied.')
+                for g in groups:
+                    gmeta = g['group']
+                    res = g['result']
+                    label = ', '.join(f'{k}: {v}' for k, v in gmeta.items()) if gmeta else 'Current scope'
+                    st.markdown(f'**{label}**')
+                    if res.warnings:
+                        for w in res.warnings:
+                            st.warning(w)
+                    if res.quadrant.empty:
+                        st.info('No shrinkage output for this scope.')
+                        continue
+                    q_cols = [
+                        'Quadrant',
+                        'QP Shrinkage X (%)',
+                        'QP Shrinkage Y (%)',
+                        'Delta X (um)',
+                        'Delta Y (um)',
+                        'QP Shrinkage X (PPM)',
+                        'QP Shrinkage Y (PPM)',
+                    ]
+                    show_q_cols = [c for c in q_cols if c in res.quadrant.columns]
+                    st.dataframe(res.quadrant[show_q_cols], use_container_width=True, hide_index=True)
+                    chart = res.quadrant.set_index('Quadrant')[['QP Shrinkage X (%)', 'QP Shrinkage Y (%)']]
+                    st.bar_chart(chart)
+                    st.plotly_chart(_shrinkage_quiver_figure(res, f'Shrinkage Quiver — {label}'), use_container_width=True)
+                    fp_cols = [
+                        'Shrinkage X (FP %)',
+                        'Shrinkage Y (FP %)',
+                        'Shrinkage X-Y Offset (%)',
+                        'Shrinkage X (FP PPM)',
+                        'Shrinkage Y (FP PPM)',
+                        'Shrinkage X-Y Offset (PPM)',
+                    ]
+                    show_fp_cols = [c for c in fp_cols if c in res.full_panel.columns]
+                    st.dataframe(res.full_panel[show_fp_cols], use_container_width=True, hide_index=True)
+                    u_cols = [
+                        'QTQ Range X (%)',
+                        'QTQ Range Y (%)',
+                        'QTQ Range X',
+                        'QTQ Range Y',
+                        'Total 2D Spatial Distortion Vector',
+                    ]
+                    show_u_cols = [c for c in u_cols if c in res.uniformity.columns]
+                    st.dataframe(res.uniformity[show_u_cols], use_container_width=True, hide_index=True)
+                    if not res.outliers.empty:
+                        st.dataframe(res.outliers, use_container_width=True, hide_index=True)
 
 
 def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,

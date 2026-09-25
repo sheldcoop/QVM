@@ -24,6 +24,7 @@ from src.core_shrinkage_parser import (
     compute_shrinkage_summary, layer_frame, qp_shrinkage_um, summary_frame,
 )
 from src.display_frame import GRID_ID_HEADER, build_display_frame
+from src.registration_shrinkage import compute_distance_shrinkage
 from src.utils import is_via_to_pad
 
 logger = logging.getLogger(__name__)
@@ -300,6 +301,159 @@ def _process_slices(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     }
 
 
+def _iter_build_up_frames(proc_df: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
+    if proc_df.empty:
+        return []
+    if 'Build Up' in proc_df.columns:
+        bu_values = sorted({str(v).strip() for v in proc_df['Build Up'].dropna().tolist() if str(v).strip()})
+    else:
+        bu_values = []
+    if not bu_values:
+        bu_values = ['Unknown']
+
+    out = []
+    for bu in bu_values:
+        if 'Build Up' in proc_df.columns:
+            if bu.lower() == 'unknown':
+                bu_df = proc_df[proc_df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy()
+            else:
+                bu_df = proc_df[proc_df['Build Up'] == bu].copy()
+        else:
+            bu_df = proc_df.copy()
+        if not bu_df.empty:
+            out.append((bu, bu_df))
+    return out
+
+
+def _write_shrinkage_summary_sheet(
+    writer: pd.ExcelWriter,
+    settings: dict,
+    process_frames: dict[str, pd.DataFrame],
+    used_sheet_names: set[str],
+) -> bool:
+    col_names = settings.get('COLUMN_NAMES', {})
+    loc_col = col_names.get('location', 'Location')
+    x_col = col_names.get('coord_x', 'Coord. X')
+    y_col = col_names.get('coord_y', 'Coord. Y')
+
+    nominal_coords = (
+        settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
+        or settings.get('CORE_SHRINKAGE', {}).get('NOMINAL_COORDS', {})
+    )
+    if not nominal_coords:
+        return False
+
+    outlier_ppm = float(settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
+    sections = []
+    summary_rows = []
+    for process_code, proc_df in process_frames.items():
+        if proc_df.empty or any(c not in proc_df.columns for c in (loc_col, x_col, y_col)):
+            continue
+        for bu, bu_df in _iter_build_up_frames(proc_df):
+            result = compute_distance_shrinkage(
+                bu_df,
+                nominal_coords,
+                location_col=loc_col,
+                x_col=x_col,
+                y_col=y_col,
+                outlier_ppm=outlier_ppm,
+            )
+            if result.quadrant.empty:
+                continue
+            fp = result.full_panel.iloc[0]
+            uni = result.uniformity.iloc[0]
+            sections.append((process_code, bu, result))
+            summary_rows.append({
+                'Process': process_code,
+                'Build Up': bu,
+                'FP X (%)': fp.get('Shrinkage X (FP %)', 0.0),
+                'FP Y (%)': fp.get('Shrinkage Y (FP %)', 0.0),
+                'X-Y Offset (%)': fp.get('Shrinkage X-Y Offset (%)', 0.0),
+                'FP X (PPM)': fp.get('Shrinkage X (FP PPM)', fp.get('Shrinkage X (FP)', 0.0)),
+                'FP Y (PPM)': fp.get('Shrinkage Y (FP PPM)', fp.get('Shrinkage Y (FP)', 0.0)),
+                'QTQ X (PPM)': uni.get('QTQ Range X', 0.0),
+                'QTQ Y (PPM)': uni.get('QTQ Range Y', 0.0),
+                '2D Distortion (PPM)': uni.get('Total 2D Spatial Distortion Vector', 0.0),
+                'Alert Count': len(result.outliers),
+            })
+
+    if not sections:
+        return False
+
+    sheet_name = _safe_sheet_name('Shrinkage Summary', used_sheet_names)
+    ws = writer.book.create_sheet(sheet_name)
+    ws['A1'] = 'Distance-Based Shrinkage Summary (PTV + VTP)'
+    ws['A2'] = 'Method: distance-only (no coordinate transform/alignment).'
+
+    summary_df = pd.DataFrame(summary_rows).round(3)
+    summary_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=3)
+
+    row = 6 + len(summary_df)
+    for process_code, bu, result in sections:
+        ws.cell(row=row, column=1, value=f'{process_code} | Build Up: {bu}')
+        row += 1
+        ws.cell(row=row, column=1, value='Executive Summary')
+        row += 1
+
+        fp = result.full_panel.iloc[0]
+        uni = result.uniformity.iloc[0]
+        exec_df = pd.DataFrame([{
+            'FP X (%)': fp.get('Shrinkage X (FP %)', 0.0),
+            'FP Y (%)': fp.get('Shrinkage Y (FP %)', 0.0),
+            'X-Y Offset (%)': fp.get('Shrinkage X-Y Offset (%)', 0.0),
+            'FP X (PPM)': fp.get('Shrinkage X (FP PPM)', fp.get('Shrinkage X (FP)', 0.0)),
+            'FP Y (PPM)': fp.get('Shrinkage Y (FP PPM)', fp.get('Shrinkage Y (FP)', 0.0)),
+            'QTQ X (PPM)': uni.get('QTQ Range X', 0.0),
+            'QTQ Y (PPM)': uni.get('QTQ Range Y', 0.0),
+            '2D Distortion (PPM)': uni.get('Total 2D Spatial Distortion Vector', 0.0),
+            'Alert Count': len(result.outliers),
+        }]).round(3)
+        exec_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+        row += len(exec_df) + 2
+
+        ws.cell(row=row, column=1, value='Quadrant Summary')
+        row += 1
+        q_cols = [
+            'Quadrant', 'QP Shrinkage X (%)', 'QP Shrinkage Y (%)',
+            'Delta X (um)', 'Delta Y (um)',
+            'QP Shrinkage X (PPM)', 'QP Shrinkage Y (PPM)',
+        ]
+        show_q_cols = [c for c in q_cols if c in result.quadrant.columns]
+        result.quadrant[show_q_cols].to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+        row += len(result.quadrant) + 2
+
+        ws.cell(row=row, column=1, value='Uniformity')
+        row += 1
+        u_cols = [
+            'QTQ Range X (%)', 'QTQ Range Y (%)', 'QTQ Range X', 'QTQ Range Y',
+            'Total 2D Spatial Distortion Vector',
+        ]
+        show_u_cols = [c for c in u_cols if c in result.uniformity.columns]
+        result.uniformity[show_u_cols].to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+        row += len(result.uniformity) + 2
+
+        ws.cell(row=row, column=1, value='Outlier Alerts')
+        row += 1
+        if result.outliers.empty:
+            pd.DataFrame({'Alert': [f'No quadrant exceeds ±{outlier_ppm:.0f} ppm from FP average.']}).to_excel(
+                writer, sheet_name=sheet_name, index=False, startrow=row - 1
+            )
+            row += 2
+        else:
+            result.outliers.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+            row += len(result.outliers) + 2
+
+        if result.warnings:
+            ws.cell(row=row, column=1, value='Warnings')
+            row += 1
+            for msg in result.warnings:
+                ws.cell(row=row, column=1, value=msg)
+                row += 1
+            row += 1
+
+    return True
+
+
 def _report_sheet(df: pd.DataFrame, grid_id_col: str, meta: dict,
                   usl_col_name: str, usl_value: float,
                   include_xy_usl: bool = False) -> pd.DataFrame:
@@ -381,6 +535,7 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
     - 'Pad to Via' — process data with panel map
     - 'Report' — consolidated process-aware report table
     - 'Analytics <PROC> <BU>' — one analytics sheet per process and Build Up
+    - 'Shrinkage Summary' — one combined shrinkage sheet for all process/BU sections
     - 'Warnings' — parser warnings
     """
     if scoped_df is None or scoped_df.empty:
@@ -431,27 +586,12 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
         if proc_df.empty:
             continue
 
-        if 'Build Up' in proc_df.columns:
-            bu_values = sorted({str(v).strip() for v in proc_df['Build Up'].dropna().tolist() if str(v).strip()})
-        else:
-            bu_values = []
-        if not bu_values:
-            bu_values = ['Unknown']
-
-        for bu in bu_values:
-            if 'Build Up' in proc_df.columns:
-                if bu.lower() == 'unknown':
-                    bu_df = proc_df[proc_df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy()
-                else:
-                    bu_df = proc_df[proc_df['Build Up'] == bu].copy()
-            else:
-                bu_df = proc_df.copy()
-
-            if bu_df.empty:
-                continue
+        for bu, bu_df in _iter_build_up_frames(proc_df):
 
             label = _safe_sheet_name(f'Analytics {process_code} {bu}', used_sheet_names)
             _add_analytics_sheet(writer, bu_df, settings, sheet_label=label)
+
+    _write_shrinkage_summary_sheet(writer, settings, process_frames, used_sheet_names)
 
     ws_warn = writer.book.create_sheet(_safe_sheet_name('Warnings', used_sheet_names))
     _warnings_sheet(ws_warn, warnings or [])

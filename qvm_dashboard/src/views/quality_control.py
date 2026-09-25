@@ -13,6 +13,7 @@ from src.views.base import BaseView
 from src.display_frame import build_display_frame
 from src.utils import is_via_to_pad as is_via_to_pad_mask
 from src.excel_export import write_unified_excel
+from src.registration_shrinkage import compute_distance_shrinkage_by_group
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,9 @@ component breakdown.
             styled = styled.format(fmt)
         st.dataframe(styled, use_container_width=True)
 
+        # --- Distance-based shrinkage (PTV/VTP only; additive section) ---
+        self._render_distance_shrinkage(filtered_df)
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -221,6 +225,99 @@ component breakdown.
             mime=_EXCEL_MIME,
             type='primary',
         )
+
+    def _render_distance_shrinkage(self, filtered_df: pd.DataFrame) -> None:
+        cs_cfg = self.settings.get('CORE_SHRINKAGE', {})
+        nominal_coords = (
+            self.settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
+            or cs_cfg.get('NOMINAL_COORDS', {})
+        )
+        outlier_ppm = float(self.settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
+        if not nominal_coords:
+            return
+
+        col_names = self.settings.get('COLUMN_NAMES', {})
+        loc_col = col_names.get('location', 'Location')
+        x_col = col_names.get('coord_x', 'Coord. X')
+        y_col = col_names.get('coord_y', 'Coord. Y')
+
+        if any(c not in filtered_df.columns for c in (loc_col, x_col, y_col)):
+            return
+
+        st.markdown('---')
+        st.subheader('Distance Shrinkage')
+        st.caption('Distance-based only: no alignment/rotation/translation transform is used.')
+
+        groups = compute_distance_shrinkage_by_group(
+            filtered_df,
+            nominal_coords,
+            location_col=loc_col,
+            x_col=x_col,
+            y_col=y_col,
+            outlier_ppm=outlier_ppm,
+            group_cols=['Build Up', 'Panel', 'Side'],
+        )
+
+        for g in groups:
+            gmeta = g['group']
+            res = g['result']
+            label = ', '.join(f'{k}: {v}' for k, v in gmeta.items()) if gmeta else 'Current scope'
+            with st.expander(label, expanded=False):
+                if res.warnings:
+                    for w in res.warnings:
+                        st.warning(w)
+                if res.quadrant.empty:
+                    st.info('No shrinkage output for this scope.')
+                    continue
+
+                fp = res.full_panel.iloc[0]
+                uni = res.uniformity.iloc[0]
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
+                c1.metric('FP X', f"{fp.get('Shrinkage X (FP %)', 0.0):.4f}%", f"{fp.get('Shrinkage X (FP PPM)', 0.0):.1f} ppm")
+                c2.metric('FP Y', f"{fp.get('Shrinkage Y (FP %)', 0.0):.4f}%", f"{fp.get('Shrinkage Y (FP PPM)', 0.0):.1f} ppm")
+                c3.metric('X-Y Offset', f"{fp.get('Shrinkage X-Y Offset (%)', 0.0):.4f}%", f"{fp.get('Shrinkage X-Y Offset (PPM)', 0.0):.1f} ppm")
+                c4.metric('QTQ X', f"{uni.get('QTQ Range X (%)', 0.0):.4f}%", f"{uni.get('QTQ Range X', 0.0):.1f} ppm")
+                c5.metric('QTQ Y', f"{uni.get('QTQ Range Y (%)', 0.0):.4f}%", f"{uni.get('QTQ Range Y', 0.0):.1f} ppm")
+                c6.metric('2D Distortion', f"{uni.get('Total 2D Spatial Distortion Vector', 0.0):.1f} ppm")
+
+                st.markdown('**Quadrant Summary**')
+                q_cols = [
+                    'Quadrant',
+                    'QP Shrinkage X (%)',
+                    'QP Shrinkage Y (%)',
+                    'Delta X (um)',
+                    'Delta Y (um)',
+                    'QP Shrinkage X (PPM)',
+                    'QP Shrinkage Y (PPM)',
+                ]
+                show_q_cols = [c for c in q_cols if c in res.quadrant.columns]
+                st.dataframe(res.quadrant[show_q_cols], use_container_width=True, hide_index=True)
+                st.markdown('**Full Panel Summary**')
+                fp_cols = [
+                    'Shrinkage X (FP %)',
+                    'Shrinkage Y (FP %)',
+                    'Shrinkage X-Y Offset (%)',
+                    'Shrinkage X (FP PPM)',
+                    'Shrinkage Y (FP PPM)',
+                    'Shrinkage X-Y Offset (PPM)',
+                ]
+                show_fp_cols = [c for c in fp_cols if c in res.full_panel.columns]
+                st.dataframe(res.full_panel[show_fp_cols], use_container_width=True, hide_index=True)
+                st.markdown('**Uniformity**')
+                u_cols = [
+                    'QTQ Range X (%)',
+                    'QTQ Range Y (%)',
+                    'QTQ Range X',
+                    'QTQ Range Y',
+                    'Total 2D Spatial Distortion Vector',
+                ]
+                show_u_cols = [c for c in u_cols if c in res.uniformity.columns]
+                st.dataframe(res.uniformity[show_u_cols], use_container_width=True, hide_index=True)
+                st.markdown('**Outlier Alerts**')
+                if res.outliers.empty:
+                    st.success(f'No quadrant exceeds ±{outlier_ppm:.0f} ppm from FP average.')
+                else:
+                    st.dataframe(res.outliers, use_container_width=True, hide_index=True)
 
     @staticmethod
     def _safe_token(value: str) -> str:
