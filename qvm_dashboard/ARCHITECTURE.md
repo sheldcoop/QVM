@@ -158,9 +158,10 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
   the view degrades to raw coordinate tables rather than failing, and every
   reader accesses the block through `.get()` defaults — which is why it is
   deliberately *not* in `utils._REQUIRED_SETTINGS_KEYS`.
-- Excel chart embedding requires **`kaleido`** (`fig.to_image`). Each chart is
-  embedded independently: if one fails, a placeholder image is written in its
-  place with a sidebar warning, and the rest of the workbook is unaffected.
+- Excel chart embedding requires **`kaleido>=1`** (`fig.to_image`) and a local
+  Chrome installation. Each chart is embedded independently: if one fails, a
+  placeholder image is written in its place with a sidebar warning, and the
+  rest of the workbook is unaffected.
 
 ## Running tests
 

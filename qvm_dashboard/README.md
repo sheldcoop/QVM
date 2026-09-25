@@ -223,8 +223,9 @@ One workbook per download, containing:
 | `Warnings` | Parser warnings, or a note that there were none |
 
 Process sheets are written only for processes present in the current scope.
-Chart embedding needs **kaleido**; if a chart cannot be rendered, a placeholder
-image is embedded in its place and the rest of the workbook is unaffected.
+Chart embedding needs **kaleido>=1** and a local **Chrome** installation; if a
+chart cannot be rendered, a placeholder image is embedded in its place and the
+rest of the workbook is unaffected.
 
 The filename is built from the data in scope, e.g.
 `QVM_VTP_P20_F_BU-01_Lot-1234.xlsx`.
