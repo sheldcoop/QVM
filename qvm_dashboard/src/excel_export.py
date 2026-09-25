@@ -32,6 +32,33 @@ logger = logging.getLogger(__name__)
 _REGION_MAP = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 
 
+def _ensure_chrome_on_path() -> None:
+    """Make Chrome discoverable to Kaleido when it is installed but not on PATH.
+
+    This is most common on Windows, where Chrome can exist under one of the
+    standard Program Files locations without being on the system PATH. Adding the
+    chrome installation directory to PATH and exporting GOOGLE_CHROME_BIN helps
+    Plotly/Kaleido locate the browser during fig.to_image().
+    """
+    candidates = [
+        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+        os.path.expanduser(r'~\AppData\Local\Google\Chrome\Application\chrome.exe'),
+        os.path.expanduser(r'~\AppData\Local\Google\Chrome SxS\Application\chrome.exe'),
+        r'C:\Program Files\Chromium\Application\chrome.exe',
+        r'C:\Program Files (x86)\Chromium\Application\chrome.exe',
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            chrome_dir = os.path.dirname(candidate)
+            path_entries = os.environ.get('PATH', '').split(os.pathsep)
+            if chrome_dir not in path_entries:
+                os.environ['PATH'] = chrome_dir + os.pathsep + os.environ.get('PATH', '')
+            os.environ['GOOGLE_CHROME_BIN'] = candidate
+            os.environ['CHROME_BIN'] = candidate
+            return
+
+
 # ---------------------------------------------------------------------------
 # Low-level helpers
 # ---------------------------------------------------------------------------
@@ -39,6 +66,7 @@ _REGION_MAP = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
 def _fig_to_xl_image(fig: go.Figure, width_px: int = 300,
                      height_px: int = 400) -> XLImage:
     """Render a Plotly figure to PNG via kaleido and wrap it as an XLImage."""
+    _ensure_chrome_on_path()
     img_bytes = fig.to_image(format='png', width=width_px, height=height_px, scale=2)
     buf = BytesIO(img_bytes)
     xl = XLImage(buf)

@@ -10,6 +10,24 @@ import pytest
 pytest.importorskip('kaleido')  # chart embedding renders PNGs via kaleido
 
 
+def test_ensure_chrome_on_path_sets_common_windows_locations(monkeypatch):
+    import src.excel_export as excel_export
+
+    def fake_isfile(path):
+        return path == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+
+    monkeypatch.setattr(excel_export.os.path, 'isfile', fake_isfile)
+    monkeypatch.delenv('PATH', raising=False)
+    monkeypatch.delenv('GOOGLE_CHROME_BIN', raising=False)
+    monkeypatch.delenv('CHROME_BIN', raising=False)
+
+    excel_export._ensure_chrome_on_path()
+
+    assert os.environ['GOOGLE_CHROME_BIN'] == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+    assert os.environ['CHROME_BIN'] == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+    assert r'C:\Program Files\Google\Chrome\Application' in os.environ['PATH']
+
+
 @pytest.fixture(autouse=True)
 def _silence_streamlit(monkeypatch):
     """The exporter calls st.sidebar.warning on embed failure; stub it."""
