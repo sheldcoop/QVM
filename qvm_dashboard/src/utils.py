@@ -72,11 +72,14 @@ def calculate_annular_ring(df: pd.DataFrame, settings: Dict) -> pd.DataFrame:
 
     Formula: (Outer Diameter / 2) - (Inner Diameter / 2) - PtV Distance
     """
-    col_names = settings.get('COLUMN_NAMES', {})
-    outer_col = col_names.get('outer_diameter', 'Outer Diameter')
-    inner_col = col_names.get('inner_diameter', 'Inner Diameter')
-    ptv_col = col_names.get('ptv_distance', 'PtV Distance')
-    annular_col = col_names.get('annular_ring', 'Annular Ring')
+    cols = resolve_columns(
+        settings,
+        ('outer_diameter', 'inner_diameter', 'ptv_distance', 'annular_ring'),
+    )
+    outer_col = cols['outer_diameter']
+    inner_col = cols['inner_diameter']
+    ptv_col = cols['ptv_distance']
+    annular_col = cols['annular_ring']
 
     out = df.copy()
     out[annular_col] = (out[outer_col] / 2) - (out[inner_col] / 2) - out[ptv_col]

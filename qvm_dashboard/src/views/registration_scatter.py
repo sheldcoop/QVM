@@ -33,7 +33,7 @@ class RegistrationScatterView(BaseView):
         ring_exceptional = rings.exceptional
         ring_acceptable = rings.acceptable
 
-        sc_col = self.col_names.get('ptv_distance', 'PtV Distance')
+        sc_col = self.cols('ptv_distance')['ptv_distance']
 
         # Summary metrics above the charts
         if sc_col in filtered_df.columns:

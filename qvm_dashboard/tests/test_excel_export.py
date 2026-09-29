@@ -153,8 +153,9 @@ def test_analytics_sheet_falls_back_when_chart_render_fails(settings, monkeypatc
     from src import excel_export
 
     df = _vtp_frame(['F'], settings)
+    # Patch where it is looked up (qvm sheet builder), not where it is defined.
     monkeypatch.setattr(
-        excel_export, '_fig_to_xl_image',
+        excel_export.qvm, '_fig_to_xl_image',
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError('kaleido blocked')))
 
     buf = BytesIO()
@@ -272,8 +273,7 @@ def test_unified_export_process_sheets_embed_panel_map_when_available(settings):
 
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(excel_export.__file__)))
-    abs_path = os.path.join(base_dir, rel_path)
+    abs_path = os.path.join(excel_export.PACKAGE_ROOT, rel_path)
 
     if not os.path.isfile(abs_path):
         pytest.skip('Panel map image not available in test environment')
@@ -295,8 +295,7 @@ def test_unified_export_panel_map_is_anchored_right_of_data(settings):
 
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(excel_export.__file__)))
-    abs_path = os.path.join(base_dir, rel_path)
+    abs_path = os.path.join(excel_export.PACKAGE_ROOT, rel_path)
 
     if not os.path.isfile(abs_path):
         pytest.skip('Panel map image not available in test environment')

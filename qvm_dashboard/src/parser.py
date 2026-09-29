@@ -529,10 +529,10 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
     df = pd.DataFrame(rows)
     df['Process'] = process
 
-    col_names = settings.get('COLUMN_NAMES', {})
-    grid_id_col_name = col_names.get('grid_id', 'Grid ID')
+    cols = resolve_columns(settings, ('grid_id', 'ptv_distance'))
+    grid_id_col_name = cols['grid_id']
 
-    dist_col_name = col_names.get('ptv_distance', 'PtV Distance')
+    dist_col_name = cols['ptv_distance']
     cfg_key = 'VTP_REGISTRATION' if process == 'Via to Pad' else 'PTV_REGISTRATION'
     cap_um = float(settings.get(cfg_key, {}).get('outlier_cap_um', 1000.0))
     cap_mm = cap_um / 1000.0

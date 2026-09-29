@@ -13,6 +13,13 @@ streamlit run app.py
 
 Navigate to `http://localhost:8501` in your browser.
 
+Or with Docker (no local Python needed, from the repository root):
+
+```bash
+docker build -t qvm-dashboard .
+docker run --rm -p 8501:8501 qvm-dashboard
+```
+
 ---
 
 ## File Formats
@@ -376,11 +383,16 @@ QVM/
     │   └── sidebar.py              # Upload, per-file overrides, job info, nav button renderer
     ├── src/
     │   ├── parser.py               # QVM text log parser (auto-detects PtV vs VtP)
-    │   ├── core_shrinkage_parser.py # CS log parser + affine / shrinkage maths
+    │   ├── core_shrinkage_parser.py # CS log parsing + frames (maths lives in core_shrinkage_math)
+    │   ├── core_shrinkage_math.py   # Pure affine/outlier/classification kernels (no I/O)
+    │   ├── scope.py                # Panel / Side / Build Up scope rules + widgets (was app.py)
     │   ├── ingestion.py            # Parse one upload + resolve its metadata overrides
     │   ├── upload_metadata.py      # Override > filename > Unknown precedence rules
     │   ├── display_frame.py        # THE display table builder (screen + Excel share it)
-    │   ├── excel_export.py         # One workbook: process sheets, Report, Analytics, Warnings
+    │   ├── excel_export/           # Workbooks, Streamlit-free (warn callback injected)
+    │   │   ├── _shared.py          #   Chrome discovery, PNG render, panel map, warnings
+    │   │   ├── qvm.py              #   QVM workbook: process sheets, Report, Analytics
+    │   │   └── cs.py               #   Core Shrinkage workbook
     │   ├── panel_mapping.py        # Panel map figure builder (4-quarter Plotly layout)
     │   ├── utils.py                # load_settings, convert_to_microns, resolve_columns, annular ring
     │   ├── theme.py                # ONE home for design tokens (Catppuccin palette, grid geometry)

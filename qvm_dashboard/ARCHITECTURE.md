@@ -26,9 +26,12 @@ graph TD
     sidebar --> parser
 
     views --> visuals
-    views --> excel[src/excel_export.py]
+    views --> excel[src/excel_export/*]
     views --> display[src/display_frame.py]
     views --> base[src/views/base.py]
+
+    app --> scope[src/scope.py]
+    scope --> sidebar
 
     excel --> visuals
     excel --> display
@@ -36,9 +39,11 @@ graph TD
     display --> utils
     visuals --> theme[src/theme.py]
     visuals --> helpers[src/chart_helpers.py]
+    visuals --> utils
     helpers --> theme
     panelmap --> utils
     parser --> utils
+    csparser --> csmath[src/core_shrinkage_math.py]
     utils --> config[(config/settings.yaml)]
 
     classDef cfg fill:#89b4fa,stroke:#1e1e2e,color:#1e1e2e;
@@ -131,10 +136,12 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 | Logic shared by all charts (rings, zone colours, layout) | `src/chart_helpers.py` |
 | **Add a new chart** | new module in `src/visuals/`, then re-export it in `src/visuals/__init__.py` |
 | Which **columns appear in the table or the export** | `src/display_frame.py` (both read from it) |
-| The **Excel sheet layout** | `src/excel_export.py` |
+| The **Excel sheet layout** | `src/excel_export/qvm.py` (QVM) or `src/excel_export/cs.py` (Core Shrinkage); shared bits in `src/excel_export/_shared.py` |
 | The QC **stats tiles / fail highlighting** | `src/views/quality_control.py` |
 | Unified coordinate-first parsing of both QVM formats | `src/parser.py` |
-| Core Shrinkage **parsing or maths** | `src/core_shrinkage_parser.py` |
+| Core Shrinkage **parsing or frames** | `src/core_shrinkage_parser.py` |
+| Core Shrinkage **geometry maths** (affine fit, outliers, classification) | `src/core_shrinkage_math.py` (pure; no settings, no I/O) |
+| **Scope filters** (Panel / Side / Build Up rules + widgets) | `src/scope.py` |
 | A Core Shrinkage **sub-view** | `src/views/core_shrinkage.py` |
 | **Nominal panel geometry / shrinkage specs** | `config/settings.yaml` → `CORE_SHRINKAGE` |
 | **Navigation / tabs / ingestion** | `app.py` |
@@ -147,6 +154,13 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 - Chart functions are **pure**: `(df, settings) -> go.Figure`. No Streamlit, no I/O.
   So are `display_frame.build_display_frame` and `quality_control.annular_stats`,
   which is what makes them testable without a Streamlit runtime.
+- `src/excel_export/*` is Streamlit-free too: user-facing warnings flow through
+  an injected `warn` callback (the app passes `st.sidebar.warning`), so the
+  workbook code imports and tests without a Streamlit runtime.
+- Column-name fallbacks live in exactly one place: `utils.resolve_columns`
+  (backed by `_COLUMN_DEFAULTS`). Views use `BaseView.cols(...)`; chart and
+  parser code calls `resolve_columns` directly. Never add a second inline
+  `'Default'` string.
 - Views subclass `BaseView` and read their config slices in `__init__`.
 - All measurements are stored in **mm** and converted to **µm** (`× 1000`) at display time.
 - The instrument's centre-to-centre distance is stored **once**, under

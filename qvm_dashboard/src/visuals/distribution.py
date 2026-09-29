@@ -9,6 +9,7 @@ from src.chart_helpers import (
     get_rings, zone_colors, apply_dark_layout,
     stats_card_annotation, zone_legend_annotation,
 )
+from src.utils import resolve_columns
 
 
 def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
@@ -18,10 +19,10 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
     Narrow, tall boxes with bold zone-coloured dots. Mean reference line.
     Stats card top-right. Zone legend bottom-left.
     """
-    col_names = settings.get('COLUMN_NAMES', {})
-    sc_col   = col_names.get('ptv_distance', 'PtV Distance')
-    grid_col = col_names.get('grid_id', 'Grid ID')
-    loc_col  = col_names.get('location', 'Location')
+    cols = resolve_columns(settings, ('ptv_distance', 'grid_id', 'location'))
+    sc_col   = cols['ptv_distance']
+    grid_col = cols['grid_id']
+    loc_col  = cols['location']
 
     rings  = get_rings(settings)
     height = settings.get('CHART_HEIGHTS', {}).get('box', 640)

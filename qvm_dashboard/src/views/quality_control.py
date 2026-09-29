@@ -40,7 +40,8 @@ def build_workbook(export_df: pd.DataFrame, settings: dict, meta: dict,
     error = None
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         try:
-            write_unified_excel(writer, export_df, settings, meta, warnings=warnings)
+            write_unified_excel(writer, export_df, settings, meta,
+                                warnings=warnings, warn=st.sidebar.warning)
         except Exception as exc:
             logger.warning('Excel export error — writing fallback sheet: %s',
                            exc, exc_info=True)
@@ -90,8 +91,9 @@ class QualityControlView(BaseView):
         meta = kwargs.get('meta', {})
         export_df = kwargs.get('export_df', filtered_df)
 
-        annular_col = self.col_names.get('annular_ring', 'Annular Ring')
-        grid_id_col = self.col_names.get('grid_id', 'Grid ID')
+        cols = self.cols('annular_ring', 'grid_id')
+        annular_col = cols['annular_ring']
+        grid_id_col = cols['grid_id']
         threshold   = self.tolerances.get('annular_ring_min', 0.0)
 
         # Shared with every Excel measurement sheet — see src/display_frame.py.
@@ -236,10 +238,10 @@ component breakdown.
         if not nominal_coords:
             return
 
-        col_names = self.settings.get('COLUMN_NAMES', {})
-        loc_col = col_names.get('location', 'Location')
-        x_col = col_names.get('coord_x', 'Coord. X')
-        y_col = col_names.get('coord_y', 'Coord. Y')
+        cols = self.cols('location', 'coord_x', 'coord_y')
+        loc_col = cols['location']
+        x_col = cols['coord_x']
+        y_col = cols['coord_y']
 
         if any(c not in filtered_df.columns for c in (loc_col, x_col, y_col)):
             return

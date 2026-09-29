@@ -98,3 +98,24 @@ Note: the task brief says "all 28 tests" — the suite actually collects
   covered by `test_calc_helpers_do_not_mutate_input`.
 - `pyproject.toml` declares `requires-python = ">=3.10"`; README "Running
   Tests" documents the venv + Chrome requirements.
+
+## 5. Structural overhaul (same branch, "do all" request — no new features)
+
+- `requirements.txt`: pinned floors from the venv (pandas>=2.2,<4, numpy,
+  streamlit, pyyaml, plotly, kaleido, openpyxl, pytest dev-only).
+- `app.py`: removed deprecated `copy_on_write` flag, added
+  `logging.basicConfig`, bounded caches (`max_entries=8, ttl=3600`).
+- `src/excel_export.py` → `src/excel_export/` package (`_shared`, `qvm`,
+  `cs`); Streamlit-free, warnings via injected `warn` callback
+  (`quality_control` view passes `st.sidebar.warning`); `PACKAGE_ROOT`
+  constant fixes asset resolution at the new depth.
+- `src/core_shrinkage_math.py`: pure affine/outlier/classification kernels
+  moved out of the parser; parser re-exports for compat.
+- `src/scope.py`: Panel/Side/Build Up helpers extracted from `app.py`
+  (~90 lines); test now imports from `src.scope`.
+- Column fallbacks centralized: visuals/parser/utils/views all go through
+  `resolve_columns`; views gain `BaseView.cols(...)`.
+- Deploy: `Dockerfile`, `qvm_dashboard/.streamlit/config.toml`,
+  `.github/workflows/ci.yml` (pytest on 3.12).
+- Docs: ARCHITECTURE.md graph/table/conventions + README tree/run sections.
+- Suite after all of it: **162 passed, 1 skipped** (Chrome-only PNG test).

@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from typing import Dict
 import logging
 
+from src.utils import resolve_columns
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,6 +22,14 @@ class BaseView(ABC):
         self.settings = settings
         self.col_names = settings.get('COLUMN_NAMES', {})
         self.tolerances = settings.get('TOLERANCES', {})
+
+    def cols(self, *keys: str) -> Dict[str, str]:
+        """Resolve column-name aliases via the single fallback table.
+
+        Prefer this over ``self.col_names.get(key, 'Default')`` so every
+        view shares one source of fallback truth (see ``utils._COLUMN_DEFAULTS``).
+        """
+        return resolve_columns(self.settings, keys)
 
     @abstractmethod
     def render(self, filtered_df: pd.DataFrame, **kwargs) -> None:
