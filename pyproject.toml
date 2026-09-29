@@ -1,3 +1,9 @@
+[project]
+name = "qvm-dashboard"
+version = "0.1.0"
+# The codebase uses `X | Y` annotations and pandas>=2 setitem semantics.
+requires-python = ">=3.10"
+
 [tool.pytest.ini_options]
 # The app imports its own modules as `src.*` / `ui.*` (see app.py), so the test
 # suite has to resolve them the same way. Putting qvm_dashboard/ on the path

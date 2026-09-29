@@ -78,3 +78,23 @@ Note: the task brief says "all 28 tests" — the suite actually collects
   no-op gate.
 - Failures #1/#5 (missing legend annotation) and #4 (malformed Grid IDs) look
   like genuine code/test-contract drift, not environment issues.
+
+## 4. Fixes applied (same branch, after the review)
+
+- Bullseye now adds the shared `zone_legend_annotation` at y=-0.16 with a
+  deeper bottom margin (fixes #1 and #5).
+- `_ensure_chrome_on_path` uses a separator-agnostic dirname so Windows Chrome
+  paths resolve on POSIX hosts too; the test asserts via
+  `os.environ.get('PATH', '')` (fixes #3 — the `KeyError` was in the test's
+  own assert, and the dirname miss was a real cross-platform bug).
+- Malformed-Grid-ID test casts the column to object dtype first (pandas>=2
+  refuses string setitem into int64); the export path itself already coerces
+  via `build_display_frame` (fixes #4).
+- PNG render test skips gracefully when Chrome cannot launch (fixes #2,
+  environmental).
+- Deleted orphan bytecode: `src/dbanalysis/` tree and stale `dbanalysis` /
+  analysis-view / removed-test `.pyc` files (were git-ignored, not tracked).
+- `convert_to_microns` / `calculate_annular_ring` are now pure (copy-on-write);
+  covered by `test_calc_helpers_do_not_mutate_input`.
+- `pyproject.toml` declares `requires-python = ">=3.10"`; README "Running
+  Tests" documents the venv + Chrome requirements.

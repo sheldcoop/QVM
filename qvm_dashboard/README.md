@@ -402,13 +402,15 @@ QVM/
 
 ## Running Tests
 
-From the repository root:
+Requires **Python 3.10+** (the codebase uses `X | Y` annotations) and the
+project virtualenv. From the repository root:
 
 ```bash
-pytest
+.venv/bin/pytest -q
 ```
 
 `pyproject.toml` puts `qvm_dashboard/` on the import path and points pytest at
 `qvm_dashboard/tests`, so the suite imports `src.*` and `ui.*` exactly as the
 app does. Excel chart-embedding tests are skipped automatically when `kaleido`
-is unavailable.
+is unavailable, and the PNG render test skips when Chrome cannot be launched
+(`fig.to_image` needs a local Chrome via kaleido).

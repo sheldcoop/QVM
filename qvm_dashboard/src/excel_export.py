@@ -51,7 +51,9 @@ def _ensure_chrome_on_path() -> None:
     ]
     for candidate in candidates:
         if os.path.isfile(candidate):
-            chrome_dir = os.path.dirname(candidate)
+            # Separator-agnostic dirname: the candidates are Windows paths,
+            # and os.path.dirname misses them entirely on POSIX hosts.
+            chrome_dir = re.sub(r'[\\/][^\\/]+$', '', candidate)
             path_entries = os.environ.get('PATH', '').split(os.pathsep)
             if chrome_dir not in path_entries:
                 os.environ['PATH'] = chrome_dir + os.pathsep + os.environ.get('PATH', '')

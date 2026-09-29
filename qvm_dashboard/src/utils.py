@@ -55,16 +55,20 @@ def is_via_to_pad(df: pd.DataFrame) -> pd.Series:
 def convert_to_microns(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     """Multiply named columns by 1000 (mm → µm) and round to 3 dp.
 
+    Pure: works on a copy, so the caller's frame is never mutated.
     Silently skips columns that are not present in df.
     """
+    out = df.copy()
     for col in cols:
-        if col in df.columns:
-            df[col] = (df[col] * 1000).round(3)
-    return df
+        if col in out.columns:
+            out[col] = (out[col] * 1000).round(3)
+    return out
 
 
 def calculate_annular_ring(df: pd.DataFrame, settings: Dict) -> pd.DataFrame:
     """Compute the minimum Annular Ring per row and store it on the DataFrame.
+
+    Pure: works on a copy, so the caller's frame is never mutated.
 
     Formula: (Outer Diameter / 2) - (Inner Diameter / 2) - PtV Distance
     """
@@ -74,8 +78,9 @@ def calculate_annular_ring(df: pd.DataFrame, settings: Dict) -> pd.DataFrame:
     ptv_col = col_names.get('ptv_distance', 'PtV Distance')
     annular_col = col_names.get('annular_ring', 'Annular Ring')
 
-    df[annular_col] = (df[outer_col] / 2) - (df[inner_col] / 2) - df[ptv_col]
-    return df
+    out = df.copy()
+    out[annular_col] = (out[outer_col] / 2) - (out[inner_col] / 2) - out[ptv_col]
+    return out
 
 
 def resolve_columns(settings: dict, keys: Iterable[str]) -> dict:

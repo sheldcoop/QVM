@@ -25,7 +25,7 @@ def test_ensure_chrome_on_path_sets_common_windows_locations(monkeypatch):
 
     assert os.environ['GOOGLE_CHROME_BIN'] == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
     assert os.environ['CHROME_BIN'] == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-    assert r'C:\Program Files\Google\Chrome\Application' in os.environ['PATH']
+    assert r'C:\Program Files\Google\Chrome\Application' in os.environ.get('PATH', '')
 
 
 @pytest.fixture(autouse=True)
@@ -371,6 +371,9 @@ def test_unified_export_handles_malformed_grid_ids(settings):
 
     df = _mixed_process_frame(settings)
     grid_col = settings['COLUMN_NAMES']['grid_id']
+    # Object dtype first: pandas >= 2 refuses string setitem into an int64
+    # column, but real uploads arrive with mixed-type Grid IDs.
+    df[grid_col] = df[grid_col].astype(object)
     df.loc[df.index[:4], grid_col] = ['A', 'B2', '3X', '']
 
     buf = BytesIO()

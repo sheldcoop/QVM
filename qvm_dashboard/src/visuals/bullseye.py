@@ -5,7 +5,9 @@ import plotly.graph_objects as go
 from typing import Dict
 
 from src import theme
-from src.chart_helpers import get_rings, zone_colors, apply_dark_layout
+from src.chart_helpers import (
+    get_rings, zone_colors, zone_legend_annotation, apply_dark_layout,
+)
 
 
 def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
@@ -90,6 +92,10 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         borderwidth=1, borderpad=5,
     )
 
+    # Zone legend below the x-axis title band (y < -0.12 keeps it clear of the
+    # centered axis title) — shared helper, also used by the Excel export.
+    fig.add_annotation(**zone_legend_annotation(rings, y=-0.16))
+
     apply_dark_layout(
         fig, height=height,
         title=dict(text='DX vs DY Registration Bullseye — Via-to-Pad',
@@ -104,7 +110,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
                    tickfont=dict(color=theme.TEXT)),
         hovermode='closest',
         showlegend=False,
-        margin=dict(t=55, b=55, l=60, r=60),
+        margin=dict(t=55, b=90, l=60, r=60),
     )
     return fig
 
