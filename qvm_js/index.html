@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="deep-lab">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QVM Dashboard</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="js/themes.js"></script>  <!-- every theme lives here; runs first so the right theme shows at once -->
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!-- Application shell (no gate: analyst-only tool, no identity, no save) -->
+<div id="shell" class="shell" hidden>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" id="brandMark"></span>
+      <span class="brand-name">QVM Dashboard</span>
+      <span class="brand-ver" id="brandVer"></span>
+    </div>
+
+    <div class="topbar-right">
+      <button class="btn-icon" id="themeBtn" type="button" data-action="cycle-theme"
+              title="Switch theme" aria-label="Switch theme">T</button>
+      <a class="btn-icon" id="helpBtn" href="#/help" title="Help" aria-label="Help">?</a>
+    </div>
+  </header>
+
+  <div id="alertBanner" class="alert-banner" role="status" hidden></div>
+
+  <div class="body">
+    <nav class="nav" id="nav" aria-label="Main">
+      <div class="nav-items" id="navItems"></div>
+      <div class="nav-foot">
+        <div class="nav-rev" id="navRev"></div>
+      </div>
+      <button class="nav-collapse" id="navCollapse" type="button" data-action="nav-collapse" aria-controls="nav"></button>
+    </nav>
+
+    <main class="main" id="main" tabindex="-1" aria-label="Main content"></main>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<div id="dialogHost"></div>
+
+<!-- Classic scripts, in dependency order. No modules: they do not load from file:// -->
+<!-- Vendor (Chart.js, SheetJS) arrives in M2 -->
+<script src="js/config.js"></script>
+<script src="js/domain.js"></script>
+<script src="js/ui/core.js"></script>
+<script src="js/ui/components.js"></script>
+<script src="js/ui/glyphs.js"></script>
+<script src="js/ui/overlays.js"></script>
+<script src="js/ui/charts.js"></script>
+<script src="js/views/panelmap.js"></script>
+<script src="js/views/ptv.js"></script>
+<script src="js/views/vtp.js"></script>
+<script src="js/views/coreshk.js"></script>
+<script src="js/views/health.js"></script>
+<script src="js/views/help.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
