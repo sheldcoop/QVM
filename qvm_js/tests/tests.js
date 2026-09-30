@@ -139,6 +139,66 @@
     var ing3 = P.ingestFile('mystery.txt', ptvSample(), undefined, {});
     ok('no-hint warning', ing3.uiWarnings.length === 1);
 
+    /* =============== stats primitives =============== */
+    group('Stats primitives');
+    eq('toUm', D.toUm(0.005), 5);
+    eq('mean', D.mean([2, 4, 4, 4, 5, 5, 7, 9]), 5);
+    ok('sample std ddof=1', Math.abs(D.std([2, 4, 4, 4, 5, 5, 7, 9]) - 2.1380899352994695) < 1e-9);
+    ok('std needs n>=2', isNaN(D.std([3])) && isNaN(D.std([])));
+
+    /* =============== zones =============== */
+    group('Zones');
+    var rings = D.getRings(undefined);
+    eq('default rings', rings, { exceptional: 2.5, excellent: 5.0, good: 7.5, acceptable: 10.0 });
+    eq('custom rings', D.getRings({ VTP_REGISTRATION: { ring_acceptable_um: 12 } }).acceptable, 12);
+    eq('zone boundaries',
+      [2.5, 5, 7.5, 10, 10.1].map(function (v) { return D.zoneOf(v, rings); }),
+      ['exceptional', 'excellent', 'good', 'acceptable', 'fail']);
+
+    /* =============== QC combiner =============== */
+    group('QC combiner');
+    var qrows = [
+      { location: 'UL_1', gridId: 11, annularRing: 0.14 },
+      { location: 'UL_2', gridId: 12, annularRing: 0.10 },
+      { location: 'UL_3', gridId: 13, annularRing: null }
+    ];
+    var st = D.annularStats(qrows, 120);
+    ok('min/max', Math.abs(st.min - 100) < 1e-9 && Math.abs(st.max - 140) < 1e-9);
+    eq('fails', [st.failCount, st.failPct, st.n], [1, 50, 2]);
+    eq('worst site', [st.worst.location, st.worst.gridId], ['UL_2', 12]);
+    eq('empty -> null', D.annularStats([], 120), null);
+    eq('all null -> null', D.annularStats([{ annularRing: null }], 120), null);
+
+    /* =============== QP shrinkage =============== */
+    group('QP shrinkage');
+    var nom = {
+      UL_1: { x: -200, y: 200 }, UL_4: { x: 0, y: 200 },
+      UL_2: { x: -200, y: 0 }, UL_3: { x: 0, y: 0 },
+      LL_1: { x: -200, y: 0 }, LL_4: { x: 0, y: 0 },
+      LL_2: { x: -200, y: -200 }, LL_3: { x: 0, y: -200 },
+      LR_1: { x: 0, y: 0 }, LR_4: { x: 200, y: 0 },
+      LR_2: { x: 0, y: -200 }, LR_3: { x: 200, y: -200 },
+      UR_1: { x: 0, y: 200 }, UR_4: { x: 200, y: 200 },
+      UR_2: { x: 0, y: 0 }, UR_3: { x: 200, y: 0 }
+    };
+    var mrows = Object.keys(nom).map(function (loc) {
+      return { location: loc, coordX: nom[loc].x + (loc === 'UL_3' ? 0.2 : 0),
+               coordY: nom[loc].y };
+    });
+    var shr = D.qpShrinkage(mrows, nom, 200);
+    eq('four quadrants', shr.quadrant.length, 4);
+    var ul = shr.quadrant.filter(function (q) { return q.quadrant === 'UL'; })[0];
+    function near(a, b) { return Math.abs(a - b) < 1e-6; }
+    ok('UL x ppm', near(ul.xPpm, 500));
+    ok('FP x ppm', near(shr.fullPanel.xPpm, 125));
+    eq('FP y ppm', shr.fullPanel.yPpm, 0);
+    ok('QTQ x', near(shr.uniformity.rangeX, 500));
+    ok('2d distortion', near(shr.uniformity.distortion2d, 500));
+    eq('one outlier', shr.outliers.map(function (o) { return o.quadrant; }), ['UL']);
+    eq('no warnings', shr.warnings.length, 0);
+    eq('empty rows', D.qpShrinkage([], nom).warnings,
+      ['No measured rows in scope.']);
+
     /* =============== themes =============== */
     group('Themes');
     ok('theme list non-empty', TH.list.length > 0);
