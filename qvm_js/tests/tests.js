@@ -358,6 +358,26 @@
     ok('arrow scaled by multiplier',
       qcfg.options.plugins.qvmQuiver.arrows[0].dx !== 0);
 
+    /* =============== workbook =============== */
+    group('Workbook');
+    var E = window.QVM.export;
+    var wbRows = P.parseQvmContent(ptvSample(), undefined).rows;
+    var wb = E.buildQvmWorkbook({
+      vtpRows: [], ptvRows: wbRows, vtpUslUm: 10, ptvUslUm: 10,
+      rings: D.getRings(undefined), settings: window.QVM.defaults.DEFAULT_SETTINGS,
+      meta: { date: '2026-09-30', files: ['s.txt'] },
+      warnings: [{ file: 's.txt', text: 'w1' }], D: D
+    });
+    eq('sheet names', wb.SheetNames,
+      ['Via to Pad', 'Pad to Via', 'Report', 'Analytics VTP', 'Analytics PTV',
+       'Shrinkage Summary', 'Warnings']);
+    var rep = XLSX.utils.sheet_to_json(wb.Sheets.Report, { header: 1 });
+    ok('report meta + header',
+      rep[0][0] === 'QVM Dashboard export' && rep[3][0] === 'Process');
+    eq('report rows', rep.length, 4 + 4);
+    var warn = XLSX.utils.sheet_to_json(wb.Sheets.Warnings, { header: 1 });
+    eq('warnings sheet', warn[1], ['s.txt', 'w1']);
+
     /* =============== CS files =============== */
     group('CS content');
     eq('cs filename', P.parseCsFilename('Core_Shrinkage_Panel 20_Front.txt'),

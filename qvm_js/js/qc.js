@@ -173,14 +173,21 @@ window.QVM.qc = (function () {
     function tip(raw) { return (raw && raw.tip) || ''; }
     var mult = window.QVM.session.scope.vectorMult || 100;
     var sec = ui.el('section', { class: 'panel' }, [ui.el('h2', { text: 'Analytics' })]);
-    sec.appendChild(ui.chart(C.bullseyeBuild(usable, rings),
-      { height: 420, label: 'Registration bullseye', expand: true, format: tip }).node);
-    sec.appendChild(ui.chart(C.siteBarsBuild(usable, rings),
-      { height: 300, label: 'Per-site SC', expand: true, format: tip }).node);
+    var handles = [];
+    window.QVM.qc.lastCharts = handles;
+    function addChart(build, opts, key) {
+      var entry = ui.chart(build, opts);
+      handles.push({ key: key, label: opts.label, entry: entry });
+      sec.appendChild(entry.node);
+    }
+    addChart(C.bullseyeBuild(usable, rings),
+      { height: 420, label: 'Registration bullseye', expand: true, format: tip }, 'bullseye');
+    addChart(C.siteBarsBuild(usable, rings),
+      { height: 300, label: 'Per-site SC', expand: true, format: tip }, 'sitebars');
     var quarters = usable.filter(function (r) { return (r.location || '').indexOf('_') !== -1; });
     if (quarters.length)
-      sec.appendChild(ui.chart(C.boxBuild(quarters),
-        { height: 300, label: 'SC distribution by quarter', expand: true, format: tip }).node);
+      addChart(C.boxBuild(quarters),
+        { height: 300, label: 'SC distribution by quarter', expand: true, format: tip }, 'box');
     sec.appendChild(ui.el('div', { class: 'kit-row' }, [
       ui.el('span', { text: 'Distortion map sensitivity' }),
       seg('Sensitivity', String(mult), ['50', '100', '200', '400'], function (v) {
@@ -188,8 +195,44 @@ window.QVM.qc = (function () {
         window.QVM.app.refresh();
       })
     ]));
-    sec.appendChild(ui.chart(C.quiverBuild(usable, settings, mult),
-      { height: 520, label: 'ABF distortion map, ' + mult + 'x', expand: true, format: tip }).node);
+    addChart(C.quiverBuild(usable, settings, mult),
+      { height: 520, label: 'ABF distortion map, ' + mult + 'x', expand: true, format: tip }, 'quiver');
+    main.appendChild(sec);
+  }
+
+  function exportSection(main, ui, D, scoped, settings, process) {
+    var E = window.QVM.export, S = window.QVM.session;
+    var cfg = settings.VTP_REGISTRATION || {}, cfg2 = settings.PTV_REGISTRATION || {};
+    function num(v, f) { var n = parseFloat(v); return isNaN(n) ? f : n; }
+    var rings = D.getRings(settings);
+    var files = S.files.filter(function (f) { return f.kind === 'qvm'; }).map(function (f) {
+      return f.name;
+    });
+    var meta = { date: new Date().toISOString().slice(0, 10), files: files };
+    var sec = ui.el('section', { class: 'panel' }, [ui.el('h2', { text: 'Export' })]);
+    var row = ui.el('div', { class: 'kit-row' }, [
+      ui.button('Download Excel', { kind: 'primary', onClick: function () {
+        var wb = E.buildQvmWorkbook({
+          vtpRows: S.rowsByProcess('Via to Pad'),
+          ptvRows: S.rowsByProcess('Pad to Via'),
+          vtpUslUm: num(cfg.vtp_usl_um, 10), ptvUslUm: num(cfg2.ptv_usl_um, 10),
+          rings: rings, settings: settings, meta: meta,
+          warnings: S.warnings(), D: D
+        });
+        E.downloadWorkbook(wb, 'QVM_' + process.replace(/ /g, '') + '_' + meta.date + '.xlsx');
+        ui.toast({ message: 'Workbook downloaded.', kind: 'success' });
+      } })
+    ]);
+    (window.QVM.qc.lastCharts || []).forEach(function (h) {
+      row.appendChild(ui.button(h.label + ' PNG', { onClick: function () {
+        var ch = h.entry.chart();
+        if (!ch) { ui.toast({ message: 'Chart not rendered yet.', kind: 'warning' }); return; }
+        E.downloadPng(ch.canvas, 'QVM_' + h.key + '_' + meta.date + '.png');
+      } }));
+    });
+    sec.appendChild(row);
+    sec.appendChild(ui.el('p', { text: 'Workbook holds Report, process sheets, chart data, ' +
+      'shrinkage summary, and warnings. Charts download as PNG separately.' }));
     main.appendChild(sec);
   }
 
@@ -241,6 +284,7 @@ window.QVM.qc = (function () {
     analyticsSection(main, ui, D, scoped, settings);
     measurementTable(main, ui, names, scoped, thresholdUm);
     shrinkageSection(main, ui, D, scoped, settings);
+    exportSection(main, ui, D, scoped, settings, process);
     warningsSection(main, ui);
   }
 

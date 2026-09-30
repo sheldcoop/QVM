@@ -11,8 +11,9 @@ const win = { console, crypto: globalThis.crypto, TextEncoder, Intl, Date, Math,
               setTimeout, clearTimeout, Uint32Array, Uint8Array, Array, Object, String, Number, RegExp, Error };
 win.window = win;
 const ctx = vm.createContext(win);
-['js/config.js', 'js/themes.js', 'js/qvm-defaults.js', 'js/domain.js', 'js/parse.js',
- 'js/settings.js', 'js/session.js', 'js/qvcharts.js', 'tests/tests.js'].forEach(f =>
+['vendor/xlsx.full.min.js', 'js/config.js', 'js/themes.js', 'js/qvm-defaults.js',
+ 'js/domain.js', 'js/parse.js', 'js/settings.js', 'js/session.js', 'js/qvcharts.js',
+ 'js/export.js', 'tests/tests.js'].forEach(f =>
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f }));
 
 const T = win.QVM_TESTS;

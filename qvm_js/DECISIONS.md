@@ -23,6 +23,12 @@ Parsed rows are plain objects (`location`, `gridId`, `padDiameter`,
 `panel`, `side`, `buildUp`, `annularRing`) in mm — never display labels or
 µm. Display mapping happens at render (M6) via COLUMN_NAMES.
 
+## D12 (M9): Workbook parity minus embedded images
+SheetJS Community Edition cannot embed PNGs, so the workbook carries chart
+DATA tables while charts download as one-click PNGs (canvas, no Chrome).
+Every other sheet matches Python: Report, process sheets, Shrinkage Summary,
+Warnings. Sample data: generated PtV/VtP pair (seeded) + the real CS pair.
+
 ## D11 (M8): Quiver arrows are canvas, panel map is the PNG
 Arrows/labels/crosshair/summary/legend drawn by an inline Chart.js plugin
 (same pattern as M7 rings) so M9 PNG export captures everything. Arrow

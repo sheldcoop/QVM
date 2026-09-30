@@ -1,0 +1,208 @@
+Circle: Pad_XX(ID:1, From 180 Pts.)
+     Coord. X =           -222.700000
+     Coord. Y =            239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:2, From 70 Pts.)
+     Coord. X =           -222.700731
+     Coord. Y =            239.878322
+     Diameter =         0.016742
+Distance: PtV_XX(ID:3) between Via_XX and Pad_XX
+           SC =               0.003402
+           DX =              -0.000731
+           DY =               0.003322
+
+Circle: Pad_XX(ID:4, From 180 Pts.)
+     Coord. X =           -222.700000
+     Coord. Y =              4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:5, From 70 Pts.)
+     Coord. X =           -222.702433
+     Coord. Y =              4.126331
+     Diameter =         0.016742
+Distance: PtV_XX(ID:6) between Via_XX and Pad_XX
+           SC =               0.002774
+           DX =              -0.002433
+           DY =               0.001331
+
+Circle: Pad_XX(ID:7, From 180 Pts.)
+     Coord. X =            -22.050000
+     Coord. Y =              4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:8, From 70 Pts.)
+     Coord. X =            -22.049359
+     Coord. Y =              4.122281
+     Diameter =         0.016742
+Distance: PtV_XX(ID:9) between Via_XX and Pad_XX
+           SC =               0.002794
+           DX =               0.000641
+           DY =              -0.002719
+
+Circle: Pad_XX(ID:10, From 180 Pts.)
+     Coord. X =            -22.050000
+     Coord. Y =            239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:11, From 70 Pts.)
+     Coord. X =            -22.050143
+     Coord. Y =            239.876344
+     Diameter =         0.016742
+Distance: PtV_XX(ID:12) between Via_XX and Pad_XX
+           SC =               0.001352
+           DX =              -0.000143
+           DY =               0.001344
+
+Circle: Pad_XX(ID:13, From 180 Pts.)
+     Coord. X =           -222.700000
+     Coord. Y =             -4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:14, From 70 Pts.)
+     Coord. X =           -222.702273
+     Coord. Y =             -4.125094
+     Diameter =         0.016742
+Distance: PtV_XX(ID:15) between Via_XX and Pad_XX
+           SC =               0.002275
+           DX =              -0.002273
+           DY =              -0.000094
+
+Circle: Pad_XX(ID:16, From 180 Pts.)
+     Coord. X =           -222.700000
+     Coord. Y =           -239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:17, From 70 Pts.)
+     Coord. X =           -222.700824
+     Coord. Y =           -239.877623
+     Diameter =         0.016742
+Distance: PtV_XX(ID:18) between Via_XX and Pad_XX
+           SC =               0.002749
+           DX =              -0.000824
+           DY =              -0.002623
+
+Circle: Pad_XX(ID:19, From 180 Pts.)
+     Coord. X =            -22.050000
+     Coord. Y =           -239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:20, From 70 Pts.)
+     Coord. X =            -22.047822
+     Coord. Y =           -239.878118
+     Diameter =         0.016742
+Distance: PtV_XX(ID:21) between Via_XX and Pad_XX
+           SC =               0.003803
+           DX =               0.002178
+           DY =              -0.003118
+
+Circle: Pad_XX(ID:22, From 180 Pts.)
+     Coord. X =            -22.050000
+     Coord. Y =             -4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:23, From 70 Pts.)
+     Coord. X =            -22.046992
+     Coord. Y =             -4.127186
+     Diameter =         0.016742
+Distance: PtV_XX(ID:24) between Via_XX and Pad_XX
+           SC =               0.003719
+           DX =               0.003008
+           DY =              -0.002186
+
+Circle: Pad_XX(ID:25, From 180 Pts.)
+     Coord. X =             20.300000
+     Coord. Y =             -4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:26, From 70 Pts.)
+     Coord. X =             20.299856
+     Coord. Y =             -4.122920
+     Diameter =         0.016742
+Distance: PtV_XX(ID:27) between Via_XX and Pad_XX
+           SC =               0.002085
+           DX =              -0.000144
+           DY =               0.002080
+
+Circle: Pad_XX(ID:28, From 180 Pts.)
+     Coord. X =             20.300000
+     Coord. Y =           -239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:29, From 70 Pts.)
+     Coord. X =             20.297746
+     Coord. Y =           -239.871818
+     Diameter =         0.016742
+Distance: PtV_XX(ID:30) between Via_XX and Pad_XX
+           SC =               0.003899
+           DX =              -0.002254
+           DY =               0.003182
+
+Circle: Pad_XX(ID:31, From 180 Pts.)
+     Coord. X =            220.950000
+     Coord. Y =           -239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:32, From 70 Pts.)
+     Coord. X =            220.959000
+     Coord. Y =           -239.863000
+     Diameter =         0.016742
+Distance: PtV_XX(ID:33) between Via_XX and Pad_XX
+           SC =               0.015000
+           DX =               0.009000
+           DY =               0.012000
+
+Circle: Pad_XX(ID:34, From 180 Pts.)
+     Coord. X =            220.950000
+     Coord. Y =             -4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:35, From 70 Pts.)
+     Coord. X =            220.950329
+     Coord. Y =             -4.127287
+     Diameter =         0.016742
+Distance: PtV_XX(ID:36) between Via_XX and Pad_XX
+           SC =               0.002311
+           DX =               0.000329
+           DY =              -0.002287
+
+Circle: Pad_XX(ID:37, From 180 Pts.)
+     Coord. X =             20.300000
+     Coord. Y =            239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:38, From 70 Pts.)
+     Coord. X =             20.296459
+     Coord. Y =            239.876809
+     Diameter =         0.016742
+Distance: PtV_XX(ID:39) between Via_XX and Pad_XX
+           SC =               0.003977
+           DX =              -0.003541
+           DY =               0.001809
+
+Circle: Pad_XX(ID:40, From 180 Pts.)
+     Coord. X =             20.300000
+     Coord. Y =              4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:41, From 70 Pts.)
+     Coord. X =             20.296184
+     Coord. Y =              4.127153
+     Diameter =         0.016742
+Distance: PtV_XX(ID:42) between Via_XX and Pad_XX
+           SC =               0.004382
+           DX =              -0.003816
+           DY =               0.002153
+
+Circle: Pad_XX(ID:43, From 180 Pts.)
+     Coord. X =            220.950000
+     Coord. Y =              4.125000
+     Diameter =         0.308911
+Circle: Via_XX(ID:44, From 70 Pts.)
+     Coord. X =            220.948281
+     Coord. Y =              4.121709
+     Diameter =         0.016742
+Distance: PtV_XX(ID:45) between Via_XX and Pad_XX
+           SC =               0.003713
+           DX =              -0.001719
+           DY =              -0.003291
+
+Circle: Pad_XX(ID:46, From 180 Pts.)
+     Coord. X =            220.950000
+     Coord. Y =            239.875000
+     Diameter =         0.308911
+Circle: Via_XX(ID:47, From 70 Pts.)
+     Coord. X =            220.946282
+     Coord. Y =            239.874043
+     Diameter =         0.016742
+Distance: PtV_XX(ID:48) between Via_XX and Pad_XX
+           SC =               0.003839
+           DX =              -0.003718
+           DY =              -0.000957
+

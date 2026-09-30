@@ -1,0 +1,83 @@
+
+         Element          Actual         Nominal         Deviat.         Up Tol.        Low Tol.       Pass/Fail
+                                                        (TP Dev)        (TP Tol)                                
+Circle: Pad_LL_2(ID:1, From 204 Pts.) 
+     Coord. X =        80.782561                                                                                
+     Coord. Y =        84.152042                                                                                
+     Diameter =         0.370684                                                                                
+
+Circle: Pad_LL_1(ID:2, From 166 Pts.) 
+     Coord. X =        80.304301                                                                                
+     Coord. Y =       320.013146                                                                                
+     Diameter =         0.374724                                                                                
+
+Circle: Pad_LL_4(ID:3, From 199 Pts.) 
+     Coord. X =       281.043063                                                                                
+     Coord. Y =       320.412869                                                                                
+     Diameter =         0.374856                                                                                
+
+Circle: Pad_LL_3(ID:4, From 200 Pts.) 
+     Coord. X =       281.520745                                                                                
+     Coord. Y =        84.550491                                                                                
+     Diameter =         0.371151                                                                                
+
+Circle: Pad_LR_2(ID:5, From 215 Pts.) 
+     Coord. X =       323.882352                                                                                
+     Coord. Y =        84.637630                                                                                
+     Diameter =         0.373271                                                                                
+
+Circle: Pad_LR_1(ID:6, From 191 Pts.) 
+     Coord. X =       323.408751                                                                                
+     Coord. Y =       320.500175                                                                                
+     Diameter =         0.373574                                                                                
+
+Circle: Pad_LR_4(ID:7, From 216 Pts.) 
+     Coord. X =       524.152437                                                                                
+     Coord. Y =       320.901469                                                                                
+     Diameter =         0.376309                                                                                
+
+Circle: Pad_LR_3(ID:8, From 206 Pts.) 
+     Coord. X =       524.627544                                                                                
+     Coord. Y =        85.035605                                                                                
+     Diameter =         0.375301                                                                                
+
+Circle: Pad_UL_2(ID:9, From 160 Pts.) 
+     Coord. X =        80.294302                                                                                
+     Coord. Y =       327.501987                                                                                
+     Diameter =         0.374054                                                                                
+
+Circle: Pad_UL_1(ID:10, From 212 Pts.) 
+     Coord. X =        79.816477                                                                                
+     Coord. Y =       564.116086                                                                                
+     Diameter =         0.376742                                                                                
+
+Circle: Pad_UL_4(ID:11, From 187 Pts.) 
+     Coord. X =       280.552361                                                                                
+     Coord. Y =       564.518185                                                                                
+     Diameter =         0.376489                                                                                
+
+Circle: Pad_UL_3(ID:12, From 213 Pts.) 
+     Coord. X =       281.031817                                                                                
+     Coord. Y =       328.654746                                                                                
+     Diameter =         0.373982                                                                                
+
+Circle: Pad_UR_2(ID:13, From 194 Pts.) 
+     Coord. X =       323.393616                                                                                
+     Coord. Y =       328.741402                                                                                
+     Diameter =         0.373269                                                                                
+
+Circle: Pad_UR_1(ID:14, From 169 Pts.) 
+     Coord. X =       322.921680                                                                                
+     Coord. Y =       564.604296                                                                                
+     Diameter =         0.373089                                                                                
+
+Circle: Pad_UR_4(ID:15, From 152 Pts.) 
+     Coord. X =       523.662365                                                                                
+     Coord. Y =       565.007055                                                                                
+     Diameter =         0.371330                                                                                
+
+Circle: Pad_UR_3(ID:16, From 169 Pts.) 
+     Coord. X =       524.137507                                                                                
+     Coord. Y =       329.141299                                                                                
+     Diameter =         0.375815                                                                                
+
