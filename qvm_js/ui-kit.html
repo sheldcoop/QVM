@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QVM Dashboard UI kit</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="js/themes.js"></script>  <!-- every theme lives here; runs first so the right theme shows at once -->
+<style>
+  /* Kit layout only - nothing here is used by the app. */
+  body { height: auto; min-height: 100%; }
+  .kit-bar {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 24px; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(8px);
+  }
+  .kit-bar h1 { font-size: 15px; display: flex; align-items: center; gap: 10px; color: var(--accent); }
+  .kit-bar h1 span { color: var(--fg); }
+  .kit-bar .spacer { flex: 1; }
+  .kit-root { padding: 24px; }
+  .kit-root.all { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 0; padding: 0; }
+  .kit-root.all > .theme-scope { padding: 20px; border-right: 1px solid var(--line); min-width: 0; }
+  .kit-col-title { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); font-weight: 700; margin-bottom: 16px; }
+  .kit-sec { margin-bottom: 28px; }
+  .kit-sec > h2 {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--fg-muted);
+  }
+  .kit-sec > h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .kit-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .kit-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .kit-grid.tight { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .kit-label { font-size: 11px; color: var(--fg-faint); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .kit-note { font-size: 12px; color: var(--fg-muted); margin: -4px 0 12px; }
+  .kit-swatch { display: grid; gap: 4px; font-size: 11px; }
+  .kit-swatch i { display: block; height: 36px; border-radius: 6px; border: 1px solid var(--line); }
+  .kit-swatch code { font-family: var(--font-mono); color: var(--fg-muted); }
+  .kit-glyphs { display: grid; grid-template-columns: 200px repeat(4, 120px); gap: 10px 8px; align-items: center; }
+  .kit-glyph-cell { display: grid; place-items: center; padding: 8px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--inset); }
+  .kit-contrast td, .kit-contrast th { padding: 6px 10px !important; font-size: 12px; }
+  .kit-contrast .pass { color: var(--ok-fg); font-weight: 700; }
+  .kit-contrast .fail { color: var(--critical-fg); font-weight: 700; }
+  .kit-mini-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  @media (max-width: 1400px) { .kit-root.all { grid-template-columns: 1fr; } }
+
+  /* --- Redesign foundations (kit only; the winning direction promotes these to css/app.css) --- */
+  /* Data text: tabular monospace everywhere a value is read, never the UI face. */
+  .cx-display { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 30px; font-weight: 650; letter-spacing: -.01em; line-height: 1.1; }
+  /* Combo popup opens with motion (transform/opacity only). */
+  @keyframes cx-pop { from { opacity: 0; transform: translateY(-4px) scale(.99); } to { opacity: 1; transform: none; } }
+  .kit-root .combo-pop:not([hidden]) { animation: cx-pop 140ms var(--ease-out); transform-origin: top center; }
+  [data-motion="reduce"] .kit-root .combo-pop:not([hidden]) { animation: none; }
+  /* Airy tables: taller rows, quiet actions until the row is hovered or focused. */
+  .kit-sec .table-wrap table.grid th { padding: 10px 16px; }
+  .kit-sec .table-wrap table.grid td { padding: 14px 16px; }
+  .kit-sec .row-actions { opacity: .45; transition: opacity var(--t-fast) ease; }
+  .kit-sec tr:hover .row-actions, .kit-sec tr:focus-within .row-actions { opacity: 1; }
+  /* Metrics widget: one strip, dividers between tiles, no tile boxes. */
+  .cx-kpi-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-pop); overflow: hidden; }
+  .cx-kpi-strip .kpi-tile { border: 0; border-radius: 0; box-shadow: none; background: transparent; flex: 1 1 150px; }
+  .cx-kpi-strip .kpi-tile + .kpi-tile { border-left: 1px solid var(--line); }
+  /* Tool hero: the tool card is the anchor - big glyph, lamp, key facts. */
+  .cx-tool-hero { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .cx-hero-card { display: flex; gap: 16px; align-items: center; padding: 18px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-pop); }
+  .cx-hero-facts { display: grid; gap: 2px; font-size: 13px; }
+  .cx-hero-facts b { font-size: 15px; }
+
+  /* --- Direction A: Deep Lab (dark glass Mission Control) ---
+     Text-bearing popups (combo, menu, dialog) stay solid on purpose:
+     a readable popup never shows the fields below through it. */
+  [data-concept="deep-lab"] .kit-bar,
+  [data-concept="deep-lab"] .cx-kpi-strip,
+  [data-concept="deep-lab"] .cx-hero-card,
+  [data-concept="deep-lab"] .toast,
+  [data-concept="deep-lab"] .tip-card {
+    background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+    backdrop-filter: blur(14px);
+    border-color: var(--line-strong);
+  }
+  [data-concept="deep-lab"] .panel,
+  [data-concept="deep-lab"] dialog.modal {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), var(--shadow);
+    border-color: var(--line-strong);
+  }
+  [data-concept="deep-lab"] .cx-hero-card { border-color: var(--line-hi); }
+  /* Polish: same hero breathing room in every direction. */
+  [data-concept="deep-lab"] .cx-hero-card,
+  [data-concept="signal"] .cx-hero-card { padding: 22px; }
+  [data-concept="deep-lab"] .traveller.is-urgent { box-shadow: 0 0 24px rgba(249, 115, 22, .25), var(--shadow); }
+
+  /* --- Direction B: Cleanroom (light, airy) ---
+     Status tokens stay Carbon White (AA-verified); only the room changes.
+     Glass only on the bar and strip; popups, menus and dialogs stay solid. */
+  [data-concept="cleanroom"] .kit-bar,
+  [data-concept="cleanroom"] .cx-kpi-strip {
+    background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  [data-concept="cleanroom"] .panel,
+  [data-concept="cleanroom"] .cx-hero-card,
+  [data-concept="cleanroom"] dialog.modal { border-color: var(--line); box-shadow: var(--shadow); }
+  [data-concept="cleanroom"] .cx-hero-card { padding: 22px; }
+  [data-concept="cleanroom"] .kit-sec .table-wrap table.grid th {
+    text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: var(--fg-faint);
+    border-bottom: 2px solid var(--line-strong);
+  }
+  [data-concept="cleanroom"] .traveller.is-urgent { border-left: 6px solid var(--critical); }
+
+  /* --- Direction C: Signal (dark, solid, lamp-forward) ---
+     No transparency anywhere: no blur, no translucent layers, popups solid.
+     Amber accent (bench-equipment lamps); status tokens stay Carbon g100. */
+  [data-concept="signal"] .panel,
+  [data-concept="signal"] .cx-hero-card,
+  [data-concept="signal"] .cx-kpi-strip,
+  [data-concept="signal"] dialog.modal { border-width: 2px; }
+  [data-concept="signal"] .cx-display { font-size: 34px; }
+  [data-concept="signal"] .cx-hero-facts { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  [data-concept="signal"] .kit-sec .table-wrap table.grid td:first-child { font-family: var(--font-mono); font-weight: 650; }
+  [data-concept="signal"] .traveller.is-urgent { border-left: 8px solid var(--critical); box-shadow: var(--shadow); }
+  [data-concept="signal"] .btn-primary { background: var(--accent-fill); border-color: var(--accent-fill); }
+
+  /* --- Direction D: Frost (glass flagship, Apple-minimalist) ---
+     Restraint: hairlines, whitespace, one blue, quiet type. Frosted chrome
+     (bar, strip, hero, toasts, tips); popups, menus and dialogs stay solid. */
+  [data-concept="frost"] .kit-bar,
+  [data-concept="frost"] .cx-kpi-strip,
+  [data-concept="frost"] .cx-hero-card,
+  [data-concept="frost"] .toast,
+  [data-concept="frost"] .tip-card {
+    background: color-mix(in srgb, var(--surface-2) 68%, transparent);
+    backdrop-filter: blur(22px) saturate(1.6);
+    border-color: rgba(255, 255, 255, .6);
+    box-shadow: var(--shadow);
+  }
+  [data-concept="frost"] .panel,
+  [data-concept="frost"] .cx-kpi-strip,
+  [data-concept="frost"] dialog.modal { border: 0; box-shadow: var(--shadow); }
+  [data-concept="frost"] .cx-hero-card { border: 0; box-shadow: var(--shadow); padding: 24px; }
+  [data-concept="frost"] .kit-sec > h2 { text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--fg); }
+  [data-concept="frost"] .kit-label { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  [data-concept="frost"] .kit-sec .table-wrap table.grid th { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--fg-faint); border-bottom: 1px solid var(--line); }
+  [data-concept="frost"] .traveller.is-urgent { border-left: 4px solid var(--critical); }
+</style>
+</head>
+<body>
+<div class="kit-bar" id="kitBar"></div>
+<main class="kit-root" id="kitRoot"></main>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<div id="dialogHost"></div>
+
+<script src="vendor/chart.umd.min.js"></script>  <!-- optional: charts show a notice without it -->
+<script src="js/config.js"></script>
+<script src="js/domain.js"></script>   <!-- the panel-range rules the panel map is given -->
+<script src="js/ui/core.js"></script>
+<script src="js/ui/components.js"></script>
+<script src="js/ui/glyphs.js"></script>
+<script src="js/ui/overlays.js"></script>
+<script src="js/ui/charts.js"></script>
+<script src="js/ui-kit.js"></script>
+</body>
+</html>

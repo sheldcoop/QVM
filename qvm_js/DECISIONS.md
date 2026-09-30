@@ -9,6 +9,18 @@ undo, and audit machinery is NOT ported — analyst-only tool, nothing to save.
 Router views: Panel Map, Pad to Via, Via to Pad, Core Shrinkage (+ Health,
 Help). Keeps every later milestone's scope identical to the Python app.
 
+## D4 (M2): Full test battery, adapted
+`vendor/` (Chart.js 4.5.1, SheetJS) verbatim. `fake-dom`, `a11y-audit`,
+`contrast` verbatim/namespace-switched. `css-check`, `ui-smoke`, `run-tests`,
+`test.html` adapted to QVM files. `app-smoke`, `dom-budget`, `tests.js`,
+`ui-kit.js` written fresh (subset matching copied components).
+`preview.*`/`make-preview`/`make-demo-data` deferred — tracker-data-specific,
+revisit if QVM needs a demo-data preview (M9).
+
+## D5 (M2): Tracker's heatmap reserved for M8
+`js/ui/heatmap.js` NOT copied yet; it is the prime candidate for the Core
+Shrinkage distortion-map warp surface. Copy then, not now.
+
 ## D3 (M1): Verbatim clone, namespace-switched
 `css/app.css` sections 1-4, `js/themes.js`, and `js/ui/` (core, components,
 overlays, charts, glyphs) are verbatim copies from metrology-request-tracker

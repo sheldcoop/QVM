@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QVM Dashboard - tests</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --fg: #1c2530; --muted: #5b6b7c; --line: #dde3ea;
+    --ok: #1b7f4b; --ok-bg: #e8f5ed; --fail: #b3261e; --fail-bg: #fdeceb; --card: #fff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 16px; }
+  #summary { padding: 16px; border-radius: 6px; font-size: 18px; font-weight: 700;
+             margin-bottom: 16px; border: 1px solid var(--line); }
+  #summary.pass { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+  #summary.fail { background: var(--fail-bg); color: var(--fail); border-color: var(--fail); }
+  .group { background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+           margin-bottom: 12px; overflow: hidden; }
+  .group > h2 { font-size: 14px; margin: 0; padding: 10px 14px; background: #eef2f7;
+                border-bottom: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+  td.res { width: 60px; font-weight: 700; }
+  tr.ok td.res { color: var(--ok); }
+  tr.fail td.res { color: var(--fail); }
+  tr.fail { background: var(--fail-bg); }
+  td.detail { color: var(--muted); font-family: ui-monospace, Consolas, monospace;
+              font-size: 12px; white-space: pre-wrap; }
+  .num { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<h1>QVM Dashboard &mdash; tests</h1>
+<div class="sub">Open this file directly in Edge or Chrome. No server, no build step. The same tests run with <code>node tests/run-tests.js</code>.</div>
+<div id="summary">running&hellip;</div>
+<div id="out"></div>
+
+<script src="../js/config.js"></script>
+<script src="../js/themes.js"></script>
+<script src="../js/domain.js"></script>
+<script src="tests.js"></script>
+<script>
+(function () {
+  'use strict';
+  var T = window.QVM_TESTS;
+  T.done.then(function () {
+    var out = document.getElementById('out');
+    T.groups.forEach(function (g) {
+      var div = document.createElement('div');
+      div.className = 'group';
+      var h = document.createElement('h2');
+      var gFail = g.rows.filter(function (r) { return !r.ok; }).length;
+      h.textContent = g.name + '  (' + (g.rows.length - gFail) + '/' + g.rows.length + ')';
+      div.appendChild(h);
+      var tbl = document.createElement('table');
+      g.rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.className = r.ok ? 'ok' : 'fail';
+        var c1 = document.createElement('td'); c1.className = 'res'; c1.textContent = r.ok ? 'PASS' : 'FAIL';
+        var c2 = document.createElement('td'); c2.textContent = r.name;
+        var c3 = document.createElement('td'); c3.className = 'detail'; c3.textContent = r.detail;
+        tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+        tbl.appendChild(tr);
+      });
+      div.appendChild(tbl);
+      out.appendChild(div);
+    });
+    var sum = document.getElementById('summary');
+    sum.className = T.failed === 0 ? 'pass' : 'fail';
+    sum.textContent = T.failed === 0
+      ? 'ALL ' + T.passed + ' TESTS PASSED'
+      : T.failed + ' of ' + (T.passed + T.failed) + ' TESTS FAILED';
+  });
+})();
+</script>
+</body>
+</html>

@@ -47,7 +47,8 @@
 <div id="dialogHost"></div>
 
 <!-- Classic scripts, in dependency order. No modules: they do not load from file:// -->
-<!-- Vendor (Chart.js, SheetJS) arrives in M2 -->
+<script src="vendor/chart.umd.min.js"></script>  <!-- optional: charts show a notice without it -->
+<script src="vendor/xlsx.full.min.js"></script>  <!-- optional: exports fall back to CSV without it -->
 <script src="js/config.js"></script>
 <script src="js/domain.js"></script>
 <script src="js/ui/core.js"></script>
