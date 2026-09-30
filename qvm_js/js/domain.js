@@ -34,6 +34,26 @@ window.QVM.domain = (function () {
     return xs.reduce(function (a, b) { return a + b; }, 0) / xs.length;
   }
 
+  /**
+   * Linear-interpolation quantile (type-7, like numpy/R default).
+   * xs must be sorted ascending. Null when empty.
+   */
+  function quantile(sortedXs, p) {
+    var n = sortedXs.length;
+    if (!n) return null;
+    var h = (n - 1) * p, j = Math.floor(h), g = h - j;
+    return sortedXs[j] + (g && j + 1 < n ? g * (sortedXs[j + 1] - sortedXs[j]) : 0);
+  }
+
+  /** Five-number summary with min/max whiskers (plotly default). Null when empty. */
+  function boxStats(xs) {
+    var s = (xs || []).filter(function (v) { return v !== null && v !== undefined && !isNaN(v); })
+      .sort(function (a, b) { return a - b; });
+    if (!s.length) return null;
+    return { min: s[0], q1: quantile(s, 0.25), median: quantile(s, 0.5),
+             q3: quantile(s, 0.75), max: s[s.length - 1], n: s.length };
+  }
+
   /** Sample standard deviation (ddof=1, like pandas); NaN when n < 2. */
   function std(xs) {
     if (xs.length < 2) return NaN;
@@ -523,6 +543,8 @@ window.QVM.domain = (function () {
     toUm: toUm,
     mean: mean,
     std: std,
+    quantile: quantile,
+    boxStats: boxStats,
     getRings: getRings,
     zoneOf: zoneOf,
     annularStats: annularStats,

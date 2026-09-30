@@ -17,7 +17,8 @@ const ctx = vm.createContext(win);
  'js/ui/core.js', 'js/ui/components.js', 'js/ui/glyphs.js', 'js/ui/overlays.js',
  'js/ui/charts.js', 'js/ui/upload.js', 'js/qc.js',
  'js/views/panelmap.js', 'js/views/ptv.js', 'js/views/vtp.js', 'js/views/coreshk.js',
- 'js/views/settings.js', 'js/views/health.js', 'js/views/help.js', 'js/app.js'
+ 'js/views/settings.js', 'js/views/health.js', 'js/views/help.js', 'js/qvcharts.js', 'js/qc.js',
+ 'js/app.js'
 ].forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f }));
 
 win.QVM.app.init();

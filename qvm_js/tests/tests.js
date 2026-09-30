@@ -298,6 +298,43 @@
     eq('tangential -> twist', D.classifyVector(0, 10, 100, 0, [0, 0]), 'twist');
     eq('tiny -> stable', D.classifyVector(1, 1, 100, 0, [0, 0]), 'stable');
 
+    /* =============== box stats =============== */
+    group('Box stats');
+    eq('quantile type-7', [D.quantile([1, 2, 3, 4, 5], 0.25), D.quantile([1, 2, 3, 4, 5], 0.5),
+      D.quantile([1, 2, 3, 4, 5], 0.75)], [2, 3, 4]);
+    eq('quantile empty', D.quantile([], 0.5), null);
+    eq('five-number', D.boxStats([5, 1, 3, 2, 4, null]),
+      { min: 1, q1: 2, median: 3, q3: 4, max: 5, n: 5 });
+    eq('boxStats empty', D.boxStats([]), null);
+
+    /* =============== chart builders =============== */
+    group('Chart builders');
+    var stubTheme = { color: function (n) { return 'c:' + n; },
+                      alpha: function (n, a) { return 'a:' + n + ':' + a; } };
+    var C = window.QVM.charts;
+    var grows = P.parseQvmContent(ptvSample(), undefined).rows;
+    var grings = D.getRings(undefined);
+    var bull = C.bullseyeBuild(grows, grings)(stubTheme);
+    var p0 = bull.data.datasets[0].data[0];
+    eq('bullseye points', bull.data.datasets[0].data.length, 4);
+    ok('bullseye µm', Math.abs(p0.x - 3) < 1e-9 && Math.abs(p0.y - 4) < 1e-9);
+    eq('bullseye zone color',
+      bull.data.datasets[0].backgroundColor[0],
+      'c:' + C.ZONE_TOKENS[D.zoneOf(grows[0].sc * 1000, grings)]);
+    eq('bullseye rings', bull.options.plugins.qvmRings.rings, [2.5, 5, 7.5, 10]);
+    eq('bullseye plugin wired', bull.plugins, [C.ringsPlugin]);
+    ok('bullseye square aspect', bull.options.aspectRatio === 1);
+    var bars = C.siteBarsBuild(grows, grings)(stubTheme);
+    eq('bars sorted by grid', bars.data.labels, ['11', '21', '31', '41']);
+    ok('bars carry values', bars.data.datasets[0].data.every(function (v) {
+      return Math.abs(v - 5) < 1e-9;
+    }));
+    var box = C.boxBuild(grows)(stubTheme);
+    eq('box quarters', box.data.labels, ['UL', 'LL', 'LR', 'UR']);
+    eq('box datasets: range + 4 IQR + median', box.data.datasets.length, 6);
+    eq('box IQR (single value per quarter here)', box.data.datasets[1].data[0], [5, 5]);
+    eq('median points', box.data.datasets[5].data.length, 4);
+
     /* =============== CS files =============== */
     group('CS content');
     eq('cs filename', P.parseCsFilename('Core_Shrinkage_Panel 20_Front.txt'),

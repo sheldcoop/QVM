@@ -163,6 +163,26 @@ window.QVM.qc = (function () {
     ]));
   }
 
+  function analyticsSection(main, ui, D, rows, settings) {
+    var C = window.QVM.charts;
+    var rings = D.getRings(settings);
+    var usable = rows.filter(function (r) {
+      return r.dx !== null && r.dx !== undefined && r.sc !== null && r.sc !== undefined;
+    });
+    if (!usable.length) return;
+    function tip(raw) { return (raw && raw.tip) || ''; }
+    var sec = ui.el('section', { class: 'panel' }, [ui.el('h2', { text: 'Analytics' })]);
+    sec.appendChild(ui.chart(C.bullseyeBuild(usable, rings),
+      { height: 420, label: 'Registration bullseye', expand: true, format: tip }).node);
+    sec.appendChild(ui.chart(C.siteBarsBuild(usable, rings),
+      { height: 300, label: 'Per-site SC', expand: true, format: tip }).node);
+    var quarters = usable.filter(function (r) { return (r.location || '').indexOf('_') !== -1; });
+    if (quarters.length)
+      sec.appendChild(ui.chart(C.boxBuild(quarters),
+        { height: 300, label: 'SC distribution by quarter', expand: true, format: tip }).node);
+    main.appendChild(sec);
+  }
+
   /* ---------------- public views ---------------- */
 
   function renderQcView(main, process) {
@@ -208,6 +228,7 @@ window.QVM.qc = (function () {
 
     main.appendChild(ui.el('section', { class: 'panel' }, [ui.el('h2', { text: 'Quality' })]));
     tiles(main, ui, D.annularStats(scoped, thresholdUm), thresholdUm);
+    analyticsSection(main, ui, D, scoped, settings);
     measurementTable(main, ui, names, scoped, thresholdUm);
     shrinkageSection(main, ui, D, scoped, settings);
     warningsSection(main, ui);

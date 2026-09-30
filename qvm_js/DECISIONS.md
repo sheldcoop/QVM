@@ -23,6 +23,12 @@ Parsed rows are plain objects (`location`, `gridId`, `padDiameter`,
 `panel`, `side`, `buildUp`, `annularRing`) in mm — never display labels or
 µm. Display mapping happens at render (M6) via COLUMN_NAMES.
 
+## D10 (M7): Zone colors follow the live theme
+Python's Catppuccin zones map to theme tokens: exceptional→accent,
+excellent→ok, good→c-teal, acceptable→warning, fail→critical. Builders read
+`t.color()` at build time (rebuilt on theme change). Box plot = floating
+IQR bars + range bars + median line-ticks (no boxplot plugin).
+
 ## D9 (M6): Session module + shared QC renderer
 Uploads live in `QVM.session` (files, rows, overrides, scope); views read,
 upload flow writes. PtV/VtP share `QVM.qc.renderQcView`; CS has
