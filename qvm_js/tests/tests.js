@@ -31,6 +31,42 @@
 
   function ok(name, cond, detail) { record(!!cond, name, cond ? '' : (detail || 'expected true')); }
 
+  /* Four PtV blocks, one per quadrant: A(60,100) LL, B(450,100) LR,
+     C(60,400) UL, D(450,400) UR. DX=0.003, DY=0.004, SC=0.005 consistent.
+     Mode 'SC' corrupts the first block's SC to 0.5 to exercise repair. */
+  function ptvSample(mode) {
+    var pts = [[60, 100], [450, 100], [60, 400], [450, 400]];
+    return pts.map(function (p, i) {
+      var sc = (mode === 'SC' && i === 0) ? 0.5 : 0.005;
+      return 'Circle: Pad_XX(ID:' + (i * 3 + 1) + ', From 180 Pts.)\n' +
+        '     Coord. X =        ' + p[0] + '\n' +
+        '     Coord. Y =       ' + p[1] + '\n' +
+        '     Diameter =         0.308911\n' +
+        'Circle: Via_XX(ID:' + (i * 3 + 2) + ', From 70 Pts.)\n' +
+        '     Coord. X =        ' + (p[0] + 0.003) + '\n' +
+        '     Coord. Y =       ' + (p[1] + 0.004) + '\n' +
+        '     Diameter =         0.016742\n' +
+        'Distance: PtV_XX(ID:' + (i * 3 + 3) + ') between Via_XX and Pad_XX\n' +
+        '           SC =         ' + sc + '\n' +
+        '           DX =         0.003\n' +
+        '           DY =         0.004\n';
+    }).join('\n');
+  }
+
+  /* One VtP block: via circle first with coords, pad diameter-only. */
+  function vtpSample() {
+    return 'Circle: Via_LL_2(ID:1, From 65 Pts.)\n' +
+      '     Coord. X =        63.856611\n' +
+      '     Coord. Y =       104.630820\n' +
+      '     Diameter =         0.016742\n' +
+      'Circle: Pad_LL_2(ID:2, From 180 Pts.)\n' +
+      '     Diameter =         0.308911\n' +
+      'Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)\n' +
+      '           SC =         0.003728\n' +
+      '           DX =         0.000592\n' +
+      '           DY =         0.003681\n';
+  }
+
   function run() {
     /* =============== config =============== */
     group('Config');
@@ -41,6 +77,67 @@
     /* =============== domain =============== */
     group('Domain shell');
     eq('schema version starts at 1', D.SCHEMA_VERSION, 1);
+
+    /* =============== filenames =============== */
+    group('Filenames');
+    var P = window.QVM.parse;
+    eq('ptv hint + panel + side', P.parseFilename('Post PFC_Pad to Via_Panel 20_F.txt'),
+      { formatHint: 'Pad to Via', panel: '20', side: 'F', buildUp: 'Unknown' });
+    eq('vtp hint', P.parseFilename('Via to Pad_Panel 25_F.txt').formatHint, 'Via to Pad');
+    eq('no hint', P.parseFilename('mystery.txt').formatHint, null);
+    eq('BU token', P.parseFilename('x_BU-02_Panel 3_B.txt').buildUp, 'BU-02');
+
+    /* =============== build-up normalisation =============== */
+    group('Build Up');
+    eq('bare number', P.normalizeBuildUp('2'), 'BU-02');
+    eq('bu02', P.normalizeBuildUp('BU02'), 'BU-02');
+    eq('unknown -> null', P.normalizeBuildUp('Unknown'), null);
+    eq('custom kept', P.normalizeBuildUp('TOP-A'), 'TOP-A');
+
+    /* =============== PtV parsing =============== */
+    group('PtV content');
+    var ptv = ptvSample();
+    var r = P.parseQvmContent(ptv, undefined);
+    eq('process', r.process, 'Pad to Via');
+    eq('four rows', r.rows.length, 4);
+    eq('locations by quadrant', r.rows.map(function (x) { return x.location; }),
+      ['LL_1', 'LR_1', 'UL_1', 'UR_1']);
+    eq('grid ids', r.rows.map(function (x) { return x.gridId; }), [21, 31, 11, 41]);
+    ok('no warnings on clean input', r.warnings.length === 0);
+
+    /* =============== VtP parsing =============== */
+    group('VtP content');
+    var v = P.parseQvmContent(vtpSample(), undefined);
+    eq('process', v.process, 'Via to Pad');
+    eq('pad coords optional', v.rows[0].coordX !== null, true);
+
+    /* =============== SC repair =============== */
+    group('SC normalisation');
+    var bad = P.parseQvmContent(ptvSample('SC'), undefined);
+    ok('mismatch repaired with warning',
+      Math.abs(bad.rows[0].sc - 0.005) < 1e-12 && bad.warnings.length === 1);
+
+    /* =============== annular ring =============== */
+    group('Annular ring');
+    ok('formula', Math.abs(D.annularRing(
+      { padDiameter: 0.308911, viaDiameter: 0.016742, sc: 0.005 }) - 0.1410845) < 1e-6);
+    eq('missing input -> null',
+      D.annularRing({ padDiameter: 0.308911, viaDiameter: null, sc: 0.005 }), null);
+
+    /* =============== ingest =============== */
+    group('Ingest');
+    var ing = P.ingestFile('Post PFC_Pad to Via_Panel 20_F.txt', ptvSample(), undefined, {});
+    eq('rows carry panel/side', [ing.rows[0].panel, ing.rows[0].side], ['20', 'F']);
+    eq('buildUp unknown', ing.rows[0].buildUp, 'Unknown');
+    ok('annular ring attached', Math.abs(ing.rows[0].annularRing - 0.1410845) < 1e-6);
+    ok('hint matches content: no warnings', ing.uiWarnings.length === 0);
+    var ing2 = P.ingestFile('x.txt', ptvSample(), undefined,
+      { process: 'Via to Pad', panel: '9', side: 'B', buildUp: '3' });
+    eq('overrides win', [ing2.rows[0].process, ing2.rows[0].panel, ing2.rows[0].side, ing2.rows[0].buildUp],
+      ['Via to Pad', '9', 'B', 'BU-03']);
+    ok('override warnings', ing2.uiWarnings.length === 1);
+    var ing3 = P.ingestFile('mystery.txt', ptvSample(), undefined, {});
+    ok('no-hint warning', ing3.uiWarnings.length === 1);
 
     /* =============== themes =============== */
     group('Themes');

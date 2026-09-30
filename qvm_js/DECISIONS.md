@@ -17,6 +17,16 @@ Help). Keeps every later milestone's scope identical to the Python app.
 `preview.*`/`make-preview`/`make-demo-data` deferred — tracker-data-specific,
 revisit if QVM needs a demo-data preview (M9).
 
+## D6 (M3): Rows use internal keys, mm units
+Parsed rows are plain objects (`location`, `gridId`, `padDiameter`,
+`viaDiameter`, `coordX/Y`, `sc`, `dx`, `dy`, `padPts`, `viaPts`, `process`,
+`panel`, `side`, `buildUp`, `annularRing`) in mm — never display labels or
+µm. Display mapping happens at render (M6) via COLUMN_NAMES.
+
+## D7 (M3): annularRing ships early
+The one-formula `domain.annularRing` landed in M3 (ingest attaches it) rather
+than waiting for the M4 statistics milestone.
+
 ## D5 (M2): Tracker's heatmap reserved for M8
 `js/ui/heatmap.js` NOT copied yet; it is the prime candidate for the Core
 Shrinkage distortion-map warp surface. Copy then, not now.

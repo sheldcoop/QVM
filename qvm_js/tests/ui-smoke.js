@@ -21,7 +21,7 @@ if(process.argv[2]==='chart'){win.Chart=function(canvas,cfg){charts++;this.cfg=c
   if(cfg.options.onHover)cfg.options.onHover({},[]);
   this.destroy=()=>destroyed++;};}const ctx=vm.createContext(win);
 vm.runInContext(fs.readFileSync(path.join(ROOT,'js/themes.js'),'utf8'),ctx,{filename:'themes.js'});
-['core','components','glyphs','overlays','charts'].forEach(f=>vm.runInContext(fs.readFileSync(path.join(ROOT,'js/ui/'+f+'.js'),'utf8'),ctx,{filename:'ui/'+f+'.js'}));
+['core','components','glyphs','overlays','charts','upload'].forEach(f=>vm.runInContext(fs.readFileSync(path.join(ROOT,'js/ui/'+f+'.js'),'utf8'),ctx,{filename:'ui/'+f+'.js'}));
 let errs=0;
 function check(name,fn){try{fn();flush()}catch(e){errs++;console.log('ERR',name,e.stack.split('\n').slice(0,3).join(' | '))}}
 function expect(name,cond){if(!cond){errs++;console.log('FAIL',name)}}
@@ -59,6 +59,17 @@ check('icons',()=>{['logo','inbox','analytics','settings','help'].forEach(n=>{co
 check('format',()=>{expect('formatTs',ui.formatTs('2026-09-24T08:05:00Z')==='24.09.2026 10:05');expect('duration',ui.formatDurationH(1.5)==='1 h 30 min')});
 check('esc',()=>{expect('esc',ui.esc('<b a="1">&')==='&lt;b a=&quot;1&quot;&gt;&amp;')});
 check('charts',()=>{const c=ui.chart(t=>({type:'bar',data:{labels:['a','b'],datasets:[{label:'x',data:[1,2],backgroundColor:t.color('accent')}]},options:{}}),{height:200,expand:true,onPick(){}});root.appendChild(c.node);c.refresh&&c.refresh()});
+check('upload',()=>{let ov=null,removed=null;
+  const p=ui.uploadPanel({files:[{name:'a_Panel 20_F.txt'},{name:'b.txt'}],
+    overrides:{'b.txt':{process:'Via to Pad',panel:'25',side:'B',buildUp:'BU-02'}},
+    onOverride:(n,k,v)=>{ov=[n,k,v]},onRemove:n=>{removed=n}});
+  root.appendChild(p);
+  expect('two file rows',p.querySelectorAll('.upload-row').length===2);
+  const sels=p.querySelectorAll('select');
+  expect('override select preset',sels[1].value==='Via to Pad');
+  sels[0].value='Pad to Via';sels[0].dispatch('change');expect('override fires',ov.join()==='a_Panel 20_F.txt,process,Pad to Via');
+  p.querySelectorAll('button').filter(b=>b.textContent==='Remove')[0].click();
+  expect('remove fires',removed==='a_Panel 20_F.txt')});
 
 // overlays: toasts, dialogs, menu, tooltip
 check('toasts',()=>{['info','success','warning','error'].forEach(k=>ui.toast({message:'m',kind:k,actions:[{label:'Retry',onClick(){}}]}));ui.toastError('boom',null)});
