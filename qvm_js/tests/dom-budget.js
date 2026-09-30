@@ -12,10 +12,12 @@ const IDS = ['shell', 'brandMark', 'brandVer', 'themeBtn', 'helpBtn', 'alertBann
   'nav', 'navItems', 'navRev', 'navCollapse', 'main', 'toasts', 'dialogHost'];
 const { win, doc, flush } = require('./fake-dom')({ ids: IDS, url: 'file:///x/index.html' });
 const ctx = vm.createContext(win);
-['js/config.js', 'js/themes.js', 'js/domain.js',
- 'js/ui/core.js', 'js/ui/components.js', 'js/ui/glyphs.js', 'js/ui/overlays.js', 'js/ui/charts.js',
+['js/config.js', 'js/themes.js', 'js/qvm-defaults.js', 'js/domain.js', 'js/parse.js',
+ 'js/settings.js', 'js/session.js',
+ 'js/ui/core.js', 'js/ui/components.js', 'js/ui/glyphs.js', 'js/ui/overlays.js',
+ 'js/ui/charts.js', 'js/ui/upload.js', 'js/qc.js',
  'js/views/panelmap.js', 'js/views/ptv.js', 'js/views/vtp.js', 'js/views/coreshk.js',
- 'js/views/health.js', 'js/views/help.js', 'js/app.js'
+ 'js/views/settings.js', 'js/views/health.js', 'js/views/help.js', 'js/app.js'
 ].forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f }));
 
 win.QVM.app.init();

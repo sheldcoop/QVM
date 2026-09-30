@@ -1,14 +1,8 @@
-/** QVM Dashboard - vtp view (M1 stub; filled in later milestones). */
+/** QVM Dashboard - vtp view: delegates to the shared QC renderer (M6). */
 window.QVM = window.QVM || {};
 window.QVM.views = window.QVM.views || {};
 window.QVM.views.vtp = (function () {
   'use strict';
-  function render(main) {
-    var ui = window.QVM.ui;
-    main.appendChild(ui.el('section', { 'class': 'panel' }, [
-      ui.el('h2', { text: 'Via to Pad' }),
-      ui.el('p', { text: 'Under construction.' })
-    ]));
-  }
+  function render(main) { window.QVM.qc.renderQcView(main, 'Via to Pad'); }
   return { render: render };
 })();

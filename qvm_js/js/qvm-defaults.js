@@ -71,6 +71,18 @@ window.QVM.defaults = (function () {
     shrink_usl_ppm: 1000.0
   };
 
+  // CAM nominal fiducial coordinates (mm), shared by QP and CS analysis.
+  var NOMINAL_COORDS = {
+    UL_1: { x: -222.700, y: 239.875 }, UL_2: { x: -222.700, y: 4.125 },
+    UL_3: { x: -22.050, y: 4.125 }, UL_4: { x: -22.050, y: 239.875 },
+    LL_1: { x: -222.700, y: -4.125 }, LL_2: { x: -222.700, y: -239.875 },
+    LL_3: { x: -22.050, y: -239.875 }, LL_4: { x: -22.050, y: -4.125 },
+    LR_1: { x: 20.300, y: -4.125 }, LR_2: { x: 20.300, y: -239.875 },
+    LR_3: { x: 220.950, y: -239.875 }, LR_4: { x: 220.950, y: -4.125 },
+    UR_1: { x: 20.300, y: 239.875 }, UR_2: { x: 20.300, y: 4.125 },
+    UR_3: { x: 220.950, y: 4.125 }, UR_4: { x: 220.950, y: 4.125 }
+  };
+
   var DEFAULT_SETTINGS = {
     COLUMN_NAMES: COLUMN_NAMES,
     GRID_MAPPING: GRID_MAPPING,
@@ -78,7 +90,8 @@ window.QVM.defaults = (function () {
     PTV_REGISTRATION: PTV_REGISTRATION,
     DIAGNOSTICS: DIAGNOSTICS,
     TOLERANCES: TOLERANCES,
-    CORE_SHRINKAGE: CORE_SHRINKAGE
+    CORE_SHRINKAGE: CORE_SHRINKAGE,
+    NOMINAL_COORDS: NOMINAL_COORDS
   };
 
   return {
@@ -89,6 +102,7 @@ window.QVM.defaults = (function () {
     DIAGNOSTICS: DIAGNOSTICS,
     TOLERANCES: TOLERANCES,
     CORE_SHRINKAGE: CORE_SHRINKAGE,
+    NOMINAL_COORDS: NOMINAL_COORDS,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS
   };
 })();

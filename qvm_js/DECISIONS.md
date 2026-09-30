@@ -23,6 +23,12 @@ Parsed rows are plain objects (`location`, `gridId`, `padDiameter`,
 `panel`, `side`, `buildUp`, `annularRing`) in mm — never display labels or
 µm. Display mapping happens at render (M6) via COLUMN_NAMES.
 
+## D9 (M6): Session module + shared QC renderer
+Uploads live in `QVM.session` (files, rows, overrides, scope); views read,
+upload flow writes. PtV/VtP share `QVM.qc.renderQcView`; CS has
+`renderCsView`. FileReader wiring lives in qc.js; engine stays pure.
+CS filename/content parsing ported (state machine, grid-mapped).
+
 ## D8 (M5): Settings view, no PIN — resolves Q2
 Tolerances, USLs, outlier caps, and CS thresholds live in a Settings view
 (`QVM.settings`, localStorage `qvm.settings.v1`, deep-merged over defaults).

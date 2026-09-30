@@ -1,14 +1,8 @@
-/** QVM Dashboard - ptv view (M1 stub; filled in later milestones). */
+/** QVM Dashboard - ptv view: delegates to the shared QC renderer (M6). */
 window.QVM = window.QVM || {};
 window.QVM.views = window.QVM.views || {};
 window.QVM.views.ptv = (function () {
   'use strict';
-  function render(main) {
-    var ui = window.QVM.ui;
-    main.appendChild(ui.el('section', { 'class': 'panel' }, [
-      ui.el('h2', { text: 'Pad to Via' }),
-      ui.el('p', { text: 'Under construction.' })
-    ]));
-  }
+  function render(main) { window.QVM.qc.renderQcView(main, 'Pad to Via'); }
   return { render: render };
 })();

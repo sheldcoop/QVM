@@ -298,6 +298,57 @@
     eq('tangential -> twist', D.classifyVector(0, 10, 100, 0, [0, 0]), 'twist');
     eq('tiny -> stable', D.classifyVector(1, 1, 100, 0, [0, 0]), 'stable');
 
+    /* =============== CS files =============== */
+    group('CS content');
+    eq('cs filename', P.parseCsFilename('Core_Shrinkage_Panel 20_Front.txt'),
+      { isCoreShrinkage: true, panel: '20', layer: 'Front' });
+    eq('non-cs filename', P.parseCsFilename('Post PFC_Pad to Via_Panel 20_F.txt').isCoreShrinkage, false);
+    var csText = 'Circle: Pad_UL_1(ID:1, From 180 Pts.)\n' +
+      '     Coord. X =        -222.700\n' +
+      '     Coord. Y =       239.875\n' +
+      '     Diameter =         0.3\n' +
+      'Circle: LL_2(ID:2, From 170 Pts.)\n' +
+      '     Coord. X =        -222.700\n' +
+      '     Coord. Y =       -239.875\n' +
+      '     Diameter =         0.3\n';
+    var cs = P.parseCsContent(csText, 'Front', undefined);
+    eq('two dots', cs.rows.length, 2);
+    eq('first dot', [cs.rows[0].location, cs.rows[0].quadrant, cs.rows[0].gridId, cs.rows[0].layer],
+      ['UL_1', 'UL', 11, 'Front']);
+    eq('pad prefix tolerated', cs.rows[1 - 1].pointNum, 1);
+    eq('garbage -> warning', P.parseCsContent('nothing here', 'Front', undefined).warning,
+      'No circles parsed from Front layer.');
+    var csi = P.ingestCsFile('Core_Shrinkage_Panel 20_Front.txt', csText, undefined, {});
+    eq('cs ingest tags', [csi.rows[0].panel, csi.rows[0].layer, csi.rows[0].process],
+      ['20', 'Front', 'Core Shrinkage']);
+    eq('cs ingest quiet', csi.uiWarnings.length, 0);
+    var csi2 = P.ingestCsFile('cs.txt', csText, undefined, { layer: 'Back', buildUp: '1' });
+    eq('cs overrides', [csi2.rows[0].layer, csi2.rows[0].buildUp], ['Back', 'BU-01']);
+
+    /* =============== session =============== */
+    group('Session');
+    var SE = window.QVM.session;
+    SE.clear();
+    SE.setScope({ panel: 'All', side: 'Both', buildUp: 'All', layer: 'Both' });
+    SE.addFile({ name: 'a.txt', kind: 'qvm', rows: [
+      { process: 'Pad to Via', panel: '20', side: 'F', buildUp: 'BU-01' },
+      { process: 'Pad to Via', panel: '25', side: 'B', buildUp: 'Unknown' }
+    ], parseWarnings: ['pw'], uiWarnings: [] });
+    eq('rows by process', SE.rowsByProcess('Pad to Via').length, 2);
+    eq('warnings carry file', SE.warnings(), [{ file: 'a.txt', text: 'pw' }]);
+    eq('panels sorted', SE.panels(SE.allRows()), ['20', '25']);
+    SE.setScope({ panel: '20' });
+    eq('panel filter', SE.applyScope(SE.allRows(), { col: 'side', value: 'Both' }).length, 1);
+    SE.setScope({ panel: 'All', side: 'F' });
+    eq('side filter', SE.applyScope(SE.allRows(), { col: 'side', value: 'F' }).length, 1);
+    var bu = SE.buStates(SE.allRows());
+    eq('bu states', [bu.values, bu.hasUnknown], [['BU-01'], true]);
+    eq('bu filter', SE.applyBu(SE.allRows(), 'BU-01').length, 1);
+    eq('bu unknown', SE.applyBu(SE.allRows(), 'Unknown').length, 1);
+    SE.removeFile('a.txt');
+    eq('remove empties', SE.allRows().length, 0);
+    SE.setScope({ panel: 'All', side: 'Both', buildUp: 'All', layer: 'Both' });
+
     /* =============== settings store =============== */
     group('Settings store');
     var S = window.QVM.settings;

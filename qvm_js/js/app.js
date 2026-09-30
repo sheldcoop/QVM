@@ -86,6 +86,8 @@ window.QVM.app = (function () {
 
   function onHash() { render(currentRoute()); }
 
+  function refresh() { render(currentRoute()); }
+
   function init() {
     window.QVM.themes.install();
     document.getElementById('shell').hidden = false;
@@ -97,7 +99,7 @@ window.QVM.app = (function () {
     render(currentRoute());
   }
 
-  return { init: init, NAV: NAV, currentRoute: currentRoute };
+  return { init: init, NAV: NAV, currentRoute: currentRoute, refresh: refresh };
 })();
 
 document.addEventListener('DOMContentLoaded', function () {

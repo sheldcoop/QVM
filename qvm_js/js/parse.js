@@ -476,12 +476,94 @@ window.QVM.parse = (function () {
              meta: resolved, filenameInfo: filenameInfo };
   }
 
+  /* ---------------- Core Shrinkage files ---------------- */
+
+  var CS_CIRCLE_RE = /Circle:\s*(?:Pad_)?([A-Z]{2})_(\d+)/i;
+
+  function parseCsFilename(filename) {
+    var stem = String(filename || '').split(/[\\/]/).pop().replace(/\.[^.]*$/, '');
+    var lower = stem.toLowerCase();
+    var isCs = lower.indexOf('core_shrinkage') !== -1 || lower.indexOf('core shrinkage') !== -1;
+    var panel = 'Unknown', m = PANEL_RE.exec(stem);
+    if (m) panel = m[1];
+    var layer = 'Unknown';
+    if (lower.indexOf('front') !== -1) layer = 'Front';
+    else if (lower.indexOf('back') !== -1) layer = 'Back';
+    return { isCoreShrinkage: isCs, panel: panel, layer: layer };
+  }
+
+  /**
+   * Circle-coordinate-only text: Circle → Coord X → Coord Y → Diameter.
+   * Returns {rows, warning} — empty rows with a warning, never a throw
+   * (mirrors the Python parser, which logs and returns an empty frame).
+   */
+  function parseCsContent(content, layer, settings) {
+    settings = settingsOrDefault(settings);
+    var grid = settings.GRID_MAPPING || {};
+    var rows = [], state = 'IDLE';
+    var loc = null, quad = null, num = null, pts = null, cx = null, cy = null;
+    String(content || '').split(/\r?\n/).forEach(function (raw) {
+      var line = raw.trim(), m;
+      if (!line) return;
+      if (line.indexOf('Circle:') !== -1) {
+        m = CS_CIRCLE_RE.exec(line);
+        if (m) {
+          quad = m[1].toUpperCase(); num = parseInt(m[2], 10);
+          loc = quad + '_' + num;
+          var pm = PTS_RE.exec(line);
+          pts = pm ? parseInt(pm[1], 10) : null;
+          state = 'X';
+        } else state = 'IDLE';
+        return;
+      }
+      if (state === 'IDLE' || line.indexOf('=') === -1) return;
+      var val = parseFloat(line.split('=', 2)[1].trim());
+      if (isNaN(val)) return;
+      if (state === 'X' && line.indexOf('Coord. X') !== -1) { cx = val; state = 'Y'; }
+      else if (state === 'Y' && line.indexOf('Coord. Y') !== -1) { cy = val; state = 'DIAM'; }
+      else if (state === 'DIAM' && line.indexOf('Diameter') !== -1) {
+        rows.push({ location: loc, quadrant: quad, pointNum: num,
+          coordX: cx, coordY: cy, diameter: val, pts: pts, layer: layer,
+          process: 'Core Shrinkage', gridId: grid[loc] !== undefined ? grid[loc] : null,
+          panel: 'Unknown', side: 'Unknown', buildUp: 'Unknown' });
+        state = 'IDLE';
+      }
+    });
+    return { rows: rows,
+             warning: rows.length ? null : 'No circles parsed from ' + layer + ' layer.' };
+  }
+
+  function ingestCsFile(name, text, settings, override) {
+    settings = settingsOrDefault(settings);
+    override = override || {};
+    var info = parseCsFilename(name);
+    var layer = (override.layer && override.layer !== '') ? override.layer : info.layer;
+    var parsed = parseCsContent(text, layer === 'Unknown' ? 'Front' : layer, settings);
+    var rows = parsed.rows;
+    var panel = resolveOverride(override.panel, info.panel);
+    var bu = normalizeBuildUp(override.buildUp) || 'Unknown';
+    rows.forEach(function (r) {
+      r.layer = layer;
+      r.panel = panel;
+      r.buildUp = bu;
+    });
+    var uiWarnings = [];
+    if (parsed.warning) uiWarnings.push('`' + name + '`: ' + parsed.warning);
+    if (layer === 'Unknown')
+      uiWarnings.push('`' + name + '`: no Front/Back layer in the filename; treated as Front.');
+    return { rows: rows, parseWarnings: [], uiWarnings: uiWarnings,
+             meta: { layer: layer, panel: panel }, filenameInfo: info };
+  }
+
   return {
     QVMParseError: QVMParseError,
     parseFilename: parseFilename,
     parseQvmContent: parseQvmContent,
     normalizeBuildUp: normalizeBuildUp,
     resolveMetadata: resolveMetadata,
-    ingestFile: ingestFile
+    ingestFile: ingestFile,
+    parseCsFilename: parseCsFilename,
+    parseCsContent: parseCsContent,
+    ingestCsFile: ingestCsFile
   };
 })();

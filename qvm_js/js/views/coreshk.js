@@ -1,14 +1,8 @@
-/** QVM Dashboard - coreshk view (M1 stub; filled in later milestones). */
+/** QVM Dashboard - coreshk view: delegates to the shared QC renderer (M6). */
 window.QVM = window.QVM || {};
 window.QVM.views = window.QVM.views || {};
 window.QVM.views.coreshk = (function () {
   'use strict';
-  function render(main) {
-    var ui = window.QVM.ui;
-    main.appendChild(ui.el('section', { 'class': 'panel' }, [
-      ui.el('h2', { text: 'Core Shrinkage' }),
-      ui.el('p', { text: 'Under construction.' })
-    ]));
-  }
+  function render(main) { window.QVM.qc.renderCsView(main); }
   return { render: render };
 })();

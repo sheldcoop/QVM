@@ -45,6 +45,13 @@ window.QVM.ui.uploadPanel = (function () {
         if (typeof o.onOverride === 'function') o.onOverride(f.name, 'process', proc.value);
       });
       row.appendChild(proc);
+      if (o.layerSelect) {
+        var lay = select(ov.layer || '', ['', 'Front', 'Back'], 'Layer override for ' + f.name);
+        lay.addEventListener('change', function () {
+          if (typeof o.onOverride === 'function') o.onOverride(f.name, 'layer', lay.value);
+        });
+        row.appendChild(lay);
+      }
       [['panel', 'Panel'], ['side', 'Side F/B'], ['buildUp', 'Build Up']].forEach(function (pair) {
         var inp = ui.el('input', { type: 'text', value: ov[pair[0]] || '',
           placeholder: pair[1], 'aria-label': pair[1] + ' override for ' + f.name });
