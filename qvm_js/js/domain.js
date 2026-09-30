@@ -498,6 +498,24 @@ window.QVM.domain = (function () {
     return out;
   }
 
+  /**
+   * ABF distortion pattern for one site (port of the quiver classifier):
+   * radial alignment vs the panel-centre direction decides Expansion /
+   * Contraction, small alignment + big magnitude is Twist, else Offset.
+   * cfg: {expansionThr, twistDotThr, twistMagUm}.
+   */
+  function classifyQuiver(dxUm, dyUm, posX, posY, magUm, cfg) {
+    cfg = cfg || { expansionThr: 0.5, twistDotThr: 0.2, twistMagUm: 10 };
+    var em = Math.hypot(dxUm, dyUm);
+    var ex = em > 0 ? dxUm / em : 0, ey = em > 0 ? dyUm / em : 0;
+    var pm = Math.hypot(posX, posY);
+    var px = pm > 0 ? posX / pm : 0, py = pm > 0 ? posY / pm : 0;
+    var dot = ex * px + ey * py;
+    if (Math.abs(dot) > cfg.expansionThr) return dot > 0 ? 'Expansion' : 'Contraction';
+    if (Math.abs(dot) < cfg.twistDotThr && magUm > cfg.twistMagUm) return 'Twist';
+    return 'Offset';
+  }
+
   function classifyVector(dx, dy, px, py, center, stableUm) {
     if (stableUm === undefined) stableUm = 3.0;
     var mag = Math.hypot(dx, dy);
@@ -560,6 +578,7 @@ window.QVM.domain = (function () {
     qpitch: qpitch,
     scaleFactor: scaleFactor,
     frontBack: frontBack,
+    classifyQuiver: classifyQuiver,
     classifyVector: classifyVector,
     deviationField: deviationField
   };

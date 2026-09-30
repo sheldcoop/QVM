@@ -56,7 +56,23 @@ window.QVM.defaults = (function () {
 
   var DIAGNOSTICS = {
     panel_center_x: 255.0,
-    panel_center_y: 257.5
+    panel_center_y: 257.5,
+    quiver_min_arrow_length: 0.05,
+    quiver_expansion_dot_threshold: 0.5,
+    quiver_twist_dot_threshold: 0.2,
+    quiver_twist_magnitude_um: 10.0
+  };
+
+  var PLOT_SETTINGS = {
+    vector_multiplier_default: 100
+  };
+
+  // Grid ID → panel plot position (col, row), 1-4. Mirrors theme.GRID_PLOT_POSITIONS.
+  var GRID_PLOT_POSITIONS = {
+    11: [1, 4], 12: [1, 3], 13: [2, 3], 14: [2, 4],
+    21: [1, 2], 22: [1, 1], 23: [2, 1], 24: [2, 2],
+    31: [3, 2], 32: [3, 1], 33: [4, 1], 34: [4, 2],
+    41: [3, 4], 42: [3, 3], 43: [4, 3], 44: [4, 4]
   };
 
   var TOLERANCES = {
@@ -89,6 +105,8 @@ window.QVM.defaults = (function () {
     VTP_REGISTRATION: VTP_REGISTRATION,
     PTV_REGISTRATION: PTV_REGISTRATION,
     DIAGNOSTICS: DIAGNOSTICS,
+    PLOT_SETTINGS: PLOT_SETTINGS,
+    GRID_PLOT_POSITIONS: GRID_PLOT_POSITIONS,
     TOLERANCES: TOLERANCES,
     CORE_SHRINKAGE: CORE_SHRINKAGE,
     NOMINAL_COORDS: NOMINAL_COORDS
@@ -100,6 +118,8 @@ window.QVM.defaults = (function () {
     VTP_REGISTRATION: VTP_REGISTRATION,
     PTV_REGISTRATION: PTV_REGISTRATION,
     DIAGNOSTICS: DIAGNOSTICS,
+    PLOT_SETTINGS: PLOT_SETTINGS,
+    GRID_PLOT_POSITIONS: GRID_PLOT_POSITIONS,
     TOLERANCES: TOLERANCES,
     CORE_SHRINKAGE: CORE_SHRINKAGE,
     NOMINAL_COORDS: NOMINAL_COORDS,

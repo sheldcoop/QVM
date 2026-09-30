@@ -12,7 +12,7 @@ window.QVM.session = (function () {
 
   var files = [];       // [{name, kind, rows, parseWarnings, uiWarnings}]
   var overrides = {};   // name -> {process, panel, side, buildUp, layer}
-  var scope = { panel: 'All', side: 'Both', buildUp: 'All', layer: 'Both' };
+  var scope = { panel: 'All', side: 'Both', buildUp: 'All', layer: 'Both', vectorMult: 100 };
 
   function addFile(entry) {
     removeFile(entry.name);
@@ -122,6 +122,7 @@ window.QVM.session = (function () {
     applyBu: applyBu,
     get files() { return files.slice(); },
     get overrides() { return overrides; },
-    get scope() { return { panel: scope.panel, side: scope.side, buildUp: scope.buildUp, layer: scope.layer }; }
+    get scope() { return { panel: scope.panel, side: scope.side, buildUp: scope.buildUp,
+      layer: scope.layer, vectorMult: scope.vectorMult }; }
   };
 })();

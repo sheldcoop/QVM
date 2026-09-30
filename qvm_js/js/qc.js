@@ -171,6 +171,7 @@ window.QVM.qc = (function () {
     });
     if (!usable.length) return;
     function tip(raw) { return (raw && raw.tip) || ''; }
+    var mult = window.QVM.session.scope.vectorMult || 100;
     var sec = ui.el('section', { class: 'panel' }, [ui.el('h2', { text: 'Analytics' })]);
     sec.appendChild(ui.chart(C.bullseyeBuild(usable, rings),
       { height: 420, label: 'Registration bullseye', expand: true, format: tip }).node);
@@ -180,6 +181,15 @@ window.QVM.qc = (function () {
     if (quarters.length)
       sec.appendChild(ui.chart(C.boxBuild(quarters),
         { height: 300, label: 'SC distribution by quarter', expand: true, format: tip }).node);
+    sec.appendChild(ui.el('div', { class: 'kit-row' }, [
+      ui.el('span', { text: 'Distortion map sensitivity' }),
+      seg('Sensitivity', String(mult), ['50', '100', '200', '400'], function (v) {
+        window.QVM.session.setScope({ vectorMult: parseInt(v, 10) });
+        window.QVM.app.refresh();
+      })
+    ]));
+    sec.appendChild(ui.chart(C.quiverBuild(usable, settings, mult),
+      { height: 520, label: 'ABF distortion map, ' + mult + 'x', expand: true, format: tip }).node);
     main.appendChild(sec);
   }
 

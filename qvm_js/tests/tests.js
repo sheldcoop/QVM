@@ -335,6 +335,29 @@
     eq('box IQR (single value per quarter here)', box.data.datasets[1].data[0], [5, 5]);
     eq('median points', box.data.datasets[5].data.length, 4);
 
+    /* =============== quiver classifier =============== */
+    group('Quiver classifier');
+    var QC = { expansionThr: 0.5, twistDotThr: 0.2, twistMagUm: 10 };
+    eq('outward', D.classifyQuiver(10, 0, 100, 0, 10, QC), 'Expansion');
+    eq('inward', D.classifyQuiver(-10, 0, 100, 0, 10, QC), 'Contraction');
+    eq('tangential', D.classifyQuiver(0, 20, 100, 0, 20, QC), 'Twist');
+    eq('small tangential', D.classifyQuiver(0, 5, 100, 0, 5, QC), 'Offset');
+    eq('zero shift', D.classifyQuiver(0, 0, 100, 0, 0, QC), 'Offset');
+
+    /* =============== quiver builder =============== */
+    group('Quiver builder');
+    var qrows = P.parseQvmContent(ptvSample(), undefined).rows;
+    var qcfg = C.quiverBuild(qrows, window.QVM.defaults.DEFAULT_SETTINGS, 100)(stubTheme);
+    eq('four arrows', qcfg.options.plugins.qvmQuiver.arrows.length, 4);
+    eq('pattern counts', qcfg.options.plugins.qvmQuiver.counts,
+      { Expansion: 1, Contraction: 1, Twist: 0, Offset: 2 });
+    eq('legend entries', qcfg.options.plugins.qvmQuiver.legend.length, 4);
+    eq('plugin wired', qcfg.plugins, [C.quiverPlugin]);
+    eq('panel axes', [qcfg.options.scales.x.min, qcfg.options.scales.x.max,
+      qcfg.options.scales.y.min, qcfg.options.scales.y.max], [0.5, 4.5, 0.5, 4.5]);
+    ok('arrow scaled by multiplier',
+      qcfg.options.plugins.qvmQuiver.arrows[0].dx !== 0);
+
     /* =============== CS files =============== */
     group('CS content');
     eq('cs filename', P.parseCsFilename('Core_Shrinkage_Panel 20_Front.txt'),

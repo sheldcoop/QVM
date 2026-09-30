@@ -23,6 +23,12 @@ Parsed rows are plain objects (`location`, `gridId`, `padDiameter`,
 `panel`, `side`, `buildUp`, `annularRing`) in mm — never display labels or
 µm. Display mapping happens at render (M6) via COLUMN_NAMES.
 
+## D11 (M8): Quiver arrows are canvas, panel map is the PNG
+Arrows/labels/crosshair/summary/legend drawn by an inline Chart.js plugin
+(same pattern as M7 rings) so M9 PNG export captures everything. Arrow
+palette: expansion→critical, contraction→c-blue, twist→warning,
+offset→accent. Panel Map tab shows `assets/Panel_Map.png` (copied verbatim).
+
 ## D10 (M7): Zone colors follow the live theme
 Python's Catppuccin zones map to theme tokens: exceptional→accent,
 excellent→ok, good→c-teal, acceptable→warning, fail→critical. Builders read
