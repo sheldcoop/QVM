@@ -1,0 +1,111 @@
+/* QVM Dashboard - qvm.css
+ *
+ * QVM-authored visual layer on top of the cloned kit (css/app.css):
+ * landing hero, dropzone, flow stepper, verdict banner, process pills.
+ * Only theme tokens (var(--*)) — never a theme name, never a hex —
+ * so all six themes restyle this file for free. Motion stays on
+ * transform/opacity and honours [data-motion="reduce"] via the base rules.
+ */
+
+/* ---------- landing hero ---------- */
+.qvm-hero { text-align: center; padding: 40px 16px 8px; }
+.qvm-hero h2 { font-size: 26px; margin: 0 0 6px; }
+.qvm-hero p { color: var(--fg-muted); margin: 0 auto 18px; max-width: 560px; }
+
+/* ---------- dropzone ---------- */
+.qvm-drop {
+  border: 2px dashed var(--line-strong);
+  border-radius: 12px;
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: border-color var(--t) var(--ease-out), background var(--t) var(--ease-out),
+              transform var(--t) var(--ease-out);
+}
+.qvm-drop:hover { border-color: var(--accent); }
+.qvm-drop.is-over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  transform: scale(1.01);
+}
+.qvm-drop strong { display: block; font-size: 16px; color: var(--fg); margin-bottom: 4px; }
+.qvm-drop input[type="file"] { display: none; }
+
+/* ---------- flow stepper ---------- */
+.qvm-steps { display: flex; gap: 8px; margin: 0 0 16px; flex-wrap: wrap; }
+.qvm-step {
+  flex: 1 1 0;
+  min-width: 140px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg-muted);
+}
+.qvm-step .n {
+  display: inline-block;
+  width: 22px; height: 22px; line-height: 22px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  margin-right: 8px;
+  font-weight: 700;
+}
+.qvm-step.is-now { border-color: var(--accent); color: var(--fg); }
+.qvm-step.is-now .n { background: var(--accent); color: #fff; }
+.qvm-step.is-done .n { background: var(--ok); color: #fff; }
+
+/* ---------- verdict banner ---------- */
+.qvm-verdict {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.qvm-verdict .v-word { font-size: 20px; font-weight: 800; letter-spacing: 0.04em; }
+.qvm-verdict ul { margin: 4px 0 0; padding-left: 18px; color: var(--fg-muted); }
+.qvm-verdict.is-pass { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.qvm-verdict.is-pass .v-word { color: var(--ok); }
+.qvm-verdict.is-warn { border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
+.qvm-verdict.is-warn .v-word { color: var(--warning); }
+.qvm-verdict.is-fail { border-color: color-mix(in srgb, var(--critical) 60%, transparent); }
+.qvm-verdict.is-fail .v-word { color: var(--critical); }
+
+/* ---------- generic row (tiles, bars, buttons) ---------- */
+.qvm-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+
+/* ---------- process pills ---------- */
+.qvm-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.qvm-pill {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--fg-muted);
+  cursor: pointer;
+  font: inherit;
+}
+.qvm-pill small { opacity: 0.75; margin-left: 6px; }
+.qvm-pill.is-now { border-color: var(--accent); color: var(--fg); background: var(--surface-2); }
+
+/* ---------- upload file rows ---------- */
+.upload { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.upload-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.upload-name { flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-row select, .upload-row input[type="text"] {
+  background: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  max-width: 150px;
+}

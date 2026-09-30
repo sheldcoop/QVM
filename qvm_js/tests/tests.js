@@ -378,6 +378,38 @@
     var warn = XLSX.utils.sheet_to_json(wb.Sheets.Warnings, { header: 1 });
     eq('warnings sheet', warn[1], ['s.txt', 'w1']);
 
+    /* =============== verdict =============== */
+    group('Verdict');
+    eq('empty job passes', D.verdict({}), { level: 'pass', reasons: ['All sites within spec.'] });
+    var vv = D.verdict({
+      qc: [{ process: 'Pad to Via', thresholdUm: 0,
+             stats: { failCount: 2 } }],
+      shrinkage: [{ label: 'PTV', limitPpm: 50, outliers: [{ quadrant: 'UL' }] }],
+      cs: [{ layer: 'Front', nOutliers: 0, pattern: 'Uniform shrinkage' }],
+      warnings: [{}, {}]
+    });
+    eq('fail wins', vv.level, 'fail');
+    eq('reasons', vv.reasons, [
+      'Pad to Via: 2 sites below 0 µm',
+      'PTV: UL deviate > 50 ppm',
+      'Front: uniform shrinkage'
+    ]);
+    eq('warnings alone warn',
+      D.verdict({ warnings: [{}] }).level, 'warn');
+
+    /* =============== flow ingest =============== */
+    group('Flow ingest');
+    var fl1 = P.classifyAndIngest('Post PFC_Pad to Via_Panel 20_F.txt', ptvSample(), undefined, {});
+    eq('qvm routed', [fl1.kind, fl1.rows[0].process], ['qvm', 'Pad to Via']);
+    var fl2 = P.classifyAndIngest('Core_Shrinkage_Panel 20_Front.txt',
+      'Circle: UL_1(ID:1, From 9 Pts.)\n     Coord. X = 1\n     Coord. Y = 2\n     Diameter = 0.3\n',
+      undefined, {});
+    eq('cs routed by name', [fl2.kind, fl2.rows[0].process], ['cs', 'Core Shrinkage']);
+    var fl3 = P.classifyAndIngest('odd.txt',
+      'Circle: UL_1(ID:1, From 9 Pts.)\n     Coord. X = 1\n     Coord. Y = 2\n     Diameter = 0.3\n',
+      undefined, {});
+    eq('cs fallback with note', [fl3.kind, fl3.uiWarnings.length], ['cs', 2]);
+
     /* =============== CS files =============== */
     group('CS content');
     eq('cs filename', P.parseCsFilename('Core_Shrinkage_Panel 20_Front.txt'),
@@ -427,6 +459,20 @@
     eq('bu unknown', SE.applyBu(SE.allRows(), 'Unknown').length, 1);
     SE.removeFile('a.txt');
     eq('remove empties', SE.allRows().length, 0);
+    SE.addFile({ name: 'b.txt', kind: 'qvm', rows: [
+      { process: 'Via to Pad', panel: '20', side: 'F', buildUp: 'BU-01' }
+    ], parseWarnings: [], uiWarnings: [] });
+    SE.addFile({ name: 'c.txt', kind: 'cs', rows: [
+      { process: 'Core Shrinkage', panel: '20', layer: 'Front' }
+    ], parseWarnings: [], uiWarnings: [] });
+    var job = SE.job();
+    eq('job files', job.files, 2);
+    eq('job processes', job.processes.map(function (p) { return p.process; }),
+      ['Via to Pad', 'Core Shrinkage']);
+    eq('job suggests QVM first', job.suggested, 'Via to Pad');
+    SE.setActiveProcess('Core Shrinkage');
+    eq('pill sticks', SE.job().suggested, 'Core Shrinkage');
+    SE.clear();
     SE.setScope({ panel: 'All', side: 'Both', buildUp: 'All', layer: 'Both' });
 
     /* =============== settings store =============== */

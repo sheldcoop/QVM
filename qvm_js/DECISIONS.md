@@ -1,5 +1,18 @@
 # QVM Dashboard - decisions
 
+## D13 (flow redesign): Upload / Analyse / Export, verdict first — supersedes D2
+The app no longer mirrors the Streamlit tabs 1:1. The user lands on Upload,
+drops files, and the app auto-classifies the process (Pad-to-Via vs Via-to-Pad
+vs Core Shrinkage) by filename/content (`parse.classifyAndIngest`); the user
+never picks a process tab. Analyse opens with a verdict banner
+(`domain.verdict`: annular fail / CS outlier dot = fail; shrinkage outlier /
+non-Stable pattern / warnings = warn; else pass), then process pills, scope,
+charts, and the measurement table. Export owns the workbook + PNGs + manifest.
+Old per-process views (`ptv.js`, `vtp.js`, `coreshk.js`, `panelmap.js`,
+`renderQcView`/`renderCsView`) retired; `qc.js` keeps only shared renderers
+(tiles, table, analytics, shrinkage, stepper, warnings) plus `jobVerdict` /
+`jobWorkbook`.
+
 ## D1 (M1): Memory only, no store machinery
 The app keeps uploads in session memory; only tolerances and theme persist
 (localStorage). The tracker's `store.js` save-to-folder, revision, backup,

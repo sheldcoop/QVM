@@ -555,6 +555,35 @@ window.QVM.parse = (function () {
              meta: { layer: layer, panel: panel }, filenameInfo: info };
   }
 
+  /**
+   * Flow ingest: the app knows the process so the user doesn't pick a tab.
+   * Filename decides when it names a type; otherwise content decides —
+   * QVM blocks win, Core Shrinkage circles are the fallback.
+   */
+  function classifyAndIngest(name, text, settings, override) {
+    settings = settingsOrDefault(settings);
+    override = override || {};
+    if (override.process === 'Core Shrinkage' ||
+        (parseCsFilename(name).isCoreShrinkage && !override.process)) {
+      var cs = ingestCsFile(name, text, settings, override);
+      cs.kind = 'cs';
+      return cs;
+    }
+    try {
+      var qvm = ingestFile(name, text, settings, override);
+      qvm.kind = 'qvm';
+      return qvm;
+    } catch (e) {
+      if (e && e.name === 'QVMParseError') {
+        var fb = ingestCsFile(name, text, settings, override);
+        fb.kind = 'cs';
+        fb.uiWarnings.push('`' + name + '`: no QVM blocks found; parsed as Core Shrinkage.');
+        return fb;
+      }
+      throw e;
+    }
+  }
+
   return {
     QVMParseError: QVMParseError,
     parseFilename: parseFilename,
@@ -564,6 +593,7 @@ window.QVM.parse = (function () {
     ingestFile: ingestFile,
     parseCsFilename: parseCsFilename,
     parseCsContent: parseCsContent,
-    ingestCsFile: ingestCsFile
+    ingestCsFile: ingestCsFile,
+    classifyAndIngest: classifyAndIngest
   };
 })();

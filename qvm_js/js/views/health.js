@@ -47,7 +47,7 @@ window.QVM.views.health = (function () {
     }
     main.appendChild(ui.el('section', { class: 'panel' }, [
       ui.el('h2', { text: 'Session data' }),
-      ui.el('div', { class: 'kit-row' }, [
+      ui.el('div', { class: 'qvm-row' }, [
         ui.kpiTile({ label: 'Files', value: String(files.length) }).node,
         ui.kpiTile({ label: 'Pad to Via rows', value: String(count('Pad to Via')) }).node,
         ui.kpiTile({ label: 'Via to Pad rows', value: String(count('Via to Pad')) }).node,

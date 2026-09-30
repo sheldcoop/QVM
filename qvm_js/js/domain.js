@@ -516,6 +516,47 @@ window.QVM.domain = (function () {
     return 'Offset';
   }
 
+  /**
+   * Job verdict across everything uploaded. Levels: fail (any annular fail
+   * or CS outlier dot), warn (shrinkage outliers, parse warnings), else pass.
+   * Pure: takes computed summaries, never rows. The Analyse view banner.
+   */
+  function verdict(o) {
+    o = o || {};
+    var reasons = [], level = 'pass';
+    (o.qc || []).forEach(function (q) {
+      if (q.stats && q.stats.failCount > 0) {
+        level = 'fail';
+        reasons.push(q.process + ': ' + q.stats.failCount + ' site' +
+          (q.stats.failCount === 1 ? '' : 's') + ' below ' + q.thresholdUm + ' µm');
+      }
+    });
+    (o.shrinkage || []).forEach(function (s) {
+      if (s.outliers && s.outliers.length) {
+        if (level === 'pass') level = 'warn';
+        reasons.push(s.label + ': ' +
+          s.outliers.map(function (x) { return x.quadrant || x; }).join(', ') +
+          ' deviate > ' + s.limitPpm + ' ppm');
+      }
+    });
+    (o.cs || []).forEach(function (c) {
+      if (c.nOutliers > 0) {
+        level = 'fail';
+        reasons.push(c.layer + ': ' + c.nOutliers + ' outlier dot' +
+          (c.nOutliers === 1 ? '' : 's') + ' (' + c.outliers.join(', ') + ')');
+      } else if (c.pattern && c.pattern !== 'Stable') {
+        if (level === 'pass') level = 'warn';
+        reasons.push(c.layer + ': ' + c.pattern.toLowerCase());
+      }
+    });
+    if ((o.warnings || []).length && level === 'pass') {
+      level = 'warn';
+      reasons.push(o.warnings.length + ' file warning' + (o.warnings.length === 1 ? '' : 's'));
+    }
+    if (!reasons.length) reasons.push('All sites within spec.');
+    return { level: level, reasons: reasons };
+  }
+
   function classifyVector(dx, dy, px, py, center, stableUm) {
     if (stableUm === undefined) stableUm = 3.0;
     var mag = Math.hypot(dx, dy);
@@ -578,6 +619,7 @@ window.QVM.domain = (function () {
     qpitch: qpitch,
     scaleFactor: scaleFactor,
     frontBack: frontBack,
+    verdict: verdict,
     classifyQuiver: classifyQuiver,
     classifyVector: classifyVector,
     deviationField: deviationField

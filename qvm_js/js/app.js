@@ -11,19 +11,18 @@ window.QVM.app = (function () {
   'use strict';
 
   var NAV = [
-    { hash: '#/panel-map',      label: 'Panel Map',     view: 'panelmap', milestone: 8 },
-    { hash: '#/pad-to-via',     label: 'Pad to Via',    view: 'ptv',      milestone: 6 },
-    { hash: '#/via-to-pad',     label: 'Via to Pad',    view: 'vtp',      milestone: 6 },
-    { hash: '#/core-shrinkage',  label: 'Core Shrinkage', view: 'coreshk', milestone: 6 },
-    { hash: '#/settings',       label: 'Settings',      view: 'settings', milestone: 5 },
-    { hash: '#/health',         label: 'Health',        view: 'health',   milestone: 10 },
-    { hash: '#/help',           label: 'Help',          view: 'help',     milestone: 1 }
+    { hash: '#/upload',   label: 'Upload',   view: 'upload' },
+    { hash: '#/analyse',  label: 'Analyse',  view: 'analyse' },
+    { hash: '#/export',   label: 'Export',   view: 'export' },
+    { hash: '#/settings', label: 'Settings', view: 'settings' },
+    { hash: '#/health',   label: 'Health',   view: 'health' },
+    { hash: '#/help',     label: 'Help',     view: 'help' }
   ];
 
   function views() { return window.QVM.views || {}; }
 
   function currentRoute() {
-    var h = String(window.location.hash || '#/panel-map');
+    var h = String(window.location.hash || '#/upload');
     for (var i = 0; i < NAV.length; i++) {
       if (h === NAV[i].hash || h.indexOf(NAV[i].hash + '/') === 0) return NAV[i];
     }
@@ -95,7 +94,7 @@ window.QVM.app = (function () {
       window.QVM.config.version;
     document.addEventListener('click', onAction);
     window.addEventListener('hashchange', onHash);
-    if (!window.location.hash) window.location.hash = '#/panel-map';
+    if (!window.location.hash) window.location.hash = '#/upload';
     render(currentRoute());
   }
 

@@ -77,7 +77,7 @@ window.QVM.views.settings = (function () {
     ], settings, forms);
 
     // The spec-limit section reuses VTP fields already saved above; merge, not overwrite.
-    var bar = ui.el('div', { class: 'kit-row' }, [
+    var bar = ui.el('div', { class: 'qvm-row' }, [
       ui.button('Save', { kind: 'primary', onClick: function () {
         var patch = {};
         forms.forEach(function (entry) {

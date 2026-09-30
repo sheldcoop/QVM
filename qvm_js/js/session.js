@@ -23,7 +23,7 @@ window.QVM.session = (function () {
     files = files.filter(function (f) { return f.name !== name; });
   }
 
-  function clear() { files = []; }
+  function clear() { files = []; activeProcess = null; }
 
   function allRows() {
     var out = [];
@@ -107,10 +107,70 @@ window.QVM.session = (function () {
     return (rows || []).filter(function (r) { return r.buildUp === sel; });
   }
 
+  var activeProcess = null;   // the Analyse pill selection; null = auto
+
+  /**
+   * Job summary: what the app knows after ingest. processes lists only
+   * processes that actually have rows; suggested is the auto-pick for the
+   * Analyse pills (QVM processes first, then Core Shrinkage).
+   */
+  function job() {
+    var procs = [];
+    ['Pad to Via', 'Via to Pad', 'Core Shrinkage'].forEach(function (p) {
+      var n = rowsByProcess(p).length;
+      if (n) procs.push({ process: p, rows: n });
+    });
+    var order = { 'Pad to Via': 0, 'Via to Pad': 1, 'Core Shrinkage': 2 };
+    procs.sort(function (a, b) { return order[a.process] - order[b.process]; });
+    var suggested = procs.length ? procs[0].process : null;
+    if (activeProcess && procs.some(function (p) { return p.process === activeProcess; }))
+      suggested = activeProcess;
+    return { files: files.length, processes: procs, suggested: suggested,
+             warnings: warnings().length };
+  }
+
+  function setActiveProcess(p) { activeProcess = p; }
+
+  /**
+   * Read a FileList via FileReader, auto-classify each file, and add it.
+   * done() fires once all files settled (success or recorded failure).
+   */
+  function ingestFiles(fileList, done) {
+    var settings = window.QVM.settings.get();
+    var list = Array.prototype.slice.call(fileList || []);
+    if (!list.length) { if (typeof done === 'function') done(); return; }
+    var pending = list.length;
+    function settle() { if (--pending === 0 && typeof done === 'function') done(); }
+    list.forEach(function (f) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var res = window.QVM.parse.classifyAndIngest(
+            f.name, String(reader.result || ''), settings, overrides[f.name] || {});
+          addFile({ name: f.name, kind: res.kind, rows: res.rows,
+                    parseWarnings: res.parseWarnings, uiWarnings: res.uiWarnings });
+        } catch (e) {
+          addFile({ name: f.name, kind: 'qvm', rows: [],
+                    parseWarnings: [], uiWarnings: ['`' + f.name + '`: ' + e.message] });
+        }
+        settle();
+      };
+      reader.onerror = function () {
+        addFile({ name: f.name, kind: 'qvm', rows: [],
+                  parseWarnings: [], uiWarnings: ['`' + f.name + '`: could not be read.'] });
+        settle();
+      };
+      reader.readAsText(f);
+    });
+  }
+
   return {
     addFile: addFile,
     removeFile: removeFile,
     clear: clear,
+    job: job,
+    setActiveProcess: setActiveProcess,
+    ingestFiles: ingestFiles,
     allRows: allRows,
     rowsByProcess: rowsByProcess,
     warnings: warnings,

@@ -52,7 +52,7 @@ window.QVM.kit = (function () {
           body: el('p', { text: 'A panel with a status glow and one action.' }),
           actions: [ui.button('Export', { kind: 'primary' })] }).node)
       ])),
-      sec('Buttons', null, el('div', { class: 'kit-row' }, [
+      sec('Buttons', null, el('div', { class: 'qvm-row' }, [
         ui.button('Default'), ui.button('Primary', { kind: 'primary' }),
         ui.button('Danger', { kind: 'danger' }), ui.button('Ghost', { kind: 'ghost' })
       ])),
@@ -67,7 +67,7 @@ window.QVM.kit = (function () {
           ui.toggle({ label: 'Show outliers', checked: true }).node
         ]))
       ])),
-      sec('Chips + KPI', null, el('div', { class: 'kit-row' }, [
+      sec('Chips + KPI', null, el('div', { class: 'qvm-row' }, [
         ui.statusChip('ok'), ui.statusChip('warning'), ui.statusChip('expired'),
         ui.kpiTile({ label: 'Mean SC', value: '4.2 µm', status: 'ok' }).node
       ])),
