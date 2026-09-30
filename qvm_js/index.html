@@ -72,5 +72,13 @@
 <script src="js/views/health.js"></script>
 <script src="js/views/help.js"></script>
 <script src="js/app.js"></script>
+<script>
+// ?audit=1 runs the in-page accessibility audit after render (Edge check).
+if (window.location.search.indexOf('audit=1') !== -1) {
+  var s = document.createElement('script');
+  s.src = 'tests/a11y-audit.js';
+  document.body.appendChild(s);
+}
+</script>
 </body>
 </html>

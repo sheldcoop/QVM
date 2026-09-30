@@ -3,9 +3,8 @@
 ## Q1: Lab time zone
 `js/config.js` defaults to Europe/Vienna (tracker's zone). Confirm the QVM lab's zone.
 
-## Q2: Tolerance editing
-Who may change tolerance rings / USL / outlier caps, and where? Proposal: a
-Settings section editable by the analyst, persisted to localStorage (M5).
+## Q2: Tolerance editing — RESOLVED (M5, see D8)
+Analyst-editable Settings view, no PIN, persisted to localStorage.
 
 ## Q3: Sample data bundle
 Which `.txt` logs ship as built-in samples? Proposal: the two Core Shrinkage

@@ -43,4 +43,7 @@ Decisions: `DECISIONS.md`. Parked items: `OPEN_QUESTIONS.md`.
 | Components | `js/ui/*.js` | build DOM, format, animate | own maths |
 
 ## Quality targets (Prince verifies in the browser)
-`tests/test.html` all green · page render < 150 ms · charts readable in all themes.
+`tests/test.html` all green · `index.html?audit=1` audit clean ·
+page render < 150 ms · charts readable in all themes.
+Node gates (run all): `run-tests.js`, `sample-check.js`, `ui-smoke.js`
+(+`chart` arg), `app-smoke.js`, `dom-budget.js`, `css-check.js`, `contrast.js`.
