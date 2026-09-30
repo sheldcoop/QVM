@@ -12,7 +12,7 @@ const win = { console, crypto: globalThis.crypto, TextEncoder, Intl, Date, Math,
 win.window = win;
 const ctx = vm.createContext(win);
 ['js/config.js', 'js/themes.js', 'js/qvm-defaults.js', 'js/domain.js', 'js/parse.js',
- 'tests/tests.js'].forEach(f =>
+ 'js/settings.js', 'tests/tests.js'].forEach(f =>
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f }));
 
 const T = win.QVM_TESTS;

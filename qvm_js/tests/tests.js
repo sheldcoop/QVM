@@ -199,6 +199,123 @@
     eq('empty rows', D.qpShrinkage([], nom).warnings,
       ['No measured rows in scope.']);
 
+    /* =============== affine fit =============== */
+    group('Affine fit');
+    function xform(pts, s, deg, tx, ty) {
+      var r = deg * Math.PI / 180, c = Math.cos(r), s2 = Math.sin(r);
+      return pts.map(function (p) {
+        return [s * (c * p[0] - s2 * p[1]) + tx, s * (s2 * p[0] + c * p[1]) + ty];
+      });
+    }
+    var sq = [[-100, -100], [100, -100], [100, 100], [-100, 100]];
+    var af = D.affineFit(sq, xform(sq, 0.9999, 0.1, 2, -1));
+    function near(a, b, t) { return Math.abs(a - b) < (t || 1e-6); }
+    ok('scale recovered', near(af.Sx, 0.9999, 1e-9) && near(af.Sy, 0.9999, 1e-9));
+    ok('rotation recovered', near(af.thetaDeg, 0.1, 1e-9));
+    ok('translation recovered', near(af.tx, 2, 1e-9) && near(af.ty, -1, 1e-9));
+    ok('tight fit, ~0 residual', af.resRms < 1e-9);
+    eq('underdetermined -> null', D.affineFit(sq.slice(0, 2), sq.slice(0, 2)), null);
+
+    /* =============== rigid fit =============== */
+    group('Rigid fit');
+    var rg = D.rigidFit(sq, xform(sq, 1, 5, 3, -2));
+    var R = rg.R;
+    ok('orthonormal det +1',
+      near(R[0][0] * R[0][0] + R[1][0] * R[1][0], 1, 1e-9) &&
+      near(R[0][0] * R[1][0] + R[0][1] * R[1][1], 0, 1e-9) &&
+      near(R[0][0] * R[1][1] - R[0][1] * R[1][0], 1, 1e-9));
+    ok('angle recovered', near(Math.atan2(R[1][0], R[0][0]) * 180 / Math.PI, 5, 1e-9));
+    ok('translation recovered', near(rg.t[0], 3, 1e-9) && near(rg.t[1], -2, 1e-9));
+
+    /* =============== layer analysis =============== */
+    group('Layer analysis');
+    function csRows(scale, badLoc) {
+      // Eight dots: with only six the one bad dot smears the fit enough to
+      // take a neighbour with it (same in Python) — eight isolates it exactly.
+      var locs = ['UL_1', 'UL_2', 'UL_3', 'UL_4', 'LL_1', 'LL_2', 'LL_3', 'LL_4'];
+      var base = { UL_1: [-200, 200], UL_2: [-200, 0], UL_3: [0, 0], UL_4: [0, 200],
+                   LL_1: [-200, 0], LL_2: [-200, -200], LL_3: [0, -200], LL_4: [0, 0] };
+      return locs.map(function (loc) {
+        var dx = loc === badLoc ? 1 : 0;
+        return { location: loc, coordX: base[loc][0] * scale + dx, coordY: base[loc][1] * scale };
+      });
+    }
+    function csNom() {
+      return { UL_1: { x: -200, y: 200 }, UL_2: { x: -200, y: 0 }, UL_3: { x: 0, y: 0 },
+               UL_4: { x: 0, y: 200 }, LL_1: { x: -200, y: 0 }, LL_2: { x: -200, y: -200 },
+               LL_3: { x: 0, y: -200 }, LL_4: { x: 0, y: 0 } };
+    }
+    eq('fewer than 4 -> null', D.analyzeLayer(csRows(1).slice(0, 3), csNom()), null);
+    var stable = D.affineSummary(D.analyzeLayer(csRows(1), csNom()));
+    eq('identical -> Stable', stable.pattern, 'Stable');
+    var shrunk = D.affineSummary(D.analyzeLayer(csRows(0.9999), csNom()));
+    eq('uniform shrink flagged', shrunk.pattern, 'Uniform shrinkage');
+    ok('100 ppm detected', near(shrunk.sxPpm, 100, 1) && near(shrunk.syPpm, 100, 1));
+    var bad = D.analyzeLayer(csRows(1, 'UL_3'), csNom());
+    eq('bad dot isolated', bad.outliers, ['UL_3']);
+    var res = D.residuals(bad);
+    eq('residual flags', res.filter(function (r) { return r.outlier; })
+      .map(function (r) { return r.location; }), ['UL_3']);
+
+    /* =============== QP pitch + scale =============== */
+    group('QP pitch');
+    function qpRows(shift) {
+      function L(loc, x, y) { return { location: loc, coordX: x, coordY: y }; }
+      return [L('UL_1', 0, 235.75), L('UL_4', 200.65, 235.75),
+              L('UL_2', 0, 0), L('UL_3', 200.65 + shift, 0),
+              L('LL_1', 0, 0), L('LL_4', 200.65, 0),
+              L('LL_2', 0, -235.75), L('LL_3', 200.65, -235.75),
+              L('LR_1', 0, 0), L('LR_4', 200.65, 0),
+              L('LR_2', 0, -235.75), L('LR_3', 200.65, -235.75),
+              L('UR_1', 0, 235.75), L('UR_4', 200.65, 235.75),
+              L('UR_2', 0, 0), L('UR_3', 200.65, 0)];
+    }
+    var qp0 = D.qpitch(qpRows(0)).filter(function (q) { return q.quadrant === 'UL'; })[0];
+    ok('design pitch -> zeros',
+      near(qp0.x1, 0, 1e-9) && near(qp0.x2, 0, 1e-9) &&
+      near(qp0.y1, 0, 1e-9) && near(qp0.y2, 0, 1e-9));
+    var qp1 = D.qpitch(qpRows(0.2)).filter(function (q) { return q.quadrant === 'UL'; })[0];
+    ok('shifted pitch', near(qp1.x2, 0.2, 1e-9) && near(qp1.x1, 0, 1e-9));
+    var sf = D.scaleFactor(qpRows(0.2));
+    eq('overall row', sf.length, 5);
+    var sful = sf.filter(function (q) { return q.quadrant === 'UL'; })[0];
+    ok('expansion negative ppm', near(sful.xPpm, -498.4, 0.5));
+
+    /* =============== front-back + field =============== */
+    group('Front-back');
+    var fb = D.frontBack(
+      [{ location: 'UL_1', gridId: 11, coordX: 10, coordY: 20 }],
+      [{ location: 'UL_1', gridId: 11, coordX: 10.01, coordY: 20.02 }]);
+    ok('offsets', near(fb[0].dxUm, -10, 1e-9) && near(fb[0].distUm, Math.sqrt(500), 1e-9));
+    eq('empty side -> []', D.frontBack([], [{ location: 'UL_1' }]), []);
+
+    group('Deviation field');
+    eq('too few -> []', D.deviationField(csRows(1).slice(0, 2), csNom()), []);
+    var fld = D.deviationField(csRows(1), csNom(), undefined, 'total');
+    ok('identical -> stable zeros',
+      fld.every(function (d) { return d.magUm < 1e-9 && d.klass === 'stable'; }));
+    eq('outward -> expansion', D.classifyVector(10, 0, 100, 0, [0, 0]), 'expansion');
+    eq('tangential -> twist', D.classifyVector(0, 10, 100, 0, [0, 0]), 'twist');
+    eq('tiny -> stable', D.classifyVector(1, 1, 100, 0, [0, 0]), 'stable');
+
+    /* =============== settings store =============== */
+    group('Settings store');
+    var S = window.QVM.settings;
+    S.reset();
+    eq('defaults live', S.get().VTP_REGISTRATION.ring_acceptable_um, 10);
+    S.set({ VTP_REGISTRATION: { ring_acceptable_um: 12 } });
+    eq('patch sticks', S.get().VTP_REGISTRATION.ring_acceptable_um, 12);
+    eq('untouched keys survive', S.get().VTP_REGISTRATION.ring_good_um, 7.5);
+    S.reset();
+    eq('reset restores', S.get().VTP_REGISTRATION.ring_acceptable_um, 10);
+    ok('rings follow settings', D.getRings(S.get()).acceptable === 10);
+
+    /* =============== cs config =============== */
+    group('CS config');
+    eq('defaults', D.csCfg(undefined),
+      { outlier_um: 50, rotation_warn_deg: 0.3, aniso_ppm: 100, shrink_ppm: 50 });
+    eq('override', D.csCfg({ CORE_SHRINKAGE: { outlier_um: 30 } }).outlier_um, 30);
+
     /* =============== themes =============== */
     group('Themes');
     ok('theme list non-empty', TH.list.length > 0);

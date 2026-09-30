@@ -59,12 +59,26 @@ window.QVM.defaults = (function () {
     panel_center_y: 257.5
   };
 
+  var TOLERANCES = {
+    annular_ring_min: 0.0
+  };
+
+  var CORE_SHRINKAGE = {
+    outlier_um: 50.0,
+    rotation_warn_deg: 0.30,
+    aniso_ppm: 100.0,
+    shrink_ppm: 50.0,
+    shrink_usl_ppm: 1000.0
+  };
+
   var DEFAULT_SETTINGS = {
     COLUMN_NAMES: COLUMN_NAMES,
     GRID_MAPPING: GRID_MAPPING,
     VTP_REGISTRATION: VTP_REGISTRATION,
     PTV_REGISTRATION: PTV_REGISTRATION,
-    DIAGNOSTICS: DIAGNOSTICS
+    DIAGNOSTICS: DIAGNOSTICS,
+    TOLERANCES: TOLERANCES,
+    CORE_SHRINKAGE: CORE_SHRINKAGE
   };
 
   return {
@@ -73,6 +87,8 @@ window.QVM.defaults = (function () {
     VTP_REGISTRATION: VTP_REGISTRATION,
     PTV_REGISTRATION: PTV_REGISTRATION,
     DIAGNOSTICS: DIAGNOSTICS,
+    TOLERANCES: TOLERANCES,
+    CORE_SHRINKAGE: CORE_SHRINKAGE,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS
   };
 })();

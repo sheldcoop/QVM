@@ -23,6 +23,11 @@ Parsed rows are plain objects (`location`, `gridId`, `padDiameter`,
 `panel`, `side`, `buildUp`, `annularRing`) in mm — never display labels or
 µm. Display mapping happens at render (M6) via COLUMN_NAMES.
 
+## D8 (M5): Settings view, no PIN — resolves Q2
+Tolerances, USLs, outlier caps, and CS thresholds live in a Settings view
+(`QVM.settings`, localStorage `qvm.settings.v1`, deep-merged over defaults).
+Analyst-editable, no PIN (analyst-only tool).
+
 ## D7 (M3): annularRing ships early
 The one-formula `domain.annularRing` landed in M3 (ingest attaches it) rather
 than waiting for the M4 statistics milestone.

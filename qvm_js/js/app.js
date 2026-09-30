@@ -15,6 +15,7 @@ window.QVM.app = (function () {
     { hash: '#/pad-to-via',     label: 'Pad to Via',    view: 'ptv',      milestone: 6 },
     { hash: '#/via-to-pad',     label: 'Via to Pad',    view: 'vtp',      milestone: 6 },
     { hash: '#/core-shrinkage',  label: 'Core Shrinkage', view: 'coreshk', milestone: 6 },
+    { hash: '#/settings',       label: 'Settings',      view: 'settings', milestone: 5 },
     { hash: '#/health',         label: 'Health',        view: 'health',   milestone: 10 },
     { hash: '#/help',           label: 'Help',          view: 'help',     milestone: 1 }
   ];
