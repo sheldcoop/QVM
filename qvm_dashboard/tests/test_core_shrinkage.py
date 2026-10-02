@@ -375,8 +375,8 @@ def test_affine_recovers_anisotropic_scale_with_axis_identity():
     sx, sy = 1 - 700e-6, 1 - 200e-6
     df = _measured_df('Front', sx=sx, sy=sy, tx=300.0, ty=320.0)
     params = compute_affine_analysis(df, _NOMINAL)['params'].set_index('Parameter')
-    assert params.loc['X Shrinkage', 'Value'] == pytest.approx(700.0, abs=2.0)
-    assert params.loc['Y Shrinkage', 'Value'] == pytest.approx(200.0, abs=2.0)
+    assert params.loc['X Shrinkage', 'Value'] == pytest.approx(-700.0, abs=2.0)
+    assert params.loc['Y Shrinkage', 'Value'] == pytest.approx(-200.0, abs=2.0)
 
 
 def test_affine_pattern_uniform_shrinkage():
@@ -411,8 +411,8 @@ def test_summary_recovers_known_scale_no_outlier():
     df = _measured_df('Back', sx=1 - 465e-6, sy=1 - 465e-6, tx=300.0, ty=320.0)
     s = compute_shrinkage_summary(df, _NOMINAL)
     assert s['n_outliers'] == 0
-    assert s['Sx_ppm'] == pytest.approx(465.0, abs=2.0)
-    assert s['Sy_ppm'] == pytest.approx(465.0, abs=2.0)
+    assert s['Sx_ppm'] == pytest.approx(-465.0, abs=2.0)
+    assert s['Sy_ppm'] == pytest.approx(-465.0, abs=2.0)
     # With no outliers the robust refit equals the all-dot fit.
     assert s['Sx_ppm_robust'] == pytest.approx(s['Sx_ppm'], abs=1e-6)
 
@@ -424,9 +424,34 @@ def test_summary_flags_outlier_and_robust_recovers_truth():
     assert s['n_outliers'] == 1 and s['outliers'] == ['UL_2']
     # Robust (outlier-excluded) recovers the true scale exactly; the all-dot fit
     # is pulled away by the bad dot, so the two disagree.
-    assert s['Sy_ppm_robust'] == pytest.approx(465.0, abs=1.0)
+    assert s['Sy_ppm_robust'] == pytest.approx(-465.0, abs=1.0)
     assert abs(s['Sy_ppm'] - s['Sy_ppm_robust']) > 2.0
     assert s['max_residual_um'] > 50.0
+
+
+def test_degenerate_stuck_probe_refuses_headline():
+    """A collapsed axis (stuck probe) must yield no analysis, not ±1e6 ppm."""
+    df = _measured_df('Front', sx=1 - 465e-6, sy=1 - 465e-6)
+    df['coord_x'] = 7.0
+    assert analyze_layer(df, _NOMINAL) == {}
+    assert compute_affine_analysis(df, _NOMINAL) == {}
+    assert compute_shrinkage_summary(df, _NOMINAL) == {}
+
+
+def test_degenerate_scale_boundary():
+    """A halved panel still reports; a 99.5%-collapsed axis is refused."""
+    ok_df = _measured_df('Front', sx=0.5, sy=0.5)
+    assert analyze_layer(ok_df, _NOMINAL)['n_points'] == 16
+    bad_df = _measured_df('Front', sx=0.005, sy=1.0)
+    assert analyze_layer(bad_df, _NOMINAL) == {}
+
+
+def test_numbering_swap_keeps_its_diagnostic():
+    """A numbering swap (Sy≈0.03, huge residuals) is mismatched data, not a
+    collapse: analysis must stay available so the swap is diagnosable."""
+    good = _measured_df('Front', sx=1 - 465e-6, sy=1 - 465e-6, tx=300.0, ty=320.0)
+    bad = _swap_pairs(good)
+    assert analyze_layer(bad, _NOMINAL)['n_points'] == 16
 
 
 def test_flag_outliers_marks_exactly_the_bad_dot():
@@ -645,3 +670,32 @@ def test_shipped_residual_zones_are_ordered(settings):
     values = [zones['exceptional'], zones['excellent'], zones['good'], zones['acceptable']]
     assert values == sorted(values)
     assert values[-1] <= settings['CORE_SHRINKAGE']['outlier_um']
+
+
+# ---------------------------------------------------------------------------
+# Sign convention lock (Finding 1)
+# ---------------------------------------------------------------------------
+
+def test_shrinkage_sign_convention_agrees_across_modules():
+    """Shrink = NEGATIVE ppm on both paths (measured − nominal).
+
+    Convention lock against Finding 1: a uniformly shrunk panel must read
+    negative on the Core Shrinkage scale-factor path AND on the registration
+    distance path, with matching magnitudes — the customer reference
+    workbook (Core Shrinkage Calculation.xlsx) uses measured − design.
+    """
+    from src.registration_shrinkage import compute_distance_shrinkage
+    df = _measured_df('Front', sx=1 - 500e-6, sy=1 - 500e-6)
+    sf = compute_scale_factor(df)
+    per_quad = sf[sf['Quadrant'] != 'Overall']
+    assert (per_quad['X Shrinkage (ppm)'] < 0).all()
+    assert (per_quad['Y Shrinkage (ppm)'] < 0).all()
+    reg = compute_distance_shrinkage(
+        pd.DataFrame({'Location': df['location'],
+                      'Coord. X': df['coord_x'],
+                      'Coord. Y': df['coord_y']}), _NOMINAL)
+    assert not reg.quadrant.empty
+    assert (reg.quadrant['Shrinkage X (ppm)'] < 0).all()
+    assert (reg.quadrant['Shrinkage Y (ppm)'] < 0).all()
+    assert abs(per_quad['X Shrinkage (ppm)'].mean()
+               - reg.quadrant['Shrinkage X (ppm)'].mean()) < 2.0

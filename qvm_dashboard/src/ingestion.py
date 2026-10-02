@@ -8,7 +8,7 @@ import pandas as pd
 
 from src.parser import parse_qvm_content, parse_filename, QVMParseError
 from src.upload_metadata import UploadMetadata, resolve_upload_metadata
-from src.utils import calculate_annular_ring
+from src.utils import calculate_annular_ring, decode_upload_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,8 @@ def ingest_uploaded_file(uploaded_file, settings: dict,
     default_build_up = _normalize_build_up(default_build_up)
     filename_info = parse_filename(uploaded_file.name)
     parsed_build_up = _normalize_build_up(filename_info.get('Build Up'))
-    content = uploaded_file.getvalue().decode('utf-8')
+    content, detected_encoding = decode_upload_bytes(uploaded_file.getvalue())
+    filename_info['detected_encoding'] = detected_encoding
     df, parse_warnings = parse_qvm_content(content, settings)
     df = calculate_annular_ring(df, settings)
 

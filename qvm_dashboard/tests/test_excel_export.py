@@ -25,7 +25,7 @@ def test_ensure_chrome_on_path_sets_common_windows_locations(monkeypatch):
 
     assert os.environ['GOOGLE_CHROME_BIN'] == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
     assert os.environ['CHROME_BIN'] == r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-    assert r'C:\Program Files\Google\Chrome\Application' in os.environ['PATH']
+    assert r'C:\Program Files\Google\Chrome\Application' in os.environ.get('PATH', '')
 
 
 @pytest.fixture(autouse=True)
@@ -153,8 +153,9 @@ def test_analytics_sheet_falls_back_when_chart_render_fails(settings, monkeypatc
     from src import excel_export
 
     df = _vtp_frame(['F'], settings)
+    # Patch where it is looked up (qvm sheet builder), not where it is defined.
     monkeypatch.setattr(
-        excel_export, '_fig_to_xl_image',
+        excel_export.qvm, '_fig_to_xl_image',
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError('kaleido blocked')))
 
     buf = BytesIO()
@@ -272,8 +273,7 @@ def test_unified_export_process_sheets_embed_panel_map_when_available(settings):
 
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(excel_export.__file__)))
-    abs_path = os.path.join(base_dir, rel_path)
+    abs_path = os.path.join(excel_export.PACKAGE_ROOT, rel_path)
 
     if not os.path.isfile(abs_path):
         pytest.skip('Panel map image not available in test environment')
@@ -295,8 +295,7 @@ def test_unified_export_panel_map_is_anchored_right_of_data(settings):
 
     export_cfg = settings.get('EXCEL_EXPORT', {})
     rel_path = export_cfg.get('panel_map_image', 'assets/Panel_Map.png')
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(excel_export.__file__)))
-    abs_path = os.path.join(base_dir, rel_path)
+    abs_path = os.path.join(excel_export.PACKAGE_ROOT, rel_path)
 
     if not os.path.isfile(abs_path):
         pytest.skip('Panel map image not available in test environment')
@@ -371,6 +370,9 @@ def test_unified_export_handles_malformed_grid_ids(settings):
 
     df = _mixed_process_frame(settings)
     grid_col = settings['COLUMN_NAMES']['grid_id']
+    # Object dtype first: pandas >= 2 refuses string setitem into an int64
+    # column, but real uploads arrive with mixed-type Grid IDs.
+    df[grid_col] = df[grid_col].astype(object)
     df.loc[df.index[:4], grid_col] = ['A', 'B2', '3X', '']
 
     buf = BytesIO()
@@ -411,3 +413,46 @@ def test_unified_export_writes_combined_shrinkage_summary_sheet(settings):
 
     assert any('VTP | Build Up: BU-01' in v for v in values)
     assert any('PTV | Build Up: Unknown' in v for v in values)
+
+
+def test_shrinkage_sheet_uses_registration_design_and_company_numbers(settings):
+    import openpyxl
+    from src.excel_export import write_unified_excel
+    from src.registration_shrinkage import design_for
+
+    cn = settings['COLUMN_NAMES']
+
+    def frame(build_up, process, scale):
+        design = design_for(settings, 'BU-01', process)
+        out = _valid_loc_frame(settings, process=process, build_up=build_up)
+        out[cn['coord_x']] = [design[loc]['x'] * scale for loc in out[cn['location']]]
+        out[cn['coord_y']] = [design[loc]['y'] * scale for loc in out[cn['location']]]
+        return out
+
+    df = pd.concat([frame('BU-01', 'Via to Pad', 0.9999),
+                    frame('BU-02', 'Pad to Via', 1.0)], ignore_index=True)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    ws = openpyxl.load_workbook(buf)['Shrinkage Summary']
+    rows = [[c for c in row] for row in ws.iter_rows(values_only=True)]
+    text = [str(c) for row in rows for c in row if c is not None]
+
+    assert 'Method: Company (distance).' in rows[1][0]
+    header = next(row for row in rows if row and row[0] == 'Process')
+    values = rows[rows.index(header) + 1]
+    summary = dict(zip(header, values))
+    assert summary['Process'] == 'VTP' and summary['Build Up'] == 'BU-01'
+    assert summary['FP X (ppm)'] == pytest.approx(-100.0, abs=0.01)
+    assert summary['FP X (um)'] == pytest.approx(-23.25, abs=0.01)
+    assert summary['Alert Count'] == 0
+    assert not any('%' in t for t in header if isinstance(t, str))
+
+    # BU-02 Pad to Via has no entry: the equivalent BU-01 design stands in, and says so.
+    assert any(t.startswith('PTV | Build Up: BU-02') for t in text)
+    assert any('No design positions configured for BU-02 / Pad to Via; those of BU-01 / '
+               'Pad to Via are used' in t for t in text)
+    second = dict(zip(header, rows[rows.index(header) + 2]))
+    assert second['Build Up'] == 'BU-02' and second['FP X (ppm)'] == pytest.approx(0.0, abs=0.01)
+    assert any(t == 'Via to Pad, via centres, Company (distance)' for t in text)

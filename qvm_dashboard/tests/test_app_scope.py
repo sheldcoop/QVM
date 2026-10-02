@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from app import _apply_scope_filters, _panel_sort_key
+from src.scope import _apply_scope_filters, _panel_sort_key
 
 
 @pytest.fixture

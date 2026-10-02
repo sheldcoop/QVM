@@ -6,12 +6,21 @@ A Streamlit dashboard for analyzing PCB Quality Vision Machine (QVM) text logs. 
 
 ## How to Run
 
+From the repository root:
+
 ```bash
-pip install -r requirements.txt
-streamlit run app.py
+pip install -r qvm_dashboard/requirements.txt
+cd qvm_dashboard && streamlit run app.py
 ```
 
 Navigate to `http://localhost:8501` in your browser.
+
+Or with Docker (no local Python needed, from the repository root):
+
+```bash
+docker build -t qvm-dashboard .
+docker run --rm -p 8501:8501 qvm-dashboard
+```
 
 ---
 
@@ -113,6 +122,12 @@ Sample files for both layers, plus the reference calculation workbook, are in
 
 Use the sidebar to upload one or more `.txt` files. Multiple files (multiple panels or sides) can be uploaded at once — they are concatenated into a combined dataset. Use the **Panel** and **Side** scope filters that appear in each view to isolate a single panel or side.
 
+Accepted text encodings are UTF-8 (with or without BOM), UTF-16 (with BOM),
+and Latin-1; the detected encoding is recorded per file. Every exported
+workbook contains a `Files` sheet listing each uploaded file, its encoding,
+parsed row count, and — for files that could not be parsed — the reason it was
+skipped, so a combined report always shows whether it is complete.
+
 Filename defaults are still supported and recommended:
 
 - Include `VTP` or `PTV` in the filename.
@@ -160,8 +175,12 @@ The Excel export button produces **one workbook** covering the current Build Up,
 Panel and Side scope, with separate Pad-to-Via and Via-to-Pad sheets. See
 [Excel Export](#excel-export) below.
 
+Below the table, a folded **Shrinkage** block per Build Up / Panel / Side shows
+the same result as the Shrinkage tab (see
+[Registration shrinkage](#registration-shrinkage)).
+
 ### Analytics
-Three tabs, identical for both processes:
+Four tabs, identical for both processes:
 
 - **Registration Scatter** — DX/DY bullseye with concentric tolerance rings,
   plus a per-site SC bar chart ordered by Grid ID.
@@ -170,6 +189,43 @@ Three tabs, identical for both processes:
   blue = global offset), with a sensitivity slider to amplify small errors.
 - **Box Plot** — SC distribution: one "All sites" box plus one box per panel
   quarter.
+- **Shrinkage** — how much the panel changed size against its design; see
+  below.
+
+### Registration shrinkage
+
+Shown per Build Up, Panel and Side, separately for Pad-to-Via and Via-to-Pad.
+Everything is **measured minus design** (negative = shrink).
+
+- **Method.** A choice at the top of the tab:
+  - **Company (distance)**, the default and the one written to the Excel
+    report. It is the calculation of `sample_data/Core Shrinkage
+    Calculation.xlsx`: in each quadrant, the two X lengths and the two Y
+    lengths between its four points are compared with the design lengths and
+    averaged; the panel value is the mean of the four quadrants.
+  - **Centre-based**: all points are expressed from their own centre (the
+    average of the points) and compared with the design; X and Y scale only.
+  - **Affine fit**: the Core Shrinkage calculation applied to registration
+    data; separates rotation and shear from scale and rejects outlier points.
+- **Numbers.** The panel and each quadrant are given in **µm** (the company
+  sheet's mm value × 1000: the change over one quadrant length) and in
+  **ppm**. Below: the quadrant-to-quadrant range, and an alert for any
+  quadrant more than `outlier_ppm` from the panel average.
+- **Compare the three methods.** A table with all three results side by side.
+  When they agree, the company number can be trusted; when they differ,
+  [SHRINKAGE_METHODS.md](SHRINKAGE_METHODS.md) explains what that means, with
+  worked examples.
+- **Design positions.** Taken from `REGISTRATION_SHRINKAGE.DESIGNS` for the
+  Build Up and file type of the data. If there is no entry (for example the
+  file name carries no Build Up), another configured design stands in and a
+  note says which one. This is only done when all configured designs have the
+  same shape and differ by a shift, because a shift changes none of the three
+  results; if they differ in shape, the app shows the reason and no numbers.
+  The Core Shrinkage design is never used.
+- **Which centre.** The via centre by default; `measured_point` switches a
+  file type to the pad centre.
+- **Limit.** None by default. Setting `usl_ppm` adds a Pass / Fail to every
+  quadrant and to the panel.
 
 ---
 
@@ -220,6 +276,7 @@ One workbook per download, containing:
 | `Via to Pad` | Via-to-Pad measurements + the Panel Map reference image |
 | `Report` | All rows with job metadata prepended and the process USL column appended |
 | `Analytics <PROC> <BU>` | The four registration charts, one sheet per process per Build Up |
+| `Shrinkage Summary` | Registration shrinkage by the report method, per process and Build Up / Panel / Side: panel and quadrant values in µm and ppm, range, alerts; a group without design positions is listed with the reason |
 | `Warnings` | Parser warnings, or a note that there were none |
 
 Process sheets are written only for processes present in the current scope.
@@ -235,6 +292,9 @@ side-by-side Front/Back table when both are loaded, and — when
 `NOMINAL_COORDS` is configured — `CS Summary`, `QP Shrinkage`, `Scale Factor`,
 `Affine`, `Coordinates` and `Residuals` sheets per layer, plus `Report` and
 `Warnings`. Deviations and residuals are in µm, shrinkage in ppm.
+Shrinkage ppm uses the measured − nominal convention everywhere in the app
+(negative = panel shrank, positive = panel expanded), matching the
+`Core Shrinkage Calculation.xlsx` reference workbook.
 
 ## Configuration (`config/settings.yaml`)
 
@@ -317,6 +377,20 @@ Everything the Core Shrinkage tab measures against.
 | `residual_zones_um` | Colour bands for the Distortion Map (must be ascending, and within `outlier_um`) |
 | `distance_usl_mm` / `outlier_cap_mm` | Front↔back offset spec and outlier cap |
 
+### REGISTRATION_SHRINKAGE
+Everything the Shrinkage tab of the Pad-to-Via / Via-to-Pad views uses.
+
+| Key | Meaning |
+|---|---|
+| `DESIGNS` | Design position (mm) of the 16 QPs, as `product → Build Up → file type → point`. Filled for C4F from `sample_data/QP_Coordinate_Commonality_Analysis.xlsx`: BU-01 (both types), BU-02 Via to Pad, BU-03 Pad to Via. Add a Build Up or a second product as a further block. |
+| `active_design` | Which product block of `DESIGNS` applies to the uploaded files |
+| `fallback_to_equivalent_design` | `true`: a Build Up / file type without an entry uses another configured design, provided all configured designs differ only by a shift. `false`: no entry, no numbers. |
+| `default_method` | `company`, `centre` or `affine`: the method shown first and written to the Excel report |
+| `measured_point` | Per file type, `via` or `pad`: which measured centre is used |
+| `outlier_ppm` | A quadrant further than this from the panel average raises an alert |
+| `usl_ppm` | Optional pass/fail limit on the size of the shrinkage; `null` = report only |
+| `outlier_um` | Affine method: a point with a larger residual is rejected |
+
 ### PLOT_SETTINGS, CHART_HEIGHTS, PANEL_VIEW, FIGURE_SETTINGS, COLORS, EXCEL_EXPORT
 Vector-multiplier slider range; per-chart heights in pixels; panel-map geometry
 and colours; and the Panel Map image path and embed size.
@@ -376,11 +450,16 @@ QVM/
     │   └── sidebar.py              # Upload, per-file overrides, job info, nav button renderer
     ├── src/
     │   ├── parser.py               # QVM text log parser (auto-detects PtV vs VtP)
-    │   ├── core_shrinkage_parser.py # CS log parser + affine / shrinkage maths
+    │   ├── core_shrinkage_parser.py # CS log parsing + frames (maths lives in core_shrinkage_math)
+    │   ├── core_shrinkage_math.py   # Pure affine/outlier/classification kernels (no I/O)
+    │   ├── scope.py                # Panel / Side / Build Up scope rules + widgets (was app.py)
     │   ├── ingestion.py            # Parse one upload + resolve its metadata overrides
     │   ├── upload_metadata.py      # Override > filename > Unknown precedence rules
     │   ├── display_frame.py        # THE display table builder (screen + Excel share it)
-    │   ├── excel_export.py         # One workbook: process sheets, Report, Analytics, Warnings
+    │   ├── excel_export/           # Workbooks, Streamlit-free (warn callback injected)
+    │   │   ├── _shared.py          #   Chrome discovery, PNG render, panel map, warnings
+    │   │   ├── qvm.py              #   QVM workbook: process sheets, Report, Analytics
+    │   │   └── cs.py               #   Core Shrinkage workbook
     │   ├── panel_mapping.py        # Panel map figure builder (4-quarter Plotly layout)
     │   ├── utils.py                # load_settings, convert_to_microns, resolve_columns, annular ring
     │   ├── theme.py                # ONE home for design tokens (Catppuccin palette, grid geometry)
@@ -402,13 +481,15 @@ QVM/
 
 ## Running Tests
 
-From the repository root:
+Requires **Python 3.10+** (the codebase uses `X | Y` annotations) and the
+project virtualenv. From the repository root:
 
 ```bash
-pytest
+.venv/bin/pytest -q
 ```
 
 `pyproject.toml` puts `qvm_dashboard/` on the import path and points pytest at
 `qvm_dashboard/tests`, so the suite imports `src.*` and `ui.*` exactly as the
 app does. Excel chart-embedding tests are skipped automatically when `kaleido`
-is unavailable.
+is unavailable, and the PNG render test skips when Chrome cannot be launched
+(`fig.to_image` needs a local Chrome via kaleido).

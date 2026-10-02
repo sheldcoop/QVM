@@ -199,3 +199,101 @@ Distance: LL2_VtP(ID:3) between LL2_Pad(ID:2) and LL2_Via(ID:1)
     assert len(df) == 1
     assert df.iloc[0]['PtV Distance'] == pytest.approx((0.001 ** 2 + 0.002 ** 2) ** 0.5)
     assert any('SC missing in source' in w for w in warnings)
+
+
+# A single complete, self-consistent site block (SC matches DX/DY, so no
+# SC warnings pollute truncation assertions). Truncation variants below are
+# derived from it by dropping the DY terminator line.
+_TRUNCATION_SITE_BLOCK = """
+Circle: Via_LL_2(ID:1, From 70 Pts.)
+     Coord. X =        64.071816
+     Coord. Y =       103.848650
+     Diameter =         0.016742
+
+Circle: Pad_LL_2(ID:2, From 180 Pts.)
+     Coord. X =        64.072222
+     Coord. Y =       103.848064
+     Diameter =         0.308911
+
+Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def _without_dy(block: str) -> str:
+    return '\n'.join(
+        line for line in block.splitlines()
+        if not line.strip().startswith('DY')
+    )
+
+
+def test_truncated_single_block_error_mentions_truncation(settings):
+    with pytest.raises(QVMParseError) as excinfo:
+        parse_qvm_content(_without_dy(_TRUNCATION_SITE_BLOCK), settings)
+    message = str(excinfo.value)
+    assert 'No valid measurement blocks' in message
+    assert 'truncat' in message.lower()
+
+
+def test_mid_file_cut_warns_and_keeps_complete_sites(settings):
+    content = _TRUNCATION_SITE_BLOCK + _without_dy(_TRUNCATION_SITE_BLOCK)
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert any('truncat' in w.lower() for w in warnings)
+
+
+def test_complete_file_has_no_truncation_warning(settings):
+    content = _TRUNCATION_SITE_BLOCK + _TRUNCATION_SITE_BLOCK
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 2
+    assert not any('truncat' in w.lower() for w in warnings)
+
+
+def test_trailing_noise_has_no_truncation_warning(settings):
+    content = _TRUNCATION_SITE_BLOCK + '\nrandom trailing noise\n'
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert not any('truncat' in w.lower() for w in warnings)
+
+
+def _with_replaced_line(block: str, prefix: str, replacement: str) -> str:
+    lines = []
+    for line in block.splitlines():
+        if line.strip().startswith(prefix):
+            indent = line[:len(line) - len(line.lstrip())]
+            lines.append(f"{indent}{replacement}")
+        else:
+            lines.append(line)
+    return '\n'.join(lines)
+
+
+def test_nan_sc_is_recomputed_and_flagged(settings):
+    content = _with_replaced_line(_TRUNCATION_SITE_BLOCK, 'SC', 'SC = nan')
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert df.iloc[0]['PtV Distance'] == pytest.approx((0.000592 ** 2 + 0.003681 ** 2) ** 0.5)
+    assert any('SC' in w and 'not finite' in w for w in warnings)
+
+
+def test_inf_dx_is_treated_as_missing_and_flagged(settings):
+    content = _with_replaced_line(_TRUNCATION_SITE_BLOCK, 'DX', 'DX = inf')
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert pd.isna(df.iloc[0]['Shift (DX)'])
+    assert any('DX' in w and 'not finite' in w for w in warnings)
+
+
+def test_nan_coord_is_treated_as_missing_and_flagged(settings):
+    content = _with_replaced_line(
+        _TRUNCATION_SITE_BLOCK, 'Coord. X', 'Coord. X = nan')
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert any('Coord' in w and 'not finite' in w for w in warnings)
+
+
+def test_finite_values_gain_no_data_quality_warning(settings):
+    df, warnings = parse_qvm_content(_TRUNCATION_SITE_BLOCK, settings)
+    assert len(df) == 1
+    assert not any('not finite' in w for w in warnings)

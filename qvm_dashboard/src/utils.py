@@ -55,27 +55,60 @@ def is_via_to_pad(df: pd.DataFrame) -> pd.Series:
 def convert_to_microns(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     """Multiply named columns by 1000 (mm → µm) and round to 3 dp.
 
+    Pure: works on a copy, so the caller's frame is never mutated.
     Silently skips columns that are not present in df.
     """
+    out = df.copy()
     for col in cols:
-        if col in df.columns:
-            df[col] = (df[col] * 1000).round(3)
-    return df
+        if col in out.columns:
+            out[col] = (out[col] * 1000).round(3)
+    return out
 
 
 def calculate_annular_ring(df: pd.DataFrame, settings: Dict) -> pd.DataFrame:
     """Compute the minimum Annular Ring per row and store it on the DataFrame.
 
+    Pure: works on a copy, so the caller's frame is never mutated.
+
     Formula: (Outer Diameter / 2) - (Inner Diameter / 2) - PtV Distance
     """
-    col_names = settings.get('COLUMN_NAMES', {})
-    outer_col = col_names.get('outer_diameter', 'Outer Diameter')
-    inner_col = col_names.get('inner_diameter', 'Inner Diameter')
-    ptv_col = col_names.get('ptv_distance', 'PtV Distance')
-    annular_col = col_names.get('annular_ring', 'Annular Ring')
+    cols = resolve_columns(
+        settings,
+        ('outer_diameter', 'inner_diameter', 'ptv_distance', 'annular_ring'),
+    )
+    outer_col = cols['outer_diameter']
+    inner_col = cols['inner_diameter']
+    ptv_col = cols['ptv_distance']
+    annular_col = cols['annular_ring']
 
-    df[annular_col] = (df[outer_col] / 2) - (df[inner_col] / 2) - df[ptv_col]
-    return df
+    out = df.copy()
+    out[annular_col] = (out[outer_col] / 2) - (out[inner_col] / 2) - out[ptv_col]
+    return out
+
+
+def decode_upload_bytes(data: bytes) -> tuple:
+    """Decode uploaded file bytes to text, tolerating machine-export encodings.
+
+    Detection order (first success wins):
+    1. UTF-8 (BOM stripped when present) — preserves current behaviour for
+       every file that already parses today.
+    2. UTF-16, only when a UTF-16 BOM is present.
+    3. Latin-1 (single-byte superset of ASCII; always succeeds).
+
+    Returns (text, encoding_label) where the label is one of
+    ``utf-8`` / ``utf-8-sig`` / ``utf-16`` / ``latin-1``. Callers must record
+    the label so a workbook can show how each file was read.
+    """
+    import codecs
+    if data.startswith(codecs.BOM_UTF8):
+        return data.decode('utf-8-sig'), 'utf-8-sig'
+    try:
+        return data.decode('utf-8'), 'utf-8'
+    except UnicodeDecodeError:
+        pass
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode('utf-16'), 'utf-16'
+    return data.decode('latin-1'), 'latin-1'
 
 
 def resolve_columns(settings: dict, keys: Iterable[str]) -> dict:
@@ -97,6 +130,8 @@ _COLUMN_DEFAULTS = {
     'inner_diameter': 'Via Parameter',
     'coord_x': 'Coord. X',
     'coord_y': 'Coord. Y',
+    'pad_coord_x': 'Pad Coord. X',
+    'pad_coord_y': 'Pad Coord. Y',
     'ptv_distance': 'PtV Distance',
     'total_shift': 'VtP Distance (SC)',
     'x_distance': 'Shift (DX)',

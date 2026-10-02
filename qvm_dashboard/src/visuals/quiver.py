@@ -7,6 +7,7 @@ from typing import Dict
 
 from src import theme
 from src.chart_helpers import apply_dark_layout
+from src.utils import resolve_columns
 
 
 def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figure:
@@ -18,13 +19,16 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     Arrow palette (``theme.ARROW``):
         Expansion — red · Contraction — sky · Twist — yellow · Offset — blue
     """
-    col_names = settings.get('COLUMN_NAMES', {})
-    x_col       = col_names.get('x_distance', 'Shift (DX)')
-    y_col       = col_names.get('y_distance', 'Shift (DY)')
-    coord_x_col = col_names.get('coord_x', 'Coord. X')
-    coord_y_col = col_names.get('coord_y', 'Coord. Y')
-    grid_col    = col_names.get('grid_id', 'Grid ID')
-    loc_col     = col_names.get('location', 'Location')
+    cols = resolve_columns(
+        settings,
+        ('x_distance', 'y_distance', 'coord_x', 'coord_y', 'grid_id', 'location'),
+    )
+    x_col       = cols['x_distance']
+    y_col       = cols['y_distance']
+    coord_x_col = cols['coord_x']
+    coord_y_col = cols['coord_y']
+    grid_col    = cols['grid_id']
+    loc_col     = cols['location']
 
     diag_cfg = settings.get('DIAGNOSTICS', {})
     panel_center_x = float(diag_cfg.get('panel_center_x', 255.0))

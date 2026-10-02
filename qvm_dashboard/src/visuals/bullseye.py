@@ -5,7 +5,10 @@ import plotly.graph_objects as go
 from typing import Dict
 
 from src import theme
-from src.chart_helpers import get_rings, zone_colors, apply_dark_layout
+from src.chart_helpers import (
+    get_rings, zone_colors, zone_legend_annotation, apply_dark_layout,
+)
+from src.utils import resolve_columns
 
 
 def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
@@ -14,12 +17,15 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
     Dark Catppuccin Mocha theme. Concentric tolerance rings (zone colours)
     make pass/warn/fail obvious.
     """
-    col_names = settings.get('COLUMN_NAMES', {})
-    dx_col   = col_names.get('x_distance', 'Shift (DX)')
-    dy_col   = col_names.get('y_distance', 'Shift (DY)')
-    sc_col   = col_names.get('ptv_distance', 'PtV Distance')
-    loc_col  = col_names.get('location', 'Location')
-    grid_col = col_names.get('grid_id', 'Grid ID')
+    cols = resolve_columns(
+        settings,
+        ('x_distance', 'y_distance', 'ptv_distance', 'location', 'grid_id'),
+    )
+    dx_col   = cols['x_distance']
+    dy_col   = cols['y_distance']
+    sc_col   = cols['ptv_distance']
+    loc_col  = cols['location']
+    grid_col = cols['grid_id']
 
     rings  = get_rings(settings)
     height = settings.get('CHART_HEIGHTS', {}).get('bullseye', 580)
@@ -90,6 +96,10 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
         borderwidth=1, borderpad=5,
     )
 
+    # Zone legend below the x-axis title band (y < -0.12 keeps it clear of the
+    # centered axis title) — shared helper, also used by the Excel export.
+    fig.add_annotation(**zone_legend_annotation(rings, y=-0.16))
+
     apply_dark_layout(
         fig, height=height,
         title=dict(text='DX vs DY Registration Bullseye — Via-to-Pad',
@@ -104,7 +114,7 @@ def plot_vtp_bullseye(df: pd.DataFrame, settings: Dict) -> go.Figure:
                    tickfont=dict(color=theme.TEXT)),
         hovermode='closest',
         showlegend=False,
-        margin=dict(t=55, b=55, l=60, r=60),
+        margin=dict(t=55, b=90, l=60, r=60),
     )
     return fig
 
@@ -114,10 +124,10 @@ def plot_vtp_site_bars(df: pd.DataFrame, settings: Dict) -> go.Figure:
 
     Bars ordered by Grid ID (UL → LL → LR → UR), coloured by zone.
     """
-    col_names = settings.get('COLUMN_NAMES', {})
-    sc_col   = col_names.get('ptv_distance', 'PtV Distance')
-    loc_col  = col_names.get('location', 'Location')
-    grid_col = col_names.get('grid_id', 'Grid ID')
+    cols = resolve_columns(settings, ('ptv_distance', 'location', 'grid_id'))
+    sc_col   = cols['ptv_distance']
+    loc_col  = cols['location']
+    grid_col = cols['grid_id']
 
     rings  = get_rings(settings)
     height = settings.get('CHART_HEIGHTS', {}).get('site_bars', 450)

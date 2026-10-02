@@ -4,23 +4,28 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from src.core_shrinkage_parser import parse_cs_filename, parse_core_shrinkage_content
 from src.ingestion import ingest_uploaded_file
 from src.panel_mapping import create_four_quarters_view
 from src.parser import QVMParseError
-from src.utils import is_via_to_pad as is_via_to_pad_mask, load_settings
+from src.utils import decode_upload_bytes, is_via_to_pad as is_via_to_pad_mask, load_settings
 from src.views.core_shrinkage import CoreShrinkageView
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
-from src.registration_shrinkage import compute_distance_shrinkage_by_group
+from src.views.registration_shrinkage import render_registration_shrinkage
+from src.scope import (
+    _apply_scope_filters,
+    _build_up_filter,
+    _panel_sort_key,
+    _scope_filters,
+)
 from src.visuals import plot_quiver, plot_vtp_box
 from ui.sidebar import render_nav_buttons, render_sidebar
 
 
-pd.options.mode.copy_on_write = True
+logging.basicConfig(level=logging.INFO, format='%(levelname)s %(name)s: %(message)s')
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +37,7 @@ def _settings() -> dict:
     return load_settings()
 
 
-@st.cache_data(max_entries=16, show_spinner=False)
+@st.cache_data(max_entries=8, ttl=3600, show_spinner=False)
 def _parse_upload(name: str, data: bytes, settings: dict,
                   file_override: dict) -> tuple:
     """Parse one uploaded file, memoised on its content.
@@ -44,12 +49,12 @@ def _parse_upload(name: str, data: bytes, settings: dict,
     Returns the (df, parse_warnings, ui_warnings) slice that main() consumes.
     """
     uploaded = SimpleNamespace(name=name, getvalue=lambda: data)
-    df, parse_warnings, ui_warnings, _, _ = ingest_uploaded_file(
+    df, parse_warnings, ui_warnings, _, filename_info = ingest_uploaded_file(
         uploaded, settings, file_override=file_override)
-    return df, parse_warnings, ui_warnings
+    return df, parse_warnings, ui_warnings, filename_info.get('detected_encoding', 'utf-8')
 
 
-@st.cache_data(max_entries=16, show_spinner=False)
+@st.cache_data(max_entries=8, ttl=3600, show_spinner=False)
 def _parse_cs_upload(name: str, data: bytes, layer: str, panel: str,
                      grid_mapping: dict) -> pd.DataFrame:
     """Parse one Core Shrinkage upload, memoised on its content.
@@ -58,10 +63,11 @@ def _parse_cs_upload(name: str, data: bytes, layer: str, panel: str,
     every widget interaction, so keying on the file's bytes keeps a nav click
     from re-parsing every upload.
     """
-    cs_df = parse_core_shrinkage_content(data.decode('utf-8'), layer)
+    text, encoding = decode_upload_bytes(data)
+    cs_df = parse_core_shrinkage_content(text, layer)
     cs_df['Panel'] = panel
     cs_df['grid_id'] = cs_df['location'].map(grid_mapping)
-    return cs_df
+    return cs_df, encoding
 
 
 def load_css(file_path: str, settings: dict = None) -> None:
@@ -87,98 +93,6 @@ def load_css(file_path: str, settings: dict = None) -> None:
         pass
 
 
-def _panel_sort_key(panel: str):
-    """Order panels numerically ("9" before "10"), non-numeric ones last.
-
-    Panel Number is a free-text override, so this has to survive anything the
-    user types. isdecimal() rather than isdigit() because isdigit() accepts
-    characters int() rejects — "²" among them — which would raise here.
-    """
-    text = str(panel)
-    return (0, int(text), '') if text.isdecimal() else (1, 0, text)
-
-
-def _scope_filters(df: pd.DataFrame, panel_key: str, filter_key: str, *,
-                   filter_col: str = 'Side',
-                   filter_label: str = 'Side') -> tuple[pd.DataFrame, str, str]:
-    """Render Panel + a secondary scope filter; return the frame plus selections.
-
-    Shared by every analysis tab. Pad-to-Via and Via-to-Pad take the defaults and
-    filter on ``Side``; Core Shrinkage passes ``filter_col='layer'`` to filter on
-    Front/Back instead. The secondary selector only offers "Both" when the data
-    actually holds more than one value.
-    """
-    with st.expander("Analysis Scope", expanded=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            panel_list = sorted(df['Panel'].unique().tolist(), key=_panel_sort_key)
-            if len(panel_list) > 1:
-                panel_list.insert(0, "All")
-            panel_display = ["All" if p == "All" else f"Panel-{p}" for p in panel_list]
-            st.markdown("**Select Panel**")
-            sel_display = render_nav_buttons(panel_display, state_key=panel_key, default=panel_display[0])
-            selected_panel = "All" if sel_display == "All" else sel_display.replace("Panel-", "")
-        with col2:
-            opt_list = sorted(df[filter_col].unique().tolist())
-            if len(opt_list) > 1:
-                opt_list.insert(0, "Both")
-            st.markdown(f"**Select {filter_label}**")
-            selected_opt = render_nav_buttons(opt_list, state_key=filter_key, default=opt_list[0])
-
-    filtered = _apply_scope_filters(df, selected_panel, selected_opt, filter_col=filter_col)
-    return filtered, selected_panel, selected_opt
-
-
-def _apply_scope_filters(df: pd.DataFrame, selected_panel: str, selected_value: str,
-                         *, filter_col: str = 'Side') -> pd.DataFrame:
-    """Apply the panel + secondary scope selection to any dataframe.
-
-    The single home for the scope rules: "All" panels and "Both" secondary values
-    mean no filtering, and a dataframe missing either column is passed through.
-    """
-    filtered = df.copy()
-    if selected_panel and selected_panel != "All" and 'Panel' in filtered.columns:
-        filtered = filtered[filtered['Panel'] == selected_panel]
-    if selected_value and selected_value != "Both" and filter_col in filtered.columns:
-        filtered = filtered[filtered[filter_col] == selected_value]
-    return filtered
-
-
-def _build_up_filter(df: pd.DataFrame, state_key: str) -> tuple[pd.DataFrame, str]:
-    """Render top-level Build Up selector and apply BU filter."""
-    if 'Build Up' not in df.columns:
-        return df, "All"
-
-    all_bu_values = sorted({str(v).strip() for v in df['Build Up'].dropna().tolist() if str(v).strip()})
-    if not all_bu_values:
-        return df, "All"
-
-    normalized_values = [v for v in all_bu_values if v.lower() != 'unknown']
-    has_unknown = any(v.lower() == 'unknown' for v in all_bu_values)
-
-    # Show a selector when more than one BU state exists (including Unknown).
-    total_states = len(normalized_values) + (1 if has_unknown else 0)
-
-    if total_states == 1 and normalized_values:
-        st.markdown(f"**Build Up:** {normalized_values[0]}")
-        return df, normalized_values[0]
-
-    if total_states == 1 and has_unknown:
-        st.markdown("**Build Up:** Unknown")
-        return df[df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy(), "Unknown"
-
-    bu_options = ["All"] + normalized_values
-    if has_unknown:
-        bu_options.append("Unknown")
-    st.markdown("**Select Build Up**")
-    selected_bu = render_nav_buttons(bu_options, state_key=state_key, default="All")
-    if selected_bu == "All":
-        return df, selected_bu
-    if selected_bu == "Unknown":
-        return df[df['Build Up'].astype(str).str.strip().str.lower() == 'unknown'].copy(), selected_bu
-    return df[df['Build Up'] == selected_bu].copy(), selected_bu
-
-
 def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
                       is_via_to_pad: bool = False, meta: dict = None,
                       export_df: pd.DataFrame | None = None) -> None:
@@ -202,77 +116,6 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
 
 def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
     """Render the shared 3-tab registration analytics used by both processes."""
-
-    def _shrinkage_quiver_figure(res, title: str) -> go.Figure:
-        qdf = res.quadrant.copy()
-        if qdf.empty:
-            return go.Figure()
-
-        fp = res.full_panel.iloc[0]
-        fp_x = float(fp.get('Shrinkage X (FP PPM)', fp.get('Shrinkage X (FP)', 0.0)))
-        fp_y = float(fp.get('Shrinkage Y (FP PPM)', fp.get('Shrinkage Y (FP)', 0.0)))
-        qdf['dx'] = qdf['QP Shrinkage X (PPM)'] - fp_x
-        qdf['dy'] = qdf['QP Shrinkage Y (PPM)'] - fp_y
-
-        positions = {
-            'UL': (-1.0, 1.0),
-            'LL': (-1.0, -1.0),
-            'LR': (1.0, -1.0),
-            'UR': (1.0, 1.0),
-        }
-        max_dev = float(max(qdf['dx'].abs().max(), qdf['dy'].abs().max(), 1.0))
-        arrow_scale = 0.8 / max_dev
-
-        fig = go.Figure()
-        xs, ys, labels, hover = [], [], [], []
-        for _, row in qdf.iterrows():
-            quad = str(row['Quadrant'])
-            if quad not in positions:
-                continue
-            x0, y0 = positions[quad]
-            xs.append(x0)
-            ys.append(y0)
-            labels.append(quad)
-            hover.append(
-                f"{quad}<br>ΔX from FP: {row['dx']:.1f} ppm<br>ΔY from FP: {row['dy']:.1f} ppm"
-            )
-            x1 = x0 + float(row['dx']) * arrow_scale
-            y1 = y0 + float(row['dy']) * arrow_scale
-            fig.add_annotation(
-                x=x1,
-                y=y1,
-                ax=x0,
-                ay=y0,
-                xref='x',
-                yref='y',
-                axref='x',
-                ayref='y',
-                showarrow=True,
-                arrowhead=3,
-                arrowsize=1,
-                arrowwidth=2,
-                arrowcolor='#F4B486',
-            )
-
-        fig.add_trace(go.Scatter(
-            x=xs,
-            y=ys,
-            mode='markers+text',
-            text=labels,
-            textposition='top center',
-            marker=dict(size=12, color='#8B4513'),
-            hovertemplate='%{customdata}<extra></extra>',
-            customdata=hover,
-            name='Quadrant center',
-        ))
-        fig.update_layout(
-            title=title,
-            xaxis=dict(visible=False, range=[-2.0, 2.0]),
-            yaxis=dict(visible=False, range=[-2.0, 2.0], scaleanchor='x', scaleratio=1),
-            margin=dict(l=20, r=20, t=50, b=20),
-            showlegend=False,
-        )
-        return fig
 
     tab1, tab2, tab3, tab4 = st.tabs(["Registration Scatter", "Quiver Plot", "Box Plot", "Shrinkage"])
     with tab1:
@@ -306,78 +149,8 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
         st.plotly_chart(fig, use_container_width=True)
 
     with tab4:
-        cs_cfg = settings.get('CORE_SHRINKAGE', {})
-        nominal_coords = (
-            settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
-            or cs_cfg.get('NOMINAL_COORDS', {})
-        )
-        if not nominal_coords:
-            st.info('Nominal coordinates are not configured for shrinkage analytics.')
-        else:
-            col_names = settings.get('COLUMN_NAMES', {})
-            loc_col = col_names.get('location', 'Location')
-            x_col = col_names.get('coord_x', 'Coord. X')
-            y_col = col_names.get('coord_y', 'Coord. Y')
-            if any(c not in filtered_df.columns for c in (loc_col, x_col, y_col)):
-                st.info('Shrinkage analytics requires Location, Coord. X, and Coord. Y columns.')
-            else:
-                outlier_ppm = float(settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
-                groups = compute_distance_shrinkage_by_group(
-                    filtered_df,
-                    nominal_coords,
-                    location_col=loc_col,
-                    x_col=x_col,
-                    y_col=y_col,
-                    outlier_ppm=outlier_ppm,
-                    group_cols=['Build Up', 'Panel', 'Side'],
-                )
-                st.caption('Distance-based only; no coordinate transform/alignment is applied.')
-                for g in groups:
-                    gmeta = g['group']
-                    res = g['result']
-                    label = ', '.join(f'{k}: {v}' for k, v in gmeta.items()) if gmeta else 'Current scope'
-                    st.markdown(f'**{label}**')
-                    if res.warnings:
-                        for w in res.warnings:
-                            st.warning(w)
-                    if res.quadrant.empty:
-                        st.info('No shrinkage output for this scope.')
-                        continue
-                    q_cols = [
-                        'Quadrant',
-                        'QP Shrinkage X (%)',
-                        'QP Shrinkage Y (%)',
-                        'Delta X (um)',
-                        'Delta Y (um)',
-                        'QP Shrinkage X (PPM)',
-                        'QP Shrinkage Y (PPM)',
-                    ]
-                    show_q_cols = [c for c in q_cols if c in res.quadrant.columns]
-                    st.dataframe(res.quadrant[show_q_cols], use_container_width=True, hide_index=True)
-                    chart = res.quadrant.set_index('Quadrant')[['QP Shrinkage X (%)', 'QP Shrinkage Y (%)']]
-                    st.bar_chart(chart)
-                    st.plotly_chart(_shrinkage_quiver_figure(res, f'Shrinkage Quiver — {label}'), use_container_width=True)
-                    fp_cols = [
-                        'Shrinkage X (FP %)',
-                        'Shrinkage Y (FP %)',
-                        'Shrinkage X-Y Offset (%)',
-                        'Shrinkage X (FP PPM)',
-                        'Shrinkage Y (FP PPM)',
-                        'Shrinkage X-Y Offset (PPM)',
-                    ]
-                    show_fp_cols = [c for c in fp_cols if c in res.full_panel.columns]
-                    st.dataframe(res.full_panel[show_fp_cols], use_container_width=True, hide_index=True)
-                    u_cols = [
-                        'QTQ Range X (%)',
-                        'QTQ Range Y (%)',
-                        'QTQ Range X',
-                        'QTQ Range Y',
-                        'Total 2D Spatial Distortion Vector',
-                    ]
-                    show_u_cols = [c for c in u_cols if c in res.uniformity.columns]
-                    st.dataframe(res.uniformity[show_u_cols], use_container_width=True, hide_index=True)
-                    if not res.outliers.empty:
-                        st.dataframe(res.outliers, use_container_width=True, hide_index=True)
+        prefix = 'vtp' if is_via_to_pad_mask(filtered_df).any() else 'ptv'
+        render_registration_shrinkage(filtered_df, settings, key=f'{prefix}_analytics')
 
 
 def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
@@ -481,6 +254,17 @@ def main() -> None:
     all_data = []
     all_warnings = []
     cs_data = []
+    # Input-to-output traceability: one record per upload, including files
+    # that fail to parse, so every workbook manifest can prove completeness.
+    file_records = []
+
+    def _record(filename, pipeline, encoding, rows, status, detail=''):
+        file_records.append({
+            'filename': filename, 'pipeline': pipeline,
+            'encoding': encoding or 'unknown', 'rows': int(rows),
+            'status': status, 'detail': detail,
+        })
+
     if uploaded_files:
         for file_index, file in enumerate(uploaded_files):
             logger.info('Parsing file: %s', file.name)
@@ -491,32 +275,53 @@ def main() -> None:
             cs_info = parse_cs_filename(file.name)
             if cs_info['is_core_shrinkage']:
                 try:
-                    cs_data.append(_parse_cs_upload(
-                        file.name, file.getvalue(), cs_info['layer'],
-                        cs_info['Panel Number'], settings.get('GRID_MAPPING', {})))
+                    raw = file.getvalue()
+                    cs_df, cs_encoding = _parse_cs_upload(
+                        file.name, raw, cs_info['layer'],
+                        cs_info['Panel Number'], settings.get('GRID_MAPPING', {}))
+                    cs_data.append(cs_df)
+                    _record(file.name, 'Core Shrinkage', cs_encoding,
+                            len(cs_df), 'ok')
                     logger.info('Parsed Core Shrinkage file %s: layer=%s panel=%s',
                                 file.name, cs_info['layer'], cs_info['Panel Number'])
                 except UnicodeDecodeError as e:
+                    _record(file.name, 'Core Shrinkage', 'unknown',
+                            0, 'skipped', f'not a valid text file ({e})')
                     logger.warning('Decode failed for %s: %s', file.name, e)
                     st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
                 except Exception as e:
+                    try:
+                        _, enc = decode_upload_bytes(file.getvalue())
+                    except Exception:
+                        enc = 'unknown'
+                    _record(file.name, 'Core Shrinkage', enc,
+                            0, 'skipped', f'{type(e).__name__}: {e}')
                     logger.warning('Core Shrinkage parse failed for %s: %s', file.name, e)
                     st.sidebar.error(f"❌ `{file.name}`: {e}")
                 continue
 
             try:
                 file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
-                df, file_warnings, ui_warnings = _parse_upload(
-                    file.name, file.getvalue(), settings, file_override)
+                raw = file.getvalue()
+                df, file_warnings, ui_warnings, encoding = _parse_upload(
+                    file.name, raw, settings, file_override)
                 all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
+                _record(file.name, 'QVM', encoding, len(df), 'ok')
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),
                             df['Process'].iloc[0] if not df.empty else 'unknown')
             except QVMParseError as e:
+                try:
+                    _, enc = decode_upload_bytes(file.getvalue())
+                except Exception:
+                    enc = 'unknown'
+                _record(file.name, 'QVM', enc, 0, 'skipped', str(e))
                 logger.warning('Parse failed for %s: %s', file.name, e)
                 st.sidebar.error(f"❌ `{file.name}`: {e}")
                 continue
             except UnicodeDecodeError as e:
+                _record(file.name, 'QVM', 'unknown', 0, 'skipped',
+                        f'not a valid text file ({e})')
                 logger.warning('Decode failed for %s: %s', file.name, e)
                 st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
                 continue
@@ -526,6 +331,9 @@ def main() -> None:
             all_data.append(df)
 
     st.session_state['parse_warnings'] = all_warnings
+    # Every export below receives meta, so the workbooks can carry the
+    # Files manifest (processed + skipped uploads) for traceability.
+    meta['file_records'] = file_records
 
     main_view = render_nav_buttons(
         ["Panel Map", "Pad to Via", "Via to Pad", "Core Shrinkage"],
