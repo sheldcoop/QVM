@@ -1,63 +1,117 @@
-"""Registration shrinkage charts."""
+"""Registration shrinkage charts (company method)."""
 
 import plotly.graph_objects as go
 
 from src import theme
 from src.chart_helpers import apply_dark_layout
 
-# Where each quadrant sits on the schematic panel.
-_POSITIONS = {'UL': (-1.0, 1.0), 'LL': (-1.0, -1.0), 'LR': (1.0, -1.0), 'UR': (1.0, 1.0)}
+_CORNERS = ('1', '2', '3', '4')  # top-left, bottom-left, bottom-right, top-right
+_ARROW_SHARE = 0.22              # longest arrow, as a share of the quadrant size
 
 
-def plot_shrinkage_quiver(result, title: str, *, height: int = 420) -> go.Figure:
-    """How each quadrant differs from the panel average, as one arrow per quadrant.
+def _centre(points: dict, quadrant: str):
+    xs = [float(points[f'{quadrant}_{c}']['x']) for c in _CORNERS]
+    ys = [float(points[f'{quadrant}_{c}']['y']) for c in _CORNERS]
+    return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys)
 
-    Arrow = (quadrant X ppm - panel X ppm, quadrant Y ppm - panel Y ppm). The
-    longest arrow is drawn at a fixed length, so the picture shows the pattern;
-    the numbers are in the hover text and the quadrant table.
+
+def plot_shrinkage_panel(result, design: dict, title: str, *, height: int = 600) -> go.Figure:
+    """The panel drawn to scale, with the shrinkage of each quadrant on it.
+
+    Same look as the distortion quiver map: site dots with labels, a summary
+    card top-left, a legend bottom-centre, quadrant crosshairs. Each quadrant
+    carries one horizontal arrow (X) and one vertical arrow (Y): pointing
+    outward from the quadrant centre and red when it grew, inward and sky-blue
+    when it shrank. Arrow length is relative to the largest value on the panel;
+    the numbers are written next to the arrows.
     """
     fig = go.Figure()
-    if result.quadrant.empty or result.full_panel.empty:
+    if result.quadrant.empty or result.full_panel.empty or not design:
         return apply_dark_layout(fig, height=height, title=title)
 
-    panel = result.full_panel.iloc[0]
-    frame = result.quadrant.copy()
-    frame['dx'] = frame['Shrinkage X (ppm)'] - float(panel['Shrinkage X (ppm)'])
-    frame['dy'] = frame['Shrinkage Y (ppm)'] - float(panel['Shrinkage Y (ppm)'])
-    largest = float(max(frame['dx'].abs().max(), frame['dy'].abs().max(), 1.0))
-    scale = 0.8 / largest
+    points = {str(name).upper(): xy for name, xy in design.items()}
+    table = result.quadrant.set_index('Quadrant')
+    largest = max(float(table['Shrinkage X (ppm)'].abs().max()),
+                  float(table['Shrinkage Y (ppm)'].abs().max()), 1e-9)
 
-    xs, ys, labels, hover = [], [], [], []
-    for _, row in frame.iterrows():
-        quadrant = str(row['Quadrant'])
-        if quadrant not in _POSITIONS:
+    for quadrant, row in table.iterrows():
+        if not all(f'{quadrant}_{c}' in points for c in _CORNERS):
             continue
-        x0, y0 = _POSITIONS[quadrant]
-        xs.append(x0)
-        ys.append(y0)
-        labels.append(quadrant)
-        hover.append(
-            f"{quadrant}<br>X: {row['Shrinkage X (ppm)']:.1f} ppm ({row['dx']:+.1f} vs panel)"
-            f"<br>Y: {row['Shrinkage Y (ppm)']:.1f} ppm ({row['dy']:+.1f} vs panel)")
+        cx, cy, width, depth = _centre(points, quadrant)
+        fig.add_shape(type='rect', x0=cx - width / 2, x1=cx + width / 2,
+                      y0=cy - depth / 2, y1=cy + depth / 2,
+                      line=dict(color=theme.CARD_BD, width=1.2), fillcolor=theme.CARD_BG,
+                      layer='below')
+        for axis, (ux, uy), size in (('X', (1, 0), width), ('Y', (0, 1), depth)):
+            ppm = float(row[f'Shrinkage {axis} (ppm)'])
+            length = size * _ARROW_SHARE * abs(ppm) / largest
+            colour = theme.ARROW['expansion'] if ppm >= 0 else theme.ARROW['contraction']
+            edge = size / 2 - size * 0.03  # arrows sit just inside the quadrant edge
+            # X arrows run below the value box, Y arrows through the middle column.
+            line_y = cy - depth * 0.30 if axis == 'X' else cy
+            for side in (1, -1):  # both ends of the quadrant move
+                outer = (cx + side * ux * edge, line_y + side * uy * edge)
+                inner = (outer[0] - side * ux * length, outer[1] - side * uy * length)
+                tail, head = (inner, outer) if ppm >= 0 else (outer, inner)
+                fig.add_annotation(
+                    x=head[0], y=head[1], ax=tail[0], ay=tail[1],
+                    xref='x', yref='y', axref='x', ayref='y', text='', showarrow=True,
+                    arrowhead=2, arrowsize=1.4, arrowwidth=2.4, arrowcolor=colour, opacity=0.95)
         fig.add_annotation(
-            x=x0 + float(row['dx']) * scale, y=y0 + float(row['dy']) * scale, ax=x0, ay=y0,
-            xref='x', yref='y', axref='x', ayref='y',
-            showarrow=True, arrowhead=3, arrowsize=1, arrowwidth=2,
-            arrowcolor=theme.PALETTE['peach'],
-        )
+            x=cx, y=cy, xref='x', yref='y', showarrow=False, align='center',
+            text=(f"<b>{quadrant}</b><br>"
+                  f"X {row['Delta X (um)']:+.1f} µm  ({row['Shrinkage X (ppm)']:+.0f} ppm)<br>"
+                  f"Y {row['Delta Y (um)']:+.1f} µm  ({row['Shrinkage Y (ppm)']:+.0f} ppm)"),
+            font=dict(size=11, color=theme.TEXT),
+            bgcolor=theme.PLOT_BG, bordercolor=theme.CARD_BD, borderwidth=1, borderpad=4)
 
+    names = sorted(points)
+    # Labels point into their own quadrant, so neighbours across a gap do not collide.
+    inward = {'1': 'bottom right', '2': 'top right', '3': 'top left', '4': 'bottom left'}
     fig.add_trace(go.Scatter(
-        x=xs, y=ys, mode='markers+text', text=labels, textposition='top center',
-        marker=dict(size=12, color=theme.PALETTE['blue']),
-        hovertemplate='%{customdata}<extra></extra>', customdata=hover,
-        name='Quadrant centre',
+        x=[float(points[n]['x']) for n in names], y=[float(points[n]['y']) for n in names],
+        mode='markers+text', text=names,
+        textposition=[inward.get(n[-1], 'top center') for n in names],
+        textfont=dict(size=9, color=theme.TEXT_MUTED),
+        marker=dict(size=9, color=theme.PALETTE['blue'], line=dict(width=0)),
+        hovertemplate='%{text}<br>design %{x:.3f}, %{y:.3f} mm<extra></extra>', showlegend=False,
     ))
+
+    crosshair = dict(color=theme.CROSSHAIR, width=1.2)
+    fig.add_hline(y=0, line=crosshair)
+    fig.add_vline(x=0, line=crosshair)
+
+    panel = result.full_panel.iloc[0]
+    uniformity = result.uniformity.iloc[0]
+    fig.add_annotation(
+        text=(f"<b>Panel X</b> {panel['Delta X (um)']:+.1f} µm ({panel['Shrinkage X (ppm)']:+.0f} ppm)  •  "
+              f"<b>Panel Y</b> {panel['Delta Y (um)']:+.1f} µm ({panel['Shrinkage Y (ppm)']:+.0f} ppm)  •  "
+              f"<b>Range</b> X {uniformity['QTQ Range X (ppm)']:.0f} / "
+              f"Y {uniformity['QTQ Range Y (ppm)']:.0f} ppm"),
+        xref='paper', yref='paper', x=0.0, y=1.0, xanchor='left', yanchor='bottom',
+        showarrow=False, align='left', font=dict(size=11, color=theme.TEXT),
+        bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD, borderwidth=1, borderpad=5)
+    arrows = theme.ARROW
+    fig.add_annotation(
+        text=(f"<span style='color:{arrows['expansion']}'>⬤</span> Grew (measured &gt; design)  "
+              f"<span style='color:{arrows['contraction']}'>⬤</span> Shrank (measured &lt; design)"),
+        xref='paper', yref='paper', x=0.5, y=-0.14, xanchor='center', yanchor='top',
+        showarrow=False, font=dict(size=10, color=theme.TEXT),
+        bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD, borderwidth=1, borderpad=5)
+
+    xs = [float(xy['x']) for xy in points.values()]
+    ys = [float(xy['y']) for xy in points.values()]
+    pad_x, pad_y = (max(xs) - min(xs)) * 0.08, (max(ys) - min(ys)) * 0.14
+    fig.update_xaxes(range=[min(xs) - pad_x, max(xs) + pad_x], showgrid=False, zeroline=False,
+                     showticklabels=False,
+                     title=dict(text='Panel X (design, to scale)', font=dict(color=theme.TEXT)))
+    fig.update_yaxes(range=[min(ys) - pad_y, max(ys) + pad_y], showgrid=False, zeroline=False,
+                     showticklabels=False, scaleanchor='x', scaleratio=1,
+                     title=dict(text='Panel Y', font=dict(color=theme.TEXT)))
     return apply_dark_layout(
-        fig, height=height, title=title,
-        xaxis=dict(visible=False, range=[-2.0, 2.0]),
-        yaxis=dict(visible=False, range=[-2.0, 2.0], scaleanchor='x', scaleratio=1),
-        margin=dict(l=20, r=20, t=50, b=20), showlegend=False,
-    )
+        fig, height=height,
+        title=dict(text=title, font=dict(size=14, color=theme.TEXT), x=0.5, xanchor='center'),
+        hovermode='closest', margin=dict(t=85, b=95, l=60, r=60))
 
 
 def plot_quadrant_bars(result, title: str, *, height: int = 420) -> go.Figure:
@@ -82,43 +136,11 @@ def plot_quadrant_bars(result, title: str, *, height: int = 420) -> go.Figure:
             hovertemplate=f'Panel {axis}: %{{y:.1f}} ppm<extra></extra>',
         ))
     return apply_dark_layout(
-        fig, height=height, title=title, barmode='group',
+        fig, height=height,
+        title=dict(text=title, font=dict(size=14, color=theme.TEXT), x=0.5, xanchor='center'),
+        barmode='group',
         yaxis=dict(title='ppm (negative = shrink)', zeroline=True,
                    zerolinecolor=theme.CROSSHAIR, gridcolor=theme.SEPARATOR),
         xaxis=dict(title='Quadrant'),
-        legend=dict(orientation='h', y=-0.22), margin=dict(l=60, r=20, t=50, b=70),
-    )
-
-
-def plot_fit_residuals(result, design: dict, title: str, *, height: int = 460) -> go.Figure:
-    """Affine fit: every point at its design position, sized and coloured by how far
-    the measured point lies from the fit. Rejected points are drawn in red."""
-    fig = go.Figure()
-    if result.points.empty or not design:
-        return apply_dark_layout(fig, height=height, title=title)
-
-    points = result.points.copy()
-    points['x'] = [float(design[name]['x']) for name in points['Location']]
-    points['y'] = [float(design[name]['y']) for name in points['Location']]
-    largest = max(float(points['Residual (um)'].max()), 1e-9)
-    for rejected, colour, label in ((False, theme.PALETTE['green'], 'Used in the fit'),
-                                    (True, theme.PALETTE['red'], 'Rejected')):
-        part = points[points['Rejected'] == rejected]
-        if part.empty:
-            continue
-        fig.add_trace(go.Scatter(
-            x=part['x'], y=part['y'], mode='markers+text', name=label,
-            text=part['Location'], textposition='top center',
-            textfont=dict(color=theme.TEXT_MUTED, size=9),
-            marker=dict(color=colour, size=8 + 22 * part['Residual (um)'] / largest,
-                        line=dict(color=theme.TEXT, width=1)),
-            customdata=part['Residual (um)'],
-            hovertemplate='%{text}: %{customdata:.1f} µm off the fit<extra></extra>',
-        ))
-    return apply_dark_layout(
-        fig, height=height, title=title,
-        xaxis=dict(title='Design X (mm)', gridcolor=theme.SEPARATOR, zeroline=False),
-        yaxis=dict(title='Design Y (mm)', gridcolor=theme.SEPARATOR, zeroline=False,
-                   scaleanchor='x', scaleratio=1),
-        legend=dict(orientation='h', y=-0.18), margin=dict(l=60, r=20, t=50, b=70),
+        legend=dict(orientation='h', y=-0.22), margin=dict(l=60, r=20, t=55, b=70),
     )

@@ -1,5 +1,12 @@
 # Registration shrinkage: three ways to measure it
 
+> **Status.** The app reports the **company method only**. The centre-based
+> and affine-fit methods described here were built for this comparison and
+> then removed from the app to keep it simple (last present in commit
+> `6a43e7f`; the figures below were produced and tested with that code). This
+> document is kept as the record of why the company number can be trusted and
+> where it cannot see.
+
 This explains the three methods on the **Shrinkage** tab of the Pad-to-Via and
 Via-to-Pad views: what each one does, where the company method falls short, and
 why finding the centre "indirectly" works.

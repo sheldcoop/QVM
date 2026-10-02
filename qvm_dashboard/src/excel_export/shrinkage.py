@@ -1,11 +1,10 @@
 """Registration shrinkage workbook (the Shrinkage tab's own export).
 
 Sheets:
-- ``Summary``           one line per Build Up / Panel / Side, report method
+- ``Summary``           one line per Build Up / Panel / Side
 - ``Quadrants``         quadrant values of every group
-- ``Method Comparison`` company, centre-based and affine fit side by side
 - ``Quadrant Sizes``    measured against design size (also for groups without a result)
-- ``Charts``            quadrant bars and quadrant-vs-panel arrows per group
+- ``Charts``            the panel map and the quadrant bars per group
 - ``Notes``             method, measured point, design notes and warnings
 """
 
@@ -14,12 +13,12 @@ import logging
 import pandas as pd
 
 from src.registration_shrinkage import (
-    METHOD_USES,
+    METHOD_LABEL,
     compute_shrinkage_by_group,
     shrinkage_config,
     summary_frame,
 )
-from src.visuals.shrinkage import plot_quadrant_bars, plot_shrinkage_quiver
+from src.visuals.shrinkage import plot_quadrant_bars, plot_shrinkage_panel
 
 from ._shared import WarnFn, _fig_to_xl_image, _notify, _safe_text, _sanitize_frame, _write_chart_fallback
 
@@ -59,12 +58,9 @@ def write_shrinkage_excel(writer: pd.ExcelWriter, df: pd.DataFrame, settings: di
 
     # Same guard as the main export: no text cell may become a formula.
     groups = compute_shrinkage_by_group(_sanitize_frame(df), settings)
-    method_label = groups[0].result.method_label
 
     _write(writer, 'Summary', summary_frame(groups), 'No groups in scope.')
     _write(writer, 'Quadrants', _stack(groups, lambda g: g.result.quadrant),
-           'No shrinkage result in scope.')
-    _write(writer, 'Method Comparison', _stack(groups, lambda g: g.compare(settings)),
            'No shrinkage result in scope.')
     _write(writer, 'Quadrant Sizes', _stack(groups, lambda g: g.result.lengths),
            'No quadrant sizes in scope.')
@@ -76,10 +72,10 @@ def write_shrinkage_excel(writer: pd.ExcelWriter, df: pd.DataFrame, settings: di
             continue
         charts.cell(row=row, column=1, value=_safe_text(f'{group.process} | {group.label}'))
         for column, (name, figure) in zip(('A', 'J'), (
+                ('Panel map', plot_shrinkage_panel(group.result, group.design, 'Shrinkage map',
+                                                   height=_CHART_HEIGHT)),
                 ('Quadrant bars', plot_quadrant_bars(group.result, 'Shrinkage per quadrant',
-                                                     height=_CHART_HEIGHT)),
-                ('Quadrant vs panel', plot_shrinkage_quiver(group.result, 'Quadrant vs panel average',
-                                                            height=_CHART_HEIGHT)))):
+                                                     height=_CHART_HEIGHT)))):
             anchor = f'{column}{row + 1}'
             try:
                 charts.add_image(_fig_to_xl_image(figure, _CHART_WIDTH, _CHART_HEIGHT), anchor)
@@ -94,7 +90,8 @@ def write_shrinkage_excel(writer: pd.ExcelWriter, df: pd.DataFrame, settings: di
     notes = writer.book.create_sheet('Notes')
     lines = [
         'Registration shrinkage',
-        f'Report method: {method_label} ({METHOD_USES[groups[0].result.method]}).',
+        f'Method: {METHOD_LABEL}, as in the company workbook: per quadrant the two X and two Y '
+        f'lengths against design, panel = mean of the four quadrants.',
         'Sign: measured minus design, so negative = shrink.',
         'um = change over one quadrant length; ppm = that change divided by the design length.',
         f"Outlier alert: a quadrant more than {float(shrinkage_config(settings).get('outlier_ppm', 50)):.0f} "

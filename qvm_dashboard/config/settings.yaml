@@ -170,15 +170,12 @@ CORE_SHRINKAGE:
 
 REGISTRATION_SHRINKAGE:
   # Shrinkage of Pad-to-Via / Via-to-Pad files (the Shrinkage tab). Units: mm.
-  # Method shown first and written to the Excel report: company | centre | affine
-  default_method: company
   # Which measured centre the calculation uses, per file type: via | pad
   measured_point:
     Pad to Via: via
     Via to Pad: via
   outlier_ppm: 50          # a quadrant this far from the panel average raises an alert
   usl_ppm: null            # optional pass/fail limit on |shrinkage| in ppm; null = report only
-  outlier_um: 50           # affine method: a point with a larger residual is an outlier
   # A quadrant further than this from its design size is not shrinkage: the design is
   # that of another product, or the file is wrong. No result is reported then.
   max_plausible_ppm: 2000

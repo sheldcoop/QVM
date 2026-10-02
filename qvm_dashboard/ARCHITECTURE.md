@@ -143,7 +143,7 @@ Every chart pulls colours from `theme` and shared logic from `chart_helpers`
 | Core Shrinkage **geometry maths** (affine fit, outliers, classification) | `src/core_shrinkage_math.py` (pure; no settings, no I/O) |
 | **Scope filters** (Panel / Side / Build Up rules + widgets) | `src/scope.py` |
 | A Core Shrinkage **sub-view** | `src/views/core_shrinkage.py` |
-| Registration shrinkage **maths** (company, centre-based, affine) and the design lookup | `src/registration_shrinkage.py` (pure; reuses `core_shrinkage_math.py` for the affine fit) |
+| Registration shrinkage **maths** (company method) and the design lookup | `src/registration_shrinkage.py` (pure) |
 | Registration shrinkage **on screen** | `src/views/registration_shrinkage.py` (the Shrinkage sub-view of both process tabs) |
 | Registration shrinkage **charts** / **workbook** | `src/visuals/shrinkage.py` / `src/excel_export/shrinkage.py` |
 | Registration **design positions**, measured point, limit | `config/settings.yaml` → `REGISTRATION_SHRINKAGE` |

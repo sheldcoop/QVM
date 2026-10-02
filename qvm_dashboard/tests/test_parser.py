@@ -297,3 +297,66 @@ def test_finite_values_gain_no_data_quality_warning(settings):
     df, warnings = parse_qvm_content(_TRUNCATION_SITE_BLOCK, settings)
     assert len(df) == 1
     assert not any('not finite' in w for w in warnings)
+
+
+def _site_block(via_name, pad_name, distance_name, x, y):
+    return f"""
+Circle: {via_name}(ID:1, From 70 Pts.)
+     Coord. X =        {x:.6f}
+     Coord. Y =        {y:.6f}
+     Diameter =         0.016742
+
+Circle: {pad_name}(ID:2, From 180 Pts.)
+     Coord. X =        {x + 0.001:.6f}
+     Coord. Y =        {y - 0.002:.6f}
+     Diameter =         0.308911
+
+Distance: {distance_name}(ID:3) between {pad_name}(ID:2) and {via_name}(ID:1)
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def _names():
+    return [f'{q}{n}' for q in ('LL', 'UL', 'LR', 'UR') for n in (2, 1, 4, 3)]
+
+
+def test_names_like_LL2_Via_are_read_and_positions_still_decide(settings):
+    """Real layout: sites named 'LL2_Via', measured in panel coordinates."""
+    position = {'LL': (65.0, 105.0), 'UL': (65.0, 349.0), 'LR': (309.0, 105.0), 'UR': (309.0, 349.0)}
+    offset = {1: (0.0, 194.0), 2: (0.0, 0.0), 3: (230.7, 0.0), 4: (230.7, 194.0)}
+    content = ''.join(
+        _site_block(f'{name}_Via', f'{name}_Pad', f'{name}_VtP',
+                    position[name[:2]][0] + offset[int(name[2])][0],
+                    position[name[:2]][1] + offset[int(name[2])][1])
+        for name in _names())
+    df, warnings = parse_qvm_content(content, settings)
+    assert list(df['Location']) == [f'{n[:2]}_{n[2]}' for n in _names()]
+    assert df['Grid ID'].notna().all() and warnings == []
+
+
+def test_site_local_positions_use_the_names_in_the_file(settings):
+    """Every site exported in its own local frame: positions are all about zero,
+    so names come from the labels and nothing is derived from micron noise."""
+    content = ''.join(
+        _site_block(f'{name}_Via', f'{name}_Pad', f'{name}_VtP', 0.0001 * i, -0.0002 * i)
+        for i, name in enumerate(_names()))
+    df, warnings = parse_qvm_content(content, settings)
+    assert list(df['Location']) == [f'{n[:2]}_{n[2]}' for n in _names()]
+    assert df['Grid ID'].tolist() == [int(settings['GRID_MAPPING'][loc]) for loc in df['Location']]
+    assert len(warnings) == 1 and 'taken from the labels in the file' in warnings[0]
+
+
+def test_site_local_positions_without_usable_names_are_not_guessed(settings):
+    """Real case: labels 'Via[1,1][1,2]' and positions all about zero."""
+    labels = [f'[{a},{b}][{c},{d}]' for a in (1, 2) for b in (1, 2) for c in (1, 2) for d in (1, 2)]
+    content = ''.join(
+        _site_block(f'Via{label}', f'Pad{label}', f'VtP{label}', 0.0001 * i, -0.0002 * i)
+        for i, label in enumerate(labels))
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 16 and list(df['Location']) == labels
+    assert df['Grid ID'].isna().all()
+    assert df['Shift (DX)'].notna().all()  # the registration values are untouched
+    assert len(warnings) == 1
+    assert 'do not name the sites' in warnings[0] and 'Export the file in panel coordinates' in warnings[0]

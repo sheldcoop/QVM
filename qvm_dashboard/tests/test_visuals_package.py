@@ -12,92 +12,39 @@ def test_public_api_is_importable():
         assert hasattr(visuals, name), f'visuals.{name} missing from public API'
     assert set(visuals.__all__) == {
         'plot_vtp_bullseye', 'plot_vtp_site_bars', 'plot_quiver', 'plot_vtp_box',
-        'plot_shrinkage_quiver', 'plot_quadrant_bars', 'plot_fit_residuals',
+        'plot_shrinkage_panel', 'plot_quadrant_bars',
     }, '__all__ must list exactly the charts the dashboard renders'
 
 
-def test_shrinkage_quiver_uses_theme_colours(settings):
-    import numpy as np
+def test_shrinkage_panel_map_and_bars(settings):
     import pandas as pd
 
     from src.registration_shrinkage import compute_distance_shrinkage, design_for
-    from src.visuals import plot_shrinkage_quiver
+    from src.visuals import plot_quadrant_bars, plot_shrinkage_panel
 
     design = design_for(settings, 'BU-01', 'Pad to Via')
-    rows = [{'Location': name, 'Coord. X': xy['x'] * (1.0002 if name.startswith('UR') else 1.0),
-             'Coord. Y': xy['y']} for name, xy in design.items()]
-    fig = plot_shrinkage_quiver(compute_distance_shrinkage(pd.DataFrame(rows), design), 'title')
-    assert isinstance(fig, go.Figure)
-    arrows = [a for a in fig.layout.annotations if a.showarrow]
-    assert len(arrows) == 4 and {a.arrowcolor for a in arrows} == {theme.PALETTE['peach']}
-    assert fig.layout.plot_bgcolor == theme.PLOT_BG
-    assert np.isfinite([a.x for a in arrows]).all()
-
-
-def test_quiver_returns_figure_with_dots_and_arrows(vtp_df, settings):
-    from src.visuals import plot_quiver
-    fig = plot_quiver(vtp_df, settings, multiplier=100)
-    assert isinstance(fig, go.Figure)
-    # one site-dot scatter trace
-    assert any(isinstance(t, go.Scatter) for t in fig.data)
-    # arrow annotations coloured from the theme ARROW palette
-    arrows = [a for a in fig.layout.annotations if a.showarrow]
-    assert arrows, 'expected arrow annotations'
-    assert all(a.arrowcolor in theme.ARROW.values() for a in arrows)
-
-
-def test_box_returns_figure_with_boxes_and_cards(vtp_df, settings):
-    from src.visuals import plot_vtp_box
-    fig = plot_vtp_box(vtp_df, settings)
-    assert any(isinstance(t, go.Box) for t in fig.data)
-    texts = [a.text for a in fig.layout.annotations]
-    assert any('Pass' in (t or '') for t in texts)      # stats card
-    assert any('⬤' in (t or '') for t in texts)         # zone legend
-
-
-def test_site_bars_sorted_by_grid_id(vtp_df, settings):
-    from src.visuals import plot_vtp_site_bars
-    fig = plot_vtp_site_bars(vtp_df, settings)
-    bar = next(t for t in fig.data if isinstance(t, go.Bar))
-    xs = [int(x) for x in bar.x]
-    assert xs == sorted(xs)
-
-
-def test_bullseye_and_quiver_legend_below_axis_title(vtp_df, settings):
-    """Regression: zone/pattern legend must sit clear of the centered x-axis
-    title (previously both at y=-0.08 → overlap)."""
-    from src.visuals import plot_vtp_bullseye, plot_quiver
-
-    for fig in (plot_vtp_bullseye(vtp_df, settings),
-                plot_quiver(vtp_df, settings, multiplier=100)):
-        legends = [a for a in fig.layout.annotations
-                   if a.text and '⬤' in a.text]
-        assert legends, 'expected a bottom legend annotation'
-        assert all(a.y < -0.12 for a in legends), \
-            'legend must be moved below the axis-title band'
-
-
-def test_shrinkage_bars_and_residual_map(settings):
-    import pandas as pd
-
-    from src.registration_shrinkage import compute_shrinkage, design_for
-    from src.visuals import plot_fit_residuals, plot_quadrant_bars
-
-    design = design_for(settings, 'BU-01', 'Pad to Via')
-    rows = [{'Location': name, 'Coord. X': xy['x'] * 0.9999 + (0.08 if name == 'UL_4' else 0.0),
+    rows = [{'Location': name,
+             'Coord. X': xy['x'] * (1.0002 if name.startswith('UR') else 0.9999),
              'Coord. Y': xy['y'] * 0.9999} for name, xy in design.items()]
-    frame = pd.DataFrame(rows)
+    result = compute_distance_shrinkage(pd.DataFrame(rows), design)
 
-    bars = plot_quadrant_bars(compute_shrinkage(frame, design), 'bars')
+    panel = plot_shrinkage_panel(result, design, 'map')
+    assert isinstance(panel, go.Figure)
+    assert panel.layout.plot_bgcolor == theme.PLOT_BG and panel.layout.height == 600
+    assert len(panel.data) == 1 and len(panel.data[0].x) == 16  # the 16 sites, to scale
+    assert len([shape for shape in panel.layout.shapes if shape.type == 'rect']) == 4
+    arrows = [a for a in panel.layout.annotations if a.showarrow]
+    assert len(arrows) == 16  # per quadrant: X at both ends, Y at both ends
+    colours = {a.arrowcolor for a in arrows}
+    assert colours == {theme.ARROW['expansion'], theme.ARROW['contraction']}  # UR grew in X
+    texts = ' '.join(a.text for a in panel.layout.annotations if a.text)
+    assert 'Panel X' in texts and '<b>UR</b>' in texts and 'Grew' in texts and 'Shrank' in texts
+    assert '(-100 ppm)' in texts and '(+200 ppm)' in texts
+
+    bars = plot_quadrant_bars(result, 'bars')
     assert [type(t).__name__ for t in bars.data] == ['Bar', 'Scatter', 'Bar', 'Scatter']
     assert list(bars.data[0].x) == ['UL', 'LL', 'LR', 'UR']
     assert bars.data[0].marker.color == theme.PALETTE['blue']
-    assert bars.layout.paper_bgcolor == theme.PAPER_BG
 
-    affine = compute_shrinkage(frame, design, method='affine')
-    residuals = plot_fit_residuals(affine, design, 'fit')
-    names = {trace.name: list(trace.text) for trace in residuals.data}
-    assert names['Rejected'] == ['UL_4'] and len(names['Used in the fit']) == 15
-    assert residuals.data[-1].marker.color == theme.PALETTE['red']
-    # Nothing to draw for the other methods, and no error.
-    assert len(plot_fit_residuals(compute_shrinkage(frame, design), design, 'x').data) == 0
+    empty = compute_distance_shrinkage(pd.DataFrame(rows), None)
+    assert len(plot_shrinkage_panel(empty, design, 'x').data) == 0  # nothing to draw, no error

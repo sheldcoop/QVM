@@ -36,7 +36,8 @@ _PANEL_RE = re.compile(r'(?:panel[\s_]*|(?:^|[_\s-])p)(\d+)(?=$|[_\s-])', re.IGN
 _SIDE_RE = re.compile(r'(?:^|[_\s-])(front|back|[fb])(?=$|[_\s-])', re.IGNORECASE)
 _BU_RE = re.compile(r'(?:^|[_\s-])bu[-_\s]?(\d+)(?=$|[_\s-])', re.IGNORECASE)
 _CIRCLE_RE = re.compile(r'^Circle:\s*(.+?)\s*\(')
-_LOC_RE = re.compile(r'\b([UL][LR])[_\s-]?(\d)\b', re.IGNORECASE)
+# 'UL_1', 'LL 2', 'LL2_Via', 'Via_UR_3' ... : quadrant letters, then the point number.
+_LOC_RE = re.compile(r'(?<![A-Za-z])([UL][LR])[_\s-]?([1-4])(?!\d)', re.IGNORECASE)
 
 _EMIT_KEYS = (
     'location', 'grid_id', 'outer_diameter', 'inner_diameter',
@@ -331,8 +332,17 @@ def _resolve_site_measurements(site: Dict[str, Any]) -> Dict[str, Any]:
         if via_idx is not None and pad_idx is not None:
             process_hint = 'Via to Pad' if via_idx < pad_idx else 'Pad to Via'
 
+    label_hint = ''
+    for circle in (via_circle, pad_circle):
+        if circle and circle.get('label'):
+            # 'Via[1,1][1,2]' -> '[1,1][1,2]': the part that identifies the site.
+            label_hint = re.sub(r'(?i)(^|[_\s-])(via|pad)($|[_\s-])', '', circle['label']).strip('_ -')
+            label_hint = re.sub(r'(?i)^(via|pad)', '', label_hint) or circle['label']
+            break
+
     return {
         'location_hint': location_hint,
+        'label_hint': label_hint,
         'via_diameter': via_diam,
         'pad_diameter': pad_diam,
         'via_coord_x': via_xy[0] if via_xy else None,
@@ -414,6 +424,50 @@ def _assign_indexes(points: List[Tuple[int, float, float]]) -> Dict[int, int]:
     return best_assign
 
 
+# Sites of a real panel are tens of millimetres apart. When all of them lie
+# within this distance, the file was exported with every site in its own local
+# coordinates, and positions cannot tell one site from another.
+_SITE_LOCAL_SPAN_MM = 1.0
+
+
+def _positions_are_site_local(observed: List[Tuple[float, float]]) -> bool:
+    xs = [p[0] for p in observed]
+    ys = [p[1] for p in observed]
+    return (max(xs) - min(xs)) < _SITE_LOCAL_SPAN_MM and (max(ys) - min(ys)) < _SITE_LOCAL_SPAN_MM
+
+
+def _assign_locations_without_positions(sites: List[Dict[str, Any]], grid_mapping: dict,
+                                        warnings: List[str]) -> None:
+    """Name the sites from the labels in the file, because positions cannot.
+
+    Labels such as ``LL2_Via`` or ``Via_UL_3`` say where a site is and are used.
+    Labels such as ``Via[1,1][1,2]`` do not: those sites keep their label, get
+    no Grid ID, and nothing is guessed. DX / DY / SC are unaffected either way.
+    """
+    hints = [s.get('location_hint', '') for s in sites]
+    usable = all(hints) and len(set(hints)) == len(hints)
+    for i, s in enumerate(sites):
+        if usable:
+            s['location'] = hints[i]
+            s['grid_id'] = int(grid_mapping[hints[i]]) if hints[i] in grid_mapping else None
+        else:
+            s['location'] = s.get('label_hint') or f'Site {i + 1}'
+            s['grid_id'] = None
+    if usable:
+        msg = ('All site positions in this file lie within 1 mm of each other (each site was '
+               'exported in its own local coordinates). Site names were taken from the labels '
+               'in the file instead of from positions. Shrinkage and position-based charts '
+               'are not available for this file.')
+    else:
+        msg = ('All site positions in this file lie within 1 mm of each other (each site was '
+               'exported in its own local coordinates), and its labels do not name the sites '
+               '(UL_1 ... UR_4). Sites are listed in file order without Grid ID. DX, DY and SC '
+               'are valid; shrinkage and position-based charts are not available. Export the '
+               'file in panel coordinates to get them.')
+    logger.warning(msg)
+    warnings.append(msg)
+
+
 def _assign_locations(sites: List[Dict[str, Any]], settings: dict, warnings: List[str]) -> None:
     grid_mapping = settings.get('GRID_MAPPING', {})
     diag_cfg = settings.get('DIAGNOSTICS', {})
@@ -429,6 +483,10 @@ def _assign_locations(sites: List[Dict[str, Any]], settings: dict, warnings: Lis
             y = s.get('pad_coord_y')
         if x is not None and y is not None:
             observed.append((x, y))
+
+    if len(observed) >= 4 and _positions_are_site_local(observed):
+        _assign_locations_without_positions(sites, grid_mapping, warnings)
+        return
 
     if len(observed) >= 4:
         xs = sorted(p[0] for p in observed)

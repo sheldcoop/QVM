@@ -46,6 +46,14 @@ Both QVM registration formats are handled by one unified parser engine. It does
 not depend on strict location naming (`Via_LL_2` vs `LL2_Via`) or fixed block
 order. Site identity (`UL_1` ... `UR_4`) is assigned from measured coordinates.
 
+One exception: a file exported with every site in its own local coordinates
+has all positions within 1 mm of each other, so positions cannot tell the
+sites apart. Then the names in the file are used (`LL2_Via`, `Via_UL_3`). If
+the names do not say where a site is either (`Via[1,1][1,2]`), the sites are
+listed in file order without Grid ID and a warning says so; nothing is guessed.
+DX, DY and SC stay valid; shrinkage and position-based charts need a file
+exported in panel coordinates.
+
 ### Pad-to-Via (PtV) Format
 
 Measures the offset between a pad center (absolute X/Y coordinates on the panel) and the drilled via center. Each block corresponds to one hole and contains:
@@ -196,37 +204,27 @@ design** (negative = shrink). The page has, top to bottom:
 
 1. **Overview** — one line per Build Up / Panel / Side with the panel result,
    or the reason there is none — and the **Shrinkage Excel** download.
-2. **Method choice** for the details.
-3. **One block per group**: panel tiles, the quadrant table, a bar chart of the
-   quadrants against the panel value, the quadrant-versus-panel arrows, and
-   "Compare the three methods". With the affine fit, also the fit values and a
-   map of how far each point lies from the fit.
-4. **How is this calculated?** — the explanation in short.
+2. **One block per group**: panel tiles, the **Shrinkage Map** (the panel drawn
+   to scale in the style of the distortion quiver map: one X and one Y arrow
+   pair per quadrant, red and pointing outward when it grew, sky-blue and
+   pointing inward when it shrank, with the µm and ppm values written on it),
+   the quadrant table, and a bar chart of the quadrants against the panel value.
+3. **How is this calculated?** — the explanation in short.
 
-- **Method.**
-  - **Company (distance)**, the default and the one written to the Excel
-    report. It is the calculation of `sample_data/Core Shrinkage
-    Calculation.xlsx`: in each quadrant, the two X lengths and the two Y
-    lengths between its four points are compared with the design lengths and
-    averaged; the panel value is the mean of the four quadrants.
-  - **Centre-based**: all points are expressed from their own centre (the
-    average of the points) and compared with the design; X and Y scale only.
-  - **Affine fit**: the Core Shrinkage calculation applied to registration
-    data; separates rotation and shear from scale and rejects outlier points.
+- **Method.** The company calculation of `sample_data/Core Shrinkage
+  Calculation.xlsx`: in each quadrant, the two X lengths and the two Y lengths
+  between its four points are compared with the design lengths and averaged;
+  the panel value is the mean of the four quadrants. That gives ten numbers:
+  X and Y for each quadrant and for the panel.
 - **Numbers.** The panel and each quadrant are given in **µm** (the company
   sheet's mm value × 1000: the change over one quadrant length) and in
   **ppm**. Below: the quadrant-to-quadrant range, and an alert for any
   quadrant more than `outlier_ppm` from the panel average.
-- **Compare the three methods.** A table with all three results side by side.
-  When they agree, the company number can be trusted; when they differ,
-  [SHRINKAGE_METHODS.md](SHRINKAGE_METHODS.md) explains what that means, with
-  worked examples.
 - **Design positions.** Taken from `REGISTRATION_SHRINKAGE.DESIGNS` for the
   Build Up and file type of the data. If there is no entry (for example the
   file name carries no Build Up), another configured design stands in and a
   note says which one. This is only done when all configured designs have the
-  same shape and differ by a shift, because a shift changes none of the three
-  results; if they differ in shape, the app shows the reason and no numbers.
+  same shape and differ by a shift, because a shift changes no length; if they differ in shape, the app shows the reason and no numbers.
   The Core Shrinkage design is never used.
 - **When no number is shown.** Two situations make any shrinkage figure
   meaningless, so the app explains instead of reporting one:
@@ -302,8 +300,7 @@ The filename is built from the data in scope, e.g.
 `QVM_VTP_P20_F_BU-01_Lot-1234.xlsx`.
 
 The **Shrinkage** sub-view exports its own workbook: `Summary`, `Quadrants`,
-`Method Comparison`, `Quadrant Sizes`, `Charts` (quadrant bars and arrows per
-group) and `Notes`.
+`Quadrant Sizes`, `Charts` (panel map and quadrant bars per group) and `Notes`.
 
 **Core Shrinkage** exports its own workbook: per-layer measurement sheets, the
 side-by-side Front/Back table when both are loaded, and — when
@@ -403,11 +400,9 @@ Everything the Shrinkage tab of the Pad-to-Via / Via-to-Pad views uses.
 | `DESIGNS` | Design position (mm) of the 16 QPs, as `product → Build Up → file type → point`. Filled for C4F from `sample_data/QP_Coordinate_Commonality_Analysis.xlsx`: BU-01 (both types), BU-02 Via to Pad, BU-03 Pad to Via. Add a Build Up or a second product as a further block. |
 | `active_design` | Which product block of `DESIGNS` applies to the uploaded files |
 | `fallback_to_equivalent_design` | `true`: a Build Up / file type without an entry uses another configured design, provided all configured designs differ only by a shift. `false`: no entry, no numbers. |
-| `default_method` | `company`, `centre` or `affine`: the method shown first and written to the Excel report |
 | `measured_point` | Per file type, `via` or `pad`: which measured centre is used |
 | `outlier_ppm` | A quadrant further than this from the panel average raises an alert |
 | `usl_ppm` | Optional pass/fail limit on the size of the shrinkage; `null` = report only |
-| `outlier_um` | Affine method: a point with a larger residual is rejected |
 | `max_plausible_ppm` | A quadrant further than this from its design size is treated as a wrong design or file, not as shrinkage, and no result is reported. `null` switches the check off. |
 
 ### PLOT_SETTINGS, CHART_HEIGHTS, PANEL_VIEW, FIGURE_SETTINGS, COLORS, EXCEL_EXPORT

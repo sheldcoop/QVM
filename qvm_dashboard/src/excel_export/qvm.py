@@ -5,7 +5,9 @@ import logging
 import pandas as pd
 
 from src.display_frame import GRID_ID_HEADER, build_display_frame
-from src.registration_shrinkage import compute_shrinkage_by_group, shrinkage_config
+from src.registration_shrinkage import (
+    METHOD_LABEL, compute_shrinkage_by_group, shrinkage_config,
+)
 from src.utils import is_via_to_pad
 from src.visuals import (
     plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
@@ -186,7 +188,7 @@ def _write_shrinkage_summary_sheet(
             row['Status'] = panel['Status']
         summary_rows.append(row)
 
-    method_label = sections[0][1].result.method_label
+    method_label = METHOD_LABEL
     outlier_ppm = float(shrinkage_config(settings).get('outlier_ppm', 50.0))
     sheet_name = _safe_sheet_name('Shrinkage Summary', used_sheet_names)
     ws = writer.book.create_sheet(sheet_name)

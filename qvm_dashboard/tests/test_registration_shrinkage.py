@@ -1,5 +1,4 @@
-"""Registration shrinkage: the company calculation, the two other methods, and
-the design-position lookup."""
+"""Registration shrinkage: the company calculation and the design-position lookup."""
 
 import re
 from pathlib import Path
@@ -11,13 +10,7 @@ import pytest
 
 from src.parser import parse_qvm_content
 from src.registration_shrinkage import (
-    METHOD_AFFINE,
-    METHOD_CENTRE,
-    METHOD_COMPANY,
-    METHOD_LABELS,
-    compare_methods,
     compute_distance_shrinkage,
-    compute_shrinkage,
     compute_shrinkage_by_group,
     design_for,
     measured_columns,
@@ -49,16 +42,6 @@ def _frame(points, **extra):
 
 def _panel(result):
     return result.full_panel.iloc[0]
-
-
-def _quadrants_apart(points, microns=10.0):
-    """Every quadrant keeps its size and is moved away from the panel centre."""
-    step = microns / 1000.0
-    return {
-        name: xy + np.array([(-step if name[1] == 'L' else step),
-                             (step if name[0] == 'U' else -step)])
-        for name, xy in points.items()
-    }
 
 
 # ------------------------------------------------- the company workbook itself
@@ -113,14 +96,15 @@ def test_company_method_matches_the_company_workbook_cell_for_cell():
         assert table.loc[name, 'Delta Y (um)'] == pytest.approx(sheet_quadrants[name][1] * 1000, abs=2e-3)
     assert _panel(result)['Delta X (um)'] == pytest.approx(sheet_fp_x * 1000, abs=2e-3)
     assert _panel(result)['Delta Y (um)'] == pytest.approx(sheet_fp_y * 1000, abs=2e-3)
-    assert result.method == METHOD_COMPANY
+    assert result.method_label == 'Company (distance)'
 
 
 # ------------------------------------------------------------ company method
-def test_zero_when_measured_equals_design_for_every_method(settings):
+def test_zero_when_measured_equals_design(settings):
     design = _design(settings)
-    for method in METHOD_LABELS:
-        result = compute_shrinkage(_frame(_points(design)), design, method=method)
+    shifted = {n: xy + np.array([301.4, 323.7]) for n, xy in _points(design).items()}
+    for points in (_points(design), shifted):  # the machine origin does not matter
+        result = compute_distance_shrinkage(_frame(points), design)
         assert len(result.quadrant) == 4
         assert (result.quadrant['Shrinkage X (ppm)'].abs() < 1e-6).all()
         assert (result.quadrant['Delta Y (um)'].abs() < 1e-6).all()
@@ -188,8 +172,6 @@ def test_missing_points_and_missing_design_are_reported(settings):
 
     nothing = compute_distance_shrinkage(_frame(_points(design)), None)
     assert nothing.quadrant.empty and nothing.warnings == ['No design positions configured.']
-    with pytest.raises(ValueError, match='Unknown shrinkage method'):
-        compute_shrinkage(_frame(_points(design)), design, method='guess')
 
 
 # ------------------------------------------------------------- design lookup
@@ -289,115 +271,6 @@ Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
     assert from_pad.point == 'pad'
 
 
-# ------------------------------------------- the three methods against each other
-def test_all_methods_agree_on_an_evenly_shrunk_panel(settings):
-    design = _design(settings)
-    shifted = {name: xy * 0.9999 + np.array([301.4, 323.7])
-               for name, xy in _points(design).items()}  # machine origin is elsewhere
-    table = compare_methods(_frame(shifted), design)
-    assert list(table['Method']) == ['Company (distance)', 'Centre-based', 'Affine fit']
-    assert table['Shrinkage X (ppm)'].tolist() == pytest.approx([-100.0] * 3, abs=0.01)
-    assert table['Shrinkage Y (ppm)'].tolist() == pytest.approx([-100.0] * 3, abs=0.01)
-
-
-def test_centre_method_equals_company_per_quadrant_but_sees_the_gaps(settings):
-    design = _design(settings)
-    apart = _frame(_quadrants_apart(_points(design), microns=10.0))
-
-    company = compute_shrinkage(apart, design, method=METHOD_COMPANY)
-    centre = compute_shrinkage(apart, design, method=METHOD_CENTRE)
-
-    # Inside each quadrant nothing changed: both methods say zero there.
-    for result in (company, centre):
-        assert (result.quadrant['Shrinkage X (ppm)'].abs() < 1e-6).all()
-    # The panel is 20 um wider and taller between the quadrants. Only the
-    # centre method notices, because the company value is a mean of quadrants.
-    assert _panel(company)['Shrinkage X (ppm)'] == pytest.approx(0.0, abs=1e-6)
-    assert _panel(centre)['Shrinkage X (ppm)'] == pytest.approx(42.969, abs=0.01)
-    assert _panel(centre)['Shrinkage Y (ppm)'] == pytest.approx(50.240, abs=0.01)
-
-    # With different shrinkage per quadrant the two still agree quadrant by quadrant.
-    rng = np.random.default_rng(3)
-    noisy = _frame({n: xy + rng.normal(0, 0.005, 2) for n, xy in _points(design).items()})
-    a = compute_shrinkage(noisy, design, method=METHOD_COMPANY).quadrant
-    b = compute_shrinkage(noisy, design, method=METHOD_CENTRE).quadrant
-    assert a['Shrinkage X (ppm)'].tolist() == pytest.approx(b['Shrinkage X (ppm)'].tolist(), abs=0.01)
-    assert a['Shrinkage Y (ppm)'].tolist() == pytest.approx(b['Shrinkage Y (ppm)'].tolist(), abs=0.01)
-
-
-def test_affine_method_separates_rotation_shear_and_bad_points(settings):
-    design = _design(settings)
-    points = _points(design)
-
-    angle = np.radians(0.3)
-    turn = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
-    rotated = _frame({n: turn @ xy + np.array([5.0, -3.0]) for n, xy in points.items()})
-    table = compare_methods(rotated, design).set_index('Method')
-    # A rotated panel looks 14 ppm shorter to the two axis-by-axis methods.
-    assert table.loc['Company (distance)', 'Shrinkage X (ppm)'] == pytest.approx(-13.708, abs=0.01)
-    assert table.loc['Centre-based', 'Shrinkage X (ppm)'] == pytest.approx(-13.708, abs=0.01)
-    assert table.loc['Affine fit', 'Shrinkage X (ppm)'] == pytest.approx(0.0, abs=0.01)
-    assert table.loc['Affine fit', 'Rotation (deg)'] == pytest.approx(0.3, abs=1e-3)
-
-    shear = np.array([[1.0, 100e-6], [0.0, 1.0]])
-    sheared = compare_methods(_frame({n: shear @ xy for n, xy in points.items()}), design)
-    assert sheared['Shrinkage X (ppm)'].tolist() == pytest.approx([0.0] * 3, abs=0.01)
-    assert sheared.set_index('Method').loc['Affine fit', 'Shear (deg)'] == pytest.approx(0.0057, abs=2e-4)
-
-    bad = dict(points)
-    bad['UL_4'] = points['UL_4'] + np.array([0.080, 0.0])  # one point 80 um off
-    company = compute_shrinkage(_frame(bad), design, method=METHOD_COMPANY)
-    affine = compute_shrinkage(_frame(bad), design, method=METHOD_AFFINE, outlier_um=50.0)
-    # Company: the whole UL quadrant, and with it the panel, moves.
-    assert company.quadrant.set_index('Quadrant').loc['UL', 'Delta X (um)'] == pytest.approx(40.0, abs=0.01)
-    assert _panel(company)['Shrinkage X (ppm)'] == pytest.approx(43.011, abs=0.01)
-    assert company.warnings == []  # and nothing says which point caused it
-    # Affine: the point is named and left out; the panel result is unaffected.
-    assert _panel(affine)['Shrinkage X (ppm)'] == pytest.approx(0.0, abs=0.01)
-    assert affine.details.iloc[0]['Points Rejected'] == 1
-    rejected = affine.points[affine.points['Rejected']]
-    assert list(rejected['Location']) == ['UL_4']
-    assert rejected.iloc[0]['Residual (um)'] == pytest.approx(80.0, abs=0.01)
-    assert 'UL_4' in affine.warnings[0]
-
-
-def test_company_method_scatters_more_under_measurement_noise(settings):
-    """Pins the repeatability figures quoted in SHRINKAGE_METHODS.md."""
-    design = _design(settings)
-    points = _points(design)
-    rng = np.random.default_rng(11)
-    panel_x = {method: [] for method in METHOD_LABELS}
-    for _ in range(1500):
-        noisy = _frame({n: xy + rng.normal(0, 0.003, 2) for n, xy in points.items()})
-        for method in METHOD_LABELS:
-            panel_x[method].append(
-                _panel(compute_shrinkage(noisy, design, method=method))['Shrinkage X (ppm)'])
-    spread = {method: float(np.std(values)) for method, values in panel_x.items()}
-    assert spread[METHOD_COMPANY] == pytest.approx(6.5, abs=0.3)
-    assert spread[METHOD_CENTRE] == pytest.approx(4.5, abs=0.3)
-    assert spread[METHOD_AFFINE] == pytest.approx(4.5, abs=0.3)
-
-
-def test_the_one_dimensional_example_of_the_methods_document():
-    """20 / 280 / 300 / 560: the centre is the average of the points."""
-    design = np.array([20.0, 280.0, 300.0, 560.0])
-    assert design.mean() == 290.0 and list(design - design.mean()) == [-270.0, -10.0, 10.0, 270.0]
-
-    def company_ppm(measured):
-        return ((measured[1] - measured[0] - 260) + (measured[3] - measured[2] - 260)) / 2 / 260 * 1e6
-
-    def centre_ppm(measured):
-        d, m = design - design.mean(), measured - measured.mean()
-        return ((d * m).sum() / (d * d).sum() - 1) * 1e6
-
-    even = 290 + (design - 290) * 0.9999 + 1000
-    apart = design + np.array([-0.02, -0.02, 0.02, 0.02]) + 1000
-    assert company_ppm(even) == pytest.approx(-100.0, abs=0.01)
-    assert centre_ppm(even) == pytest.approx(-100.0, abs=0.01)
-    assert company_ppm(apart) == pytest.approx(0.0, abs=0.01)
-    assert centre_ppm(apart) == pytest.approx(76.7, abs=0.05)
-
-
 def test_missing_build_up_uses_an_equivalent_design_and_says_so(settings):
     from src.registration_shrinkage import resolve_design
 
@@ -411,22 +284,20 @@ def test_missing_build_up_uses_an_equivalent_design_and_says_so(settings):
     exact, note = resolve_design(settings, 'BU-03', 'Pad to Via')
     assert exact == design_for(settings, 'BU-03', 'Pad to Via') and note is None
 
-    # The stand-in gives exactly the result the right design would give, for every method:
+    # The stand-in gives exactly the result the right design would give:
     # measure a BU-03 panel, once against its own design and once as 'Unknown'.
     own = _design(settings, 'BU-03', 'Pad to Via')
     rng = np.random.default_rng(5)
     measured = {n: xy * 0.99988 + rng.normal(0, 0.004, 2) + np.array([301.4, 323.7])
                 for n, xy in _points(own).items()}
-    for method in METHOD_LABELS:
-        results = []
-        for build_up in ('BU-03', 'Unknown'):
-            frame = _frame(measured, **{'Build Up': build_up, 'Panel': '20', 'Side': 'F',
-                                        'Process': 'Pad to Via'})
-            group = compute_shrinkage_by_group(frame, settings, method=method)[0]
-            results.append(group)
-        assert results[0].design_note is None and results[1].design_note is not None
-        pd.testing.assert_frame_equal(results[0].result.quadrant, results[1].result.quadrant)
-        pd.testing.assert_frame_equal(results[0].result.full_panel, results[1].result.full_panel)
+    results = []
+    for build_up in ('BU-03', 'Unknown'):
+        frame = _frame(measured, **{'Build Up': build_up, 'Panel': '20', 'Side': 'F',
+                                    'Process': 'Pad to Via'})
+        results.append(compute_shrinkage_by_group(frame, settings)[0])
+    assert results[0].design_note is None and results[1].design_note is not None
+    pd.testing.assert_frame_equal(results[0].result.quadrant, results[1].result.quadrant)
+    pd.testing.assert_frame_equal(results[0].result.full_panel, results[1].result.full_panel)
 
 
 def test_no_stand_in_when_configured_designs_differ_in_shape(settings):
@@ -455,12 +326,15 @@ def test_site_local_positions_are_refused_not_reported(settings):
     design = _design(settings, 'BU-01', 'Via to Pad')
     rng = np.random.default_rng(1)
     local = _frame({name: rng.normal(0, 0.003, 2) for name in design})
-    for method in METHOD_LABELS:
-        result = compute_shrinkage(local, design, method=method)
-        assert result.quadrant.empty and result.full_panel.empty and result.lengths.empty
-        assert 'positions relative to each site' in result.warnings[0]
-        assert 'Export the measurement in panel coordinates' in result.warnings[0]
-    assert compare_methods(local, design).empty
+    result = compute_distance_shrinkage(local, design)
+    assert result.quadrant.empty and result.full_panel.empty and result.lengths.empty
+    assert 'positions relative to each site' in result.warnings[0]
+    assert 'Export the measurement in panel coordinates' in result.warnings[0]
+
+    # The parser gives such a file labels like '[1,1][1,2]' instead of UL_1 ... UR_4.
+    unnamed = local.assign(Location=[f'[1,1][{i},{i}]' for i in range(len(local))])
+    refused = compute_distance_shrinkage(unnamed, design)
+    assert refused.quadrant.empty and 'could not be placed on the panel' in refused.warnings[0]
 
 
 def test_design_of_another_product_is_refused_with_the_measured_sizes(settings):

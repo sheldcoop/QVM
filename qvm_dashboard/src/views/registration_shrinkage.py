@@ -1,8 +1,8 @@
 """The Shrinkage sub-view of the Pad-to-Via and Via-to-Pad tabs.
 
 Layout, top to bottom: overview of every Build Up / Panel / Side with the Excel
-download, method choice, one block per group (tiles, quadrant table, charts,
-method comparison), and a fold-out explaining the calculation.
+download, one block per group (tiles, panel map, quadrant table, bars), and a
+fold-out explaining the calculation.
 
 All numbers come from ``src.registration_shrinkage`` and all figures from
 ``src.visuals.shrinkage``; this module only lays them out.
@@ -16,17 +16,13 @@ import streamlit as st
 
 from src.excel_export import write_shrinkage_excel
 from src.registration_shrinkage import (
-    METHOD_AFFINE,
-    METHOD_LABELS,
-    METHOD_USES,
     GroupShrinkage,
     compute_shrinkage_by_group,
-    default_method,
     shrinkage_config,
     summary_frame,
 )
 from src.views.base import full_width
-from src.visuals.shrinkage import plot_fit_residuals, plot_quadrant_bars, plot_shrinkage_quiver
+from src.visuals.shrinkage import plot_quadrant_bars, plot_shrinkage_panel
 
 logger = logging.getLogger(__name__)
 
@@ -35,53 +31,28 @@ _QUADRANT_COLUMNS = [
     'Quadrant', 'Delta X (um)', 'Shrinkage X (ppm)', 'Delta Y (um)', 'Shrinkage Y (ppm)',
     'X Design (mm)', 'X Measured (mm)', 'Y Design (mm)', 'Y Measured (mm)', 'Status',
 ]
-_COMPARE_HELP = (
-    "All three methods use the same points and the same design positions. "
-    "They agree when the panel has only shrunk or grown evenly. They differ when "
-    "the quadrants have moved against each other, when the panel sits rotated on "
-    "the machine, or when one point is off."
-)
 _EXPLANATION = """
 **What is measured.** How much the panel changed size against its design.
-Everything is *measured minus design*, so **negative = shrink**. µm is the change
-over one quadrant length; ppm is that change divided by the design length.
+Everything is *measured minus design*, so **negative = shrink**.
 
-**Company (distance).** In each quadrant, with points 1 (top-left), 2 (bottom-left),
-3 (bottom-right) and 4 (top-right):
+**The calculation** is the company workbook's. In each quadrant, with points
+1 (top-left), 2 (bottom-left), 3 (bottom-right) and 4 (top-right):
 
 - X1 = x4 − x1, X2 = x3 − x2, Y1 = y1 − y2, Y2 = y4 − y3
 - quadrant shrinkage = average of (measured length − design length) over the two lengths
 - panel shrinkage = average of the four quadrants
 
-This is the company workbook calculation and the one written to the Excel report.
+**The ten numbers.** X and Y for each of the four quadrants, and X and Y for the
+panel. Each is given in µm (the change over one quadrant length) and in ppm
+(that change divided by the design length).
 
-**Centre-based.** The centre does not have to be known: the average of the points
-*is* the centre. Example with four points along one edge:
-
-| | Point 1 | Point 2 | Point 3 | Point 4 | Average |
-|---|---|---|---|---|---|
-| Design | 20 | 280 | 300 | 560 | 290 |
-| From the centre | −270 | −10 | +10 | +270 | 0 |
-
-The measured points are treated the same way, and the scale is the slope of
-"measured from centre" against "design from centre". Inside one quadrant this
-gives the same number as the company method. For the whole panel it also uses
-the distance *between* quadrants, which the company method never looks at.
-
-**Affine fit.** Fits shift, rotation, X scale, Y scale and shear to all points at
-once (the Core Shrinkage calculation). A rotated panel is not mistaken for a
-shrunk one, and a point far off the fit is named and left out.
-
-**Reading the comparison.**
-
-- All three agree → the company number can be trusted.
-- Company differs from the other two → the quadrants moved against each other.
-- Affine differs from the other two → the panel lay rotated, or a point is off.
+**Uniformity.** *Quadrant range* is the largest minus the smallest quadrant.
+A quadrant further than the alert limit from the panel value is listed.
 
 **When no number is shown.** Either the file holds positions relative to each
 site (no panel geometry), or the measured quadrant size is too far from the
-design to be shrinkage (design of another product). The measured quadrant sizes
-are still listed in the second case.
+design to be shrinkage (design of another product). In the second case the
+measured quadrant sizes are still listed.
 """
 
 
@@ -153,32 +124,20 @@ def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key
         f"{result.method_label} · {group.process} · {group.point} centres · "
         f"measured − design (negative = shrink). µm is the change over one quadrant length.")
 
+    height = settings.get('CHART_HEIGHTS', {}).get('quiver', 600)
+    _chart(plot_shrinkage_panel(result, group.design, f'Shrinkage Map  ·  {group.label}',
+                                height=height), f'{key}_map')
+
     st.markdown('**Quadrants**')
     _show(result.quadrant, _QUADRANT_COLUMNS)
 
-    left, right = st.columns(2)
-    with left:
-        _chart(plot_quadrant_bars(result, 'Shrinkage per quadrant'), f'{key}_bars')
-    with right:
-        _chart(plot_shrinkage_quiver(result, 'Quadrant vs panel average'), f'{key}_quiver')
-
-    if result.method == METHOD_AFFINE and not result.details.empty:
-        st.markdown('**Fit**')
-        _show(result.details)
-        _chart(plot_fit_residuals(result, group.design, 'Distance of each point from the fit'),
-               f'{key}_residuals')
-        with st.expander('Residual per point'):
-            _show(result.points.sort_values('Residual (um)', ascending=False))
+    _chart(plot_quadrant_bars(result, 'Shrinkage per quadrant'), f'{key}_bars')
 
     st.markdown('**Uniformity**')
     if result.outliers.empty:
         st.success(f'No quadrant is more than {outlier_ppm:.0f} ppm from the panel average.')
     else:
         _show(result.outliers)
-
-    with st.expander('Compare the three methods'):
-        _show(group.compare(settings))
-        st.caption(_COMPARE_HELP)
 
 
 def render_registration_shrinkage(df: pd.DataFrame, settings: dict, *, key: str,
@@ -190,12 +149,10 @@ def render_registration_shrinkage(df: pd.DataFrame, settings: dict, *, key: str,
     st.subheader('📐 Shrinkage')
     outlier_ppm = float(shrinkage_config(settings).get('outlier_ppm', 50.0))
 
-    # Overview and export always use the report method, like the workbook.
-    report_groups = compute_shrinkage_by_group(df, settings)
-    report_label = METHOD_LABELS[default_method(settings)]
+    groups = compute_shrinkage_by_group(df, settings)
     left, right = st.columns([3, 1])
     with left:
-        st.markdown(f'**Overview** — {report_label}, one line per Build Up, Panel and Side')
+        st.markdown('**Overview** — one line per Build Up, Panel and Side')
     with right:
         data, error = build_shrinkage_workbook(df, settings, meta or {})
         if error:
@@ -203,19 +160,9 @@ def render_registration_shrinkage(df: pd.DataFrame, settings: dict, *, key: str,
         st.download_button(
             label='📥 Shrinkage Excel', data=data, file_name=f'QVM_Shrinkage_{key.upper()}.xlsx',
             mime=_EXCEL_MIME, type='primary', key=f'{key}_shrinkage_download')
-    _show(summary_frame(report_groups))
+    _show(summary_frame(groups))
     st.markdown('---')
 
-    methods = list(METHOD_LABELS)
-    method = st.radio(
-        'Method for the details below', methods, index=methods.index(default_method(settings)),
-        format_func=METHOD_LABELS.get, horizontal=True, key=f'{key}_shrinkage_method',
-        help='Company (distance) is the company workbook calculation and the one written '
-             'to the Excel report.')
-    st.caption(f'{METHOD_LABELS[method]}: {METHOD_USES[method]}.')
-
-    groups = (report_groups if method == default_method(settings)
-              else compute_shrinkage_by_group(df, settings, method=method))
     for index, group in enumerate(groups):
         with st.expander(group.label, expanded=len(groups) <= 2):
             _render_group(group, settings, outlier_ppm, f'{key}_{index}')

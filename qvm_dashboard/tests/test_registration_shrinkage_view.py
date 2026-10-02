@@ -1,4 +1,4 @@
-"""The Shrinkage sub-view: overview, method choice, details, explanation, export."""
+"""The Shrinkage sub-view: overview, details per group, explanation, export."""
 
 import pytest
 
@@ -48,7 +48,7 @@ def test_overview_then_company_result_in_um_with_ppm():
     assert overview.iloc[0]['Result'] == 'Reported'
     assert overview.iloc[0]['Panel X (ppm)'] == pytest.approx(-100.0, abs=0.01)
 
-    assert app.radio(key='vtp_shrinkage_method').value == 'company'
+    assert len(app.radio) == 0  # one method only: the company calculation
     shown = {metric.label: (metric.value, metric.delta) for metric in app.metric}
     assert shown['Panel X'] == ('-23.2 µm', '-100.0 ppm')
     assert shown['Panel Y'] == ('-19.4 µm', '-100.0 ppm')
@@ -56,20 +56,8 @@ def test_overview_then_company_result_in_um_with_ppm():
     assert list(_frames(app)[1].columns)[:5] == [
         'Quadrant', 'Delta X (um)', 'Shrinkage X (ppm)', 'Delta Y (um)', 'Shrinkage Y (ppm)']
     assert 'No quadrant is more than 50 ppm' in app.success[0].value
-    assert list(_frames(app)[-1]['Method']) == ['Company (distance)', 'Centre-based', 'Affine fit']
-    assert any('The centre does not have to be known' in block.value for block in app.markdown)
-
-
-@pytest.mark.parametrize('method', ['centre', 'affine'])
-def test_other_methods_can_be_chosen(method):
-    app = _run()
-    app.radio(key='vtp_shrinkage_method').set_value(method).run()
-    assert not app.exception
-    assert {metric.label: metric.delta for metric in app.metric}['Panel X'] == '-100.0 ppm'
-    # The overview keeps showing the report method.
-    assert _frames(app)[0].iloc[0]['Panel X (ppm)'] == pytest.approx(-100.0, abs=0.01)
-    if method == 'affine':
-        assert 'Rotation (deg)' in _frames(app)[2].columns
+    assert any('The ten numbers' in block.value for block in app.markdown)
+    assert not any('Affine' in block.value or 'Centre-based' in block.value for block in app.markdown)
 
 
 def test_build_up_without_design_uses_an_equivalent_one_and_says_so():
