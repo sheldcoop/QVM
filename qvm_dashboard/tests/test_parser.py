@@ -199,3 +199,60 @@ Distance: LL2_VtP(ID:3) between LL2_Pad(ID:2) and LL2_Via(ID:1)
     assert len(df) == 1
     assert df.iloc[0]['PtV Distance'] == pytest.approx((0.001 ** 2 + 0.002 ** 2) ** 0.5)
     assert any('SC missing in source' in w for w in warnings)
+
+
+# A single complete, self-consistent site block (SC matches DX/DY, so no
+# SC warnings pollute truncation assertions). Truncation variants below are
+# derived from it by dropping the DY terminator line.
+_TRUNCATION_SITE_BLOCK = """
+Circle: Via_LL_2(ID:1, From 70 Pts.)
+     Coord. X =        64.071816
+     Coord. Y =       103.848650
+     Diameter =         0.016742
+
+Circle: Pad_LL_2(ID:2, From 180 Pts.)
+     Coord. X =        64.072222
+     Coord. Y =       103.848064
+     Diameter =         0.308911
+
+Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+"""
+
+
+def _without_dy(block: str) -> str:
+    return '\n'.join(
+        line for line in block.splitlines()
+        if not line.strip().startswith('DY')
+    )
+
+
+def test_truncated_single_block_error_mentions_truncation(settings):
+    with pytest.raises(QVMParseError) as excinfo:
+        parse_qvm_content(_without_dy(_TRUNCATION_SITE_BLOCK), settings)
+    message = str(excinfo.value)
+    assert 'No valid measurement blocks' in message
+    assert 'truncat' in message.lower()
+
+
+def test_mid_file_cut_warns_and_keeps_complete_sites(settings):
+    content = _TRUNCATION_SITE_BLOCK + _without_dy(_TRUNCATION_SITE_BLOCK)
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert any('truncat' in w.lower() for w in warnings)
+
+
+def test_complete_file_has_no_truncation_warning(settings):
+    content = _TRUNCATION_SITE_BLOCK + _TRUNCATION_SITE_BLOCK
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 2
+    assert not any('truncat' in w.lower() for w in warnings)
+
+
+def test_trailing_noise_has_no_truncation_warning(settings):
+    content = _TRUNCATION_SITE_BLOCK + '\nrandom trailing noise\n'
+    df, warnings = parse_qvm_content(content, settings)
+    assert len(df) == 1
+    assert not any('truncat' in w.lower() for w in warnings)

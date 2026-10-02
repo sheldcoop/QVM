@@ -171,7 +171,34 @@ def _add_coord(site: Dict[str, Any], axis: str, value: Optional[float]) -> None:
     site['pending_x'] = None
 
 
-def _extract_sites(content: str) -> List[Dict[str, Any]]:
+def _pending_site_summary(site: Dict[str, Any]) -> Optional[str]:
+    """Describe an unterminated trailing site, or None if the accumulator
+    holds nothing measurement-like (trailing blanks or noise)."""
+    parts = []
+    n_circles = len(site['circles'])
+    if n_circles:
+        parts.append(f"{n_circles} circle(s)")
+    if site['distance_label']:
+        parts.append('Distance label')
+    for key in ('sc', 'dx'):
+        if site[key] is not None:
+            parts.append(key.upper())
+    if site['untyped_coords'] or site['untyped_diams'] or site.get('pending_x') is not None:
+        parts.append('coordinates')
+    if not parts:
+        return None
+    return ', '.join(parts)
+
+
+def _looks_like_begun_block(site: Dict[str, Any]) -> bool:
+    """Conservative truncation test for the zero-site case: circles plus a
+    registration-block marker, so other-format content fed to this parser
+    (e.g. a Core Shrinkage file) keeps the plain generic error."""
+    return bool(site['circles'] and (
+        site['distance_label'] or site['sc'] is not None or site['dx'] is not None))
+
+
+def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     sites: List[Dict[str, Any]] = []
     site = _new_site()
 
@@ -231,7 +258,14 @@ def _extract_sites(content: str) -> List[Dict[str, Any]]:
             sites.append(site)
             site = _new_site()
 
-    return sites
+    truncation_note = None
+    summary = _pending_site_summary(site)
+    if summary is not None and (sites or _looks_like_begun_block(site)):
+        truncation_note = (
+            f"Site {len(sites) + 1} appears truncated (saw {summary}; "
+            f"missing DY terminator). Trailing measurements were discarded."
+        )
+    return sites, truncation_note
 
 
 def _resolve_site_measurements(site: Dict[str, Any]) -> Dict[str, Any]:
@@ -513,9 +547,16 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
         settings = load_settings()
     warnings: List[str] = []
 
-    raw_sites = _extract_sites(content)
+    raw_sites, truncation_note = _extract_sites(content)
     if not raw_sites:
+        if truncation_note:
+            raise QVMParseError(
+                f"No valid measurement blocks found in the file. {truncation_note}")
         raise QVMParseError("No valid measurement blocks found in the file.")
+
+    if truncation_note:
+        logger.warning(truncation_note)
+        warnings.append(truncation_note)
 
     sites = [_resolve_site_measurements(s) for s in raw_sites]
     if not sites:
