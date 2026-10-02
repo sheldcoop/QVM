@@ -117,7 +117,7 @@ def plot_shrinkage_panel(result, design: dict, title: str, *, height: int = 600)
 _BAR_COLOURS = {'X': '#E0965A', 'Y': theme.PALETTE['sky']}  # copper, sky
 
 
-def plot_quadrant_bars(result, title: str, *, height: int = 440) -> go.Figure:
+def plot_quadrant_bars(result, title: str, *, height: int = 520) -> go.Figure:
     """X and Y shrinkage of each quadrant as bars, with the panel value as a line.
 
     Every text colour is set here on purpose: when the app runs in a light
@@ -148,13 +148,21 @@ def plot_quadrant_bars(result, title: str, *, height: int = 440) -> go.Figure:
             hovertemplate=f'Panel {axis}: %{{y:.1f}} ppm<extra></extra>',
         ))
 
+    # Axis always includes zero and leaves a fifth of headroom past the largest
+    # value, so the tallest bar never touches the edge of the chart.
+    shown = [float(v) for axis in _BAR_COLOURS for v in result.quadrant[f'Shrinkage {axis} (ppm)']]
+    low, high = min(shown + [0.0]), max(shown + [0.0])
+    reach = max(high - low, 1.0) * 0.2
+    y_range = [low - reach if low < 0 else 0.0, high + reach if high > 0 else 0.0]
+
     axis_style = dict(tickfont=text, linecolor=theme.CARD_BD, gridcolor=theme.SEPARATOR)
     return apply_dark_layout(
         fig, height=height,
         title=dict(text=title, font=dict(size=15, color=theme.TEXT), x=0.5, xanchor='center'),
         barmode='group', bargap=0.3, bargroupgap=0.08,
         yaxis=dict(title=dict(text='ppm  (negative = shrink)', font=text), zeroline=True,
-                   zerolinecolor=theme.TEXT_MUTED, zerolinewidth=1.5, **axis_style),
+                   zerolinecolor=theme.TEXT_MUTED, zerolinewidth=1.5, range=y_range,
+                   **axis_style),
         xaxis=dict(title=dict(text='Quadrant', font=text), showgrid=False, **{
             k: v for k, v in axis_style.items() if k != 'gridcolor'}),
         legend=dict(orientation='h', y=-0.2, x=0.5, xanchor='center', font=text,

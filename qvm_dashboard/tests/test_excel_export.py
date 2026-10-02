@@ -478,7 +478,7 @@ def test_shrinkage_workbook_has_tables_comparison_charts_and_notes(settings):
         write_shrinkage_excel(w, df, settings, {'lot_number': '1234'})
     buf.seek(0)
     wb = openpyxl.load_workbook(buf)
-    assert wb.sheetnames == ['Summary', 'Quadrants', 'Quadrant Sizes', 'Charts', 'Notes']
+    assert wb.sheetnames == ['Summary', 'Quadrants', 'Quadrant Sizes', 'Calculation', 'Charts', 'Notes']
 
     summary = pd.read_excel(buf, sheet_name='Summary')
     reported = summary[summary['Result'] == 'Reported'].iloc[0]
@@ -493,6 +493,20 @@ def test_shrinkage_workbook_has_tables_comparison_charts_and_notes(settings):
     notes = [row[0].value for row in wb['Notes'].iter_rows() if row[0].value]
     assert notes[1].startswith('Method: Company (distance)')
     assert 'Lot Number: 1234' in notes
-    formulas = [(ws.title, c.coordinate) for ws in wb for row in ws.iter_rows() for c in row
-                if c.data_type == 'f']
-    assert formulas == []
+    # Formulas exist only on the Calculation sheet, and are built from cell
+    # addresses; the hostile Build Up text stays text.
+    formulas = {ws.title for ws in wb for row in ws.iter_rows() for c in row if c.data_type == 'f'}
+    assert formulas == {'Calculation'}
+    calc = wb['Calculation']
+    texts = [c.value for row in calc.iter_rows() for c in row if isinstance(c.value, str)]
+    assert not any('EVIL' in t for t in texts if t.startswith('='))
+    assert '=B20-B17' in texts or any(t.endswith('*1000000') for t in texts)
+    assert any(t == 'Shown in the app' for t in texts)
+
+    # The formulas, worked out by hand here, give what the app reports.
+    cell = {c.coordinate: c.value for row in calc.iter_rows() for c in row}
+    head = next(r for r in range(1, calc.max_row) if cell.get(f'A{r}') == 'Point')
+    x1 = cell[f'D{head + 4}'] - cell[f'D{head + 1}']   # UL: x(4) - x(1)
+    x2 = cell[f'D{head + 3}'] - cell[f'D{head + 2}']   # UL: x(3) - x(2)
+    d1 = cell[f'B{head + 4}'] - cell[f'B{head + 1}']
+    assert ((x1 + x2) / 2 / d1 - 1) * 1e6 == pytest.approx(-100.0, abs=0.01)
