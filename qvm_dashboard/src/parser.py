@@ -61,6 +61,18 @@ def _value_after_equals(s: str) -> Optional[float]:
         return None
 
 
+def _checked_value(site: Dict[str, Any], field: str, s: str) -> Optional[float]:
+    """Parse a measurement, treating non-finite input (NaN/Inf, including
+    float overflow) as missing so existing missing-value paths handle it.
+    The corruption is recorded on the site for a caller-visible warning."""
+    value = _value_after_equals(s)
+    if value is not None and not math.isfinite(value):
+        site.setdefault('_dq_notes', []).append(
+            f"{field} value {value} is not finite; treated as missing.")
+        return None
+    return value
+
+
 def parse_filename(filename: str) -> Dict[str, Optional[str]]:
     basename = os.path.basename(filename)
     name_without_ext, _ = os.path.splitext(basename)
@@ -198,7 +210,7 @@ def _looks_like_begun_block(site: Dict[str, Any]) -> bool:
         site['distance_label'] or site['sc'] is not None or site['dx'] is not None))
 
 
-def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str], List[Tuple[int, str]]]:
     sites: List[Dict[str, Any]] = []
     site = _new_site()
 
@@ -229,15 +241,15 @@ def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
             continue
 
         if s.startswith('Coord.') and 'X' in s:
-            _add_coord(site, 'x', _value_after_equals(s))
+            _add_coord(site, 'x', _checked_value(site, 'Coord X', s))
             continue
 
         if s.startswith('Coord.') and 'Y' in s:
-            _add_coord(site, 'y', _value_after_equals(s))
+            _add_coord(site, 'y', _checked_value(site, 'Coord Y', s))
             continue
 
         if 'Diameter' in s:
-            val = _value_after_equals(s)
+            val = _checked_value(site, 'Diameter', s)
             idx = site.get('active_idx')
             if idx is not None and 0 <= idx < len(site['circles']):
                 site['circles'][idx]['diameter'] = val
@@ -246,17 +258,23 @@ def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
             continue
 
         if s.startswith('SC'):
-            site['sc'] = _value_after_equals(s)
+            site['sc'] = _checked_value(site, 'SC', s)
             continue
 
         if s.startswith('DX'):
-            site['dx'] = _value_after_equals(s)
+            site['dx'] = _checked_value(site, 'DX', s)
             continue
 
         if s.startswith('DY'):
-            site['dy'] = _value_after_equals(s)
+            site['dy'] = _checked_value(site, 'DY', s)
             sites.append(site)
             site = _new_site()
+
+    dq_notes = [
+        (i, note)
+        for i, s in enumerate(sites)
+        for note in s.pop('_dq_notes', [])
+    ]
 
     truncation_note = None
     summary = _pending_site_summary(site)
@@ -265,7 +283,7 @@ def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
             f"Site {len(sites) + 1} appears truncated (saw {summary}; "
             f"missing DY terminator). Trailing measurements were discarded."
         )
-    return sites, truncation_note
+    return sites, truncation_note, dq_notes
 
 
 def _resolve_site_measurements(site: Dict[str, Any]) -> Dict[str, Any]:
@@ -547,7 +565,7 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
         settings = load_settings()
     warnings: List[str] = []
 
-    raw_sites, truncation_note = _extract_sites(content)
+    raw_sites, truncation_note, dq_notes = _extract_sites(content)
     if not raw_sites:
         if truncation_note:
             raise QVMParseError(
@@ -557,6 +575,11 @@ def parse_qvm_content(content: str, settings: Optional[dict] = None) -> tuple:
     if truncation_note:
         logger.warning(truncation_note)
         warnings.append(truncation_note)
+
+    for i, note in dq_notes:
+        msg = f"Site {i}: {note}"
+        logger.warning(msg)
+        warnings.append(msg)
 
     sites = [_resolve_site_measurements(s) for s in raw_sites]
     if not sites:
