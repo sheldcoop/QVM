@@ -429,6 +429,31 @@ def test_summary_flags_outlier_and_robust_recovers_truth():
     assert s['max_residual_um'] > 50.0
 
 
+def test_degenerate_stuck_probe_refuses_headline():
+    """A collapsed axis (stuck probe) must yield no analysis, not ±1e6 ppm."""
+    df = _measured_df('Front', sx=1 - 465e-6, sy=1 - 465e-6)
+    df['coord_x'] = 7.0
+    assert analyze_layer(df, _NOMINAL) == {}
+    assert compute_affine_analysis(df, _NOMINAL) == {}
+    assert compute_shrinkage_summary(df, _NOMINAL) == {}
+
+
+def test_degenerate_scale_boundary():
+    """A halved panel still reports; a 99.5%-collapsed axis is refused."""
+    ok_df = _measured_df('Front', sx=0.5, sy=0.5)
+    assert analyze_layer(ok_df, _NOMINAL)['n_points'] == 16
+    bad_df = _measured_df('Front', sx=0.005, sy=1.0)
+    assert analyze_layer(bad_df, _NOMINAL) == {}
+
+
+def test_numbering_swap_keeps_its_diagnostic():
+    """A numbering swap (Sy≈0.03, huge residuals) is mismatched data, not a
+    collapse: analysis must stay available so the swap is diagnosable."""
+    good = _measured_df('Front', sx=1 - 465e-6, sy=1 - 465e-6, tx=300.0, ty=320.0)
+    bad = _swap_pairs(good)
+    assert analyze_layer(bad, _NOMINAL)['n_points'] == 16
+
+
 def test_flag_outliers_marks_exactly_the_bad_dot():
     df = _measured_df('Front', outlier='LR_3', outlier_dxy=(0.5, 0.0))
     res = flag_outliers(compute_affine_analysis(df, _NOMINAL), outlier_um=50.0)

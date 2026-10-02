@@ -353,10 +353,18 @@ def analyze_layer(df: pd.DataFrame, nominal_coords: dict,
     (summary, residuals, deviation field, coordinate table) derives from this, so
     the heavy maths happen exactly once per layer per render.
 
-    Returns {} if fewer than 4 fiducials can be matched. Otherwise a dict of raw
-    products: nom_arr, meas_arr, locations, quadrants, cfg, fit (all-dot affine),
-    fit_robust (outlier-excluded affine), removed, inlier, outliers, rigid_R,
-    rigid_t, center, grid_map, n_points.
+    Returns {} if fewer than 4 fiducials can be matched, or if a fitted
+    axis scale has collapsed (non-finite, or below 1% — a stuck probe or a
+    mirrored/collapsed axis). Near zero the ppm mapping is singular (a 3e-16
+    scale prints as a −1,000,000 ppm "headline"), so refusing to report is
+    safer than printing authoritative-looking garbage. Large expansion stays
+    reported: it is well-conditioned and the operator's judgment call
+    (a numbering swap, e.g. Sy≈0.03 with huge residuals, keeps its
+    outlier/distortion diagnostic).
+    Otherwise a dict of raw products: nom_arr, meas_arr, locations,
+    quadrants, cfg, fit (all-dot affine), fit_robust (outlier-excluded
+    affine), removed, inlier, outliers, rigid_R, rigid_t, center, grid_map,
+    n_points.
     """
     if df is None or df.empty or not nominal_coords:
         return {}
@@ -367,6 +375,13 @@ def analyze_layer(df: pd.DataFrame, nominal_coords: dict,
     cfg = _cs_cfg(settings)
     fit = _affine_fit(nom_arr, meas_arr)
     removed, inlier, fit_robust = _detect_outliers(nom_arr, meas_arr, cfg['outlier_um'])
+    for _fit in (fit, fit_robust):
+        sx, sy = _fit['Sx'], _fit['Sy']
+        if not (np.isfinite(sx) and np.isfinite(sy) and sx >= 0.01 and sy >= 0.01):
+            logger.warning(
+                'analyze_layer: collapsed fit (Sx=%r, Sy=%r, n=%d); '
+                'refusing to report shrinkage.', sx, sy, n)
+            return {}
     R, t = _rigid_fit(nom_arr, meas_arr)
     grid_map = (df.set_index('location')['grid_id'].to_dict()
                 if 'grid_id' in df.columns else {})

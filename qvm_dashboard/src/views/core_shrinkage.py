@@ -109,7 +109,8 @@ class CoreShrinkageView(BaseView):
             s = compute_shrinkage_summary(ldf, nominal, self.settings, analysis=a)
             st.subheader(f"{lbl} — Quality Control")
             if not s:
-                st.info("Needs at least 4 matched fiducials.")
+                st.info("Needs at least 4 matched fiducials with a valid "
+                        "(non-degenerate) fit — otherwise no headline is reported.")
                 continue
 
             worst = max(abs(s['Sx_ppm_robust']), abs(s['Sy_ppm_robust']))
