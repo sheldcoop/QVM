@@ -114,33 +114,51 @@ def plot_shrinkage_panel(result, design: dict, title: str, *, height: int = 600)
         hovermode='closest', margin=dict(t=85, b=95, l=60, r=60))
 
 
-def plot_quadrant_bars(result, title: str, *, height: int = 420) -> go.Figure:
-    """X and Y shrinkage of each quadrant as bars, with the panel value as a line."""
+_BAR_COLOURS = {'X': '#E0965A', 'Y': theme.PALETTE['sky']}  # copper, sky
+
+
+def plot_quadrant_bars(result, title: str, *, height: int = 440) -> go.Figure:
+    """X and Y shrinkage of each quadrant as bars, with the panel value as a line.
+
+    Every text colour is set here on purpose: when the app runs in a light
+    theme, anything left to the default turns black on the dark chart.
+    """
     fig = go.Figure()
     if result.quadrant.empty or result.full_panel.empty:
         return apply_dark_layout(fig, height=height, title=title)
 
     panel = result.full_panel.iloc[0]
     quadrants = result.quadrant['Quadrant'].tolist()
-    for axis, colour in (('X', theme.PALETTE['blue']), ('Y', theme.PALETTE['peach'])):
+    text = dict(color=theme.TEXT, size=12)
+    for axis, colour in _BAR_COLOURS.items():
         values = result.quadrant[f'Shrinkage {axis} (ppm)']
         deltas = result.quadrant[f'Delta {axis} (um)']
         fig.add_trace(go.Bar(
-            x=quadrants, y=values, name=f'{axis} quadrant', marker_color=colour,
+            x=quadrants, y=values, name=f'{axis} per quadrant',
+            marker=dict(color=colour, line=dict(color=theme.PLOT_BG, width=1)),
+            text=[f'{v:+.0f}' for v in values], textposition='inside', insidetextanchor='end',
+            textfont=dict(color=theme.PALETTE['mantle'], size=14), cliponaxis=False,
             customdata=deltas,
             hovertemplate=f'%{{x}} {axis}: %{{y:.1f}} ppm (%{{customdata:.1f}} µm)<extra></extra>',
         ))
+        value = float(panel[f'Shrinkage {axis} (ppm)'])
         fig.add_trace(go.Scatter(
-            x=quadrants, y=[float(panel[f'Shrinkage {axis} (ppm)'])] * len(quadrants),
-            mode='lines', name=f'{axis} panel', line=dict(color=colour, dash='dash', width=2),
+            x=quadrants, y=[value] * len(quadrants), mode='lines',
+            name=f'Panel {axis}: {value:+.0f} ppm', line=dict(color=colour, dash='dash', width=2),
             hovertemplate=f'Panel {axis}: %{{y:.1f}} ppm<extra></extra>',
         ))
+
+    axis_style = dict(tickfont=text, linecolor=theme.CARD_BD, gridcolor=theme.SEPARATOR)
     return apply_dark_layout(
         fig, height=height,
-        title=dict(text=title, font=dict(size=14, color=theme.TEXT), x=0.5, xanchor='center'),
-        barmode='group',
-        yaxis=dict(title='ppm (negative = shrink)', zeroline=True,
-                   zerolinecolor=theme.CROSSHAIR, gridcolor=theme.SEPARATOR),
-        xaxis=dict(title='Quadrant'),
-        legend=dict(orientation='h', y=-0.22), margin=dict(l=60, r=20, t=55, b=70),
+        title=dict(text=title, font=dict(size=15, color=theme.TEXT), x=0.5, xanchor='center'),
+        barmode='group', bargap=0.3, bargroupgap=0.08,
+        yaxis=dict(title=dict(text='ppm  (negative = shrink)', font=text), zeroline=True,
+                   zerolinecolor=theme.TEXT_MUTED, zerolinewidth=1.5, **axis_style),
+        xaxis=dict(title=dict(text='Quadrant', font=text), showgrid=False, **{
+            k: v for k, v in axis_style.items() if k != 'gridcolor'}),
+        legend=dict(orientation='h', y=-0.2, x=0.5, xanchor='center', font=text,
+                    bgcolor='rgba(0,0,0,0)'),
+        hoverlabel=dict(bgcolor=theme.PLOT_BG, font=dict(color=theme.TEXT)),
+        margin=dict(l=70, r=30, t=60, b=80),
     )

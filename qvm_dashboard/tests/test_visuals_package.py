@@ -44,7 +44,12 @@ def test_shrinkage_panel_map_and_bars(settings):
     bars = plot_quadrant_bars(result, 'bars')
     assert [type(t).__name__ for t in bars.data] == ['Bar', 'Scatter', 'Bar', 'Scatter']
     assert list(bars.data[0].x) == ['UL', 'LL', 'LR', 'UR']
-    assert bars.data[0].marker.color == theme.PALETTE['blue']
+    assert bars.data[0].marker.color == '#E0965A'  # copper for X
+    # Every text colour is set, so a light app theme cannot turn it black.
+    assert bars.layout.xaxis.tickfont.color == theme.TEXT
+    assert bars.layout.yaxis.tickfont.color == theme.TEXT
+    assert bars.layout.legend.font.color == theme.TEXT
+    assert bars.data[1].name.startswith('Panel X: ')
 
     empty = compute_distance_shrinkage(pd.DataFrame(rows), None)
     assert len(plot_shrinkage_panel(empty, design, 'x').data) == 0  # nothing to draw, no error

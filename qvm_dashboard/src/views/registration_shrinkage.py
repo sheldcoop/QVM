@@ -82,7 +82,8 @@ def _show(frame: pd.DataFrame, columns=None) -> None:
 
 
 def _chart(figure, key: str) -> None:
-    st.plotly_chart(figure, key=key, **full_width(st.plotly_chart))
+    # theme=None: keep the chart's own colours; Streamlit's theme would recolour the text.
+    st.plotly_chart(figure, key=key, theme=None, **full_width(st.plotly_chart))
 
 
 def _render_summary(groups: list) -> None:
