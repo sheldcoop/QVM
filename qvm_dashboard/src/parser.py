@@ -40,7 +40,7 @@ _LOC_RE = re.compile(r'\b([UL][LR])[_\s-]?(\d)\b', re.IGNORECASE)
 
 _EMIT_KEYS = (
     'location', 'grid_id', 'outer_diameter', 'inner_diameter',
-    'coord_x', 'coord_y', 'ptv_distance',
+    'coord_x', 'coord_y', 'pad_coord_x', 'pad_coord_y', 'ptv_distance',
     'x_distance', 'y_distance', 'pad_pts', 'via_pts',
 )
 
@@ -493,6 +493,10 @@ def _emit_row(current: Dict[str, Any], settings: dict) -> dict:
         cols['inner_diameter']: current.get('via_diameter'),
         cols['coord_x']: current.get('via_coord_x'),
         cols['coord_y']: current.get('via_coord_y'),
+        # Pad centre, kept so registration shrinkage can be switched from the via
+        # to the pad (REGISTRATION_SHRINKAGE.measured_point). Not shown in tables.
+        cols['pad_coord_x']: current.get('pad_coord_x'),
+        cols['pad_coord_y']: current.get('pad_coord_y'),
         cols['ptv_distance']: current.get('sc'),
         cols['x_distance']: current.get('dx'),
         cols['y_distance']: current.get('dy'),

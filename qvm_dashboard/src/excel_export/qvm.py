@@ -5,8 +5,8 @@ import logging
 import pandas as pd
 
 from src.display_frame import GRID_ID_HEADER, build_display_frame
-from src.registration_shrinkage import compute_distance_shrinkage
-from src.utils import is_via_to_pad, resolve_columns
+from src.registration_shrinkage import compute_shrinkage_by_group, shrinkage_config
+from src.utils import is_via_to_pad
 from src.visuals import (
     plot_vtp_bullseye, plot_vtp_site_bars, plot_vtp_box, plot_quiver,
 )
@@ -148,115 +148,91 @@ def _write_shrinkage_summary_sheet(
     process_frames: dict[str, pd.DataFrame],
     used_sheet_names: set[str],
 ) -> bool:
-    cols = resolve_columns(settings, ('location', 'coord_x', 'coord_y'))
-    loc_col, x_col, y_col = cols['location'], cols['coord_x'], cols['coord_y']
+    """One sheet with the registration shrinkage of every Build Up / Panel / Side.
 
-    # Canonical key: CORE_SHRINKAGE.NOMINAL_COORDS is the only nominals
-    # section defined in settings.yaml. outlier_ppm has no settings key;
-    # 50.0 is the long-standing effective default, kept explicit.
-    nominal_coords = settings.get('CORE_SHRINKAGE', {}).get('NOMINAL_COORDS', {})
-    if not nominal_coords:
-        return False
-
-    outlier_ppm = 50.0
+    Uses the report method (``REGISTRATION_SHRINKAGE.default_method``, normally
+    the company calculation) and the design positions configured for each
+    Build Up and file type. A group without design positions is listed with
+    the reason instead of numbers.
+    """
     sections = []
-    summary_rows = []
     for process_code, proc_df in process_frames.items():
-        if proc_df.empty or any(c not in proc_df.columns for c in (loc_col, x_col, y_col)):
+        if proc_df.empty:
             continue
-        for bu, bu_df in _iter_build_up_frames(proc_df):
-            result = compute_distance_shrinkage(
-                bu_df,
-                nominal_coords,
-                location_col=loc_col,
-                x_col=x_col,
-                y_col=y_col,
-                outlier_ppm=outlier_ppm,
-            )
-            if result.quadrant.empty:
-                continue
-            fp = result.full_panel.iloc[0]
-            uni = result.uniformity.iloc[0]
-            sections.append((process_code, bu, result))
-            summary_rows.append({
-                'Process': process_code,
-                'Build Up': bu,
-                'FP X (%)': fp.get('Shrinkage X (FP %)', 0.0),
-                'FP Y (%)': fp.get('Shrinkage Y (FP %)', 0.0),
-                'X-Y Offset (%)': fp.get('Shrinkage X-Y Offset (%)', 0.0),
-                'FP X (PPM)': fp.get('Shrinkage X (FP PPM)', fp.get('Shrinkage X (FP)', 0.0)),
-                'FP Y (PPM)': fp.get('Shrinkage Y (FP PPM)', fp.get('Shrinkage Y (FP)', 0.0)),
-                'QTQ X (PPM)': uni.get('QTQ Range X', 0.0),
-                'QTQ Y (PPM)': uni.get('QTQ Range Y', 0.0),
-                '2D Distortion (PPM)': uni.get('Total 2D Spatial Distortion Vector', 0.0),
-                'Alert Count': len(result.outliers),
-            })
-
+        for group in compute_shrinkage_by_group(proc_df, settings):
+            sections.append((process_code, group))
     if not sections:
         return False
 
+    summary_rows = []
+    for process_code, group in sections:
+        result = group.result
+        if result.full_panel.empty:
+            continue
+        panel = result.full_panel.iloc[0]
+        uniformity = result.uniformity.iloc[0]
+        row = {'Process': process_code, **group.group}
+        row.update({
+            'FP X (um)': panel['Delta X (um)'],
+            'FP Y (um)': panel['Delta Y (um)'],
+            'FP X (ppm)': panel['Shrinkage X (ppm)'],
+            'FP Y (ppm)': panel['Shrinkage Y (ppm)'],
+            'X-Y Offset (ppm)': panel['X-Y Offset (ppm)'],
+            'QTQ X (ppm)': uniformity['QTQ Range X (ppm)'],
+            'QTQ Y (ppm)': uniformity['QTQ Range Y (ppm)'],
+            'Alert Count': len(result.outliers),
+        })
+        if 'Status' in panel:
+            row['Status'] = panel['Status']
+        summary_rows.append(row)
+
+    method_label = sections[0][1].result.method_label
+    outlier_ppm = float(shrinkage_config(settings).get('outlier_ppm', 50.0))
     sheet_name = _safe_sheet_name('Shrinkage Summary', used_sheet_names)
     ws = writer.book.create_sheet(sheet_name)
-    ws['A1'] = 'Distance-Based Shrinkage Summary (PTV + VTP)'
-    ws['A2'] = 'Method: distance-only (no coordinate transform/alignment).'
+    ws['A1'] = 'Registration Shrinkage Summary (PTV + VTP)'
+    ws['A2'] = (f'Method: {method_label}. Measured minus design (negative = shrink). '
+                f'um = change over one quadrant length.')
 
-    summary_df = pd.DataFrame(summary_rows).round(3)
-    summary_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=3)
+    row = 4
+    if summary_rows:
+        summary_df = pd.DataFrame(summary_rows).round(3)
+        summary_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+        row += len(summary_df) + 2
 
-    row = 6 + len(summary_df)
-    for process_code, bu, result in sections:
-        ws.cell(row=row, column=1, value=f'{process_code} | Build Up: {bu}')
+    for process_code, group in sections:
+        result = group.result
+        ws.cell(row=row, column=1, value=f'{process_code} | {group.label}')
         row += 1
-        ws.cell(row=row, column=1, value='Executive Summary')
+        ws.cell(row=row, column=1,
+                value=f'{group.process}, {group.point} centres, {result.method_label}')
         row += 1
 
-        fp = result.full_panel.iloc[0]
-        uni = result.uniformity.iloc[0]
-        exec_df = pd.DataFrame([{
-            'FP X (%)': fp.get('Shrinkage X (FP %)', 0.0),
-            'FP Y (%)': fp.get('Shrinkage Y (FP %)', 0.0),
-            'X-Y Offset (%)': fp.get('Shrinkage X-Y Offset (%)', 0.0),
-            'FP X (PPM)': fp.get('Shrinkage X (FP PPM)', fp.get('Shrinkage X (FP)', 0.0)),
-            'FP Y (PPM)': fp.get('Shrinkage Y (FP PPM)', fp.get('Shrinkage Y (FP)', 0.0)),
-            'QTQ X (PPM)': uni.get('QTQ Range X', 0.0),
-            'QTQ Y (PPM)': uni.get('QTQ Range Y', 0.0),
-            '2D Distortion (PPM)': uni.get('Total 2D Spatial Distortion Vector', 0.0),
-            'Alert Count': len(result.outliers),
-        }]).round(3)
-        exec_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
-        row += len(exec_df) + 2
+        if not result.quadrant.empty:
+            ws.cell(row=row, column=1, value='Full Panel')
+            row += 1
+            result.full_panel.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+            row += len(result.full_panel) + 2
 
-        ws.cell(row=row, column=1, value='Quadrant Summary')
-        row += 1
-        q_cols = [
-            'Quadrant', 'QP Shrinkage X (%)', 'QP Shrinkage Y (%)',
-            'Delta X (um)', 'Delta Y (um)',
-            'QP Shrinkage X (PPM)', 'QP Shrinkage Y (PPM)',
-        ]
-        show_q_cols = [c for c in q_cols if c in result.quadrant.columns]
-        result.quadrant[show_q_cols].to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
-        row += len(result.quadrant) + 2
+            ws.cell(row=row, column=1, value='Quadrants')
+            row += 1
+            result.quadrant.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+            row += len(result.quadrant) + 2
 
-        ws.cell(row=row, column=1, value='Uniformity')
-        row += 1
-        u_cols = [
-            'QTQ Range X (%)', 'QTQ Range Y (%)', 'QTQ Range X', 'QTQ Range Y',
-            'Total 2D Spatial Distortion Vector',
-        ]
-        show_u_cols = [c for c in u_cols if c in result.uniformity.columns]
-        result.uniformity[show_u_cols].to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
-        row += len(result.uniformity) + 2
+            ws.cell(row=row, column=1, value='Uniformity')
+            row += 1
+            result.uniformity.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+            row += len(result.uniformity) + 2
 
-        ws.cell(row=row, column=1, value='Outlier Alerts')
-        row += 1
-        if result.outliers.empty:
-            pd.DataFrame({'Alert': [f'No quadrant exceeds ±{outlier_ppm:.0f} ppm from FP average.']}).to_excel(
-                writer, sheet_name=sheet_name, index=False, startrow=row - 1
-            )
-            row += 2
-        else:
-            result.outliers.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
-            row += len(result.outliers) + 2
+            ws.cell(row=row, column=1, value='Outlier Alerts')
+            row += 1
+            if result.outliers.empty:
+                ws.cell(row=row, column=1,
+                        value=f'No quadrant is more than {outlier_ppm:.0f} ppm from the panel average.')
+                row += 2
+            else:
+                result.outliers.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+                row += len(result.outliers) + 2
 
         if result.warnings:
             ws.cell(row=row, column=1, value='Warnings')
@@ -264,7 +240,7 @@ def _write_shrinkage_summary_sheet(
             for msg in result.warnings:
                 ws.cell(row=row, column=1, value=msg)
                 row += 1
-            row += 1
+        row += 1
 
     return True
 

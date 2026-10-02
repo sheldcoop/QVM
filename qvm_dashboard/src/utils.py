@@ -130,6 +130,8 @@ _COLUMN_DEFAULTS = {
     'inner_diameter': 'Via Parameter',
     'coord_x': 'Coord. X',
     'coord_y': 'Coord. Y',
+    'pad_coord_x': 'Pad Coord. X',
+    'pad_coord_y': 'Pad Coord. Y',
     'ptv_distance': 'PtV Distance',
     'total_shift': 'VtP Distance (SC)',
     'x_distance': 'Shift (DX)',

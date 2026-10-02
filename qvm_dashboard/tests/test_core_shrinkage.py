@@ -695,7 +695,7 @@ def test_shrinkage_sign_convention_agrees_across_modules():
                       'Coord. X': df['coord_x'],
                       'Coord. Y': df['coord_y']}), _NOMINAL)
     assert not reg.quadrant.empty
-    assert (reg.quadrant['QP Shrinkage X (PPM)'] < 0).all()
-    assert (reg.quadrant['QP Shrinkage Y (PPM)'] < 0).all()
+    assert (reg.quadrant['Shrinkage X (ppm)'] < 0).all()
+    assert (reg.quadrant['Shrinkage Y (ppm)'] < 0).all()
     assert abs(per_quad['X Shrinkage (ppm)'].mean()
-               - reg.quadrant['QP Shrinkage X (PPM)'].mean()) < 2.0
+               - reg.quadrant['Shrinkage X (ppm)'].mean()) < 2.0

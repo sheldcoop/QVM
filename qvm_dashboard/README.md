@@ -175,8 +175,12 @@ The Excel export button produces **one workbook** covering the current Build Up,
 Panel and Side scope, with separate Pad-to-Via and Via-to-Pad sheets. See
 [Excel Export](#excel-export) below.
 
+Below the table, a folded **Shrinkage** block per Build Up / Panel / Side shows
+the same result as the Shrinkage tab (see
+[Registration shrinkage](#registration-shrinkage)).
+
 ### Analytics
-Three tabs, identical for both processes:
+Four tabs, identical for both processes:
 
 - **Registration Scatter** — DX/DY bullseye with concentric tolerance rings,
   plus a per-site SC bar chart ordered by Grid ID.
@@ -185,6 +189,40 @@ Three tabs, identical for both processes:
   blue = global offset), with a sensitivity slider to amplify small errors.
 - **Box Plot** — SC distribution: one "All sites" box plus one box per panel
   quarter.
+- **Shrinkage** — how much the panel changed size against its design; see
+  below.
+
+### Registration shrinkage
+
+Shown per Build Up, Panel and Side, separately for Pad-to-Via and Via-to-Pad.
+Everything is **measured minus design** (negative = shrink).
+
+- **Method.** A choice at the top of the tab:
+  - **Company (distance)**, the default and the one written to the Excel
+    report. It is the calculation of `sample_data/Core Shrinkage
+    Calculation.xlsx`: in each quadrant, the two X lengths and the two Y
+    lengths between its four points are compared with the design lengths and
+    averaged; the panel value is the mean of the four quadrants.
+  - **Centre-based**: all points are expressed from their own centre (the
+    average of the points) and compared with the design; X and Y scale only.
+  - **Affine fit**: the Core Shrinkage calculation applied to registration
+    data; separates rotation and shear from scale and rejects outlier points.
+- **Numbers.** The panel and each quadrant are given in **µm** (the company
+  sheet's mm value × 1000: the change over one quadrant length) and in
+  **ppm**. Below: the quadrant-to-quadrant range, and an alert for any
+  quadrant more than `outlier_ppm` from the panel average.
+- **Compare the three methods.** A table with all three results side by side.
+  When they agree, the company number can be trusted; when they differ,
+  [SHRINKAGE_METHODS.md](SHRINKAGE_METHODS.md) explains what that means, with
+  worked examples.
+- **Design positions.** Taken from `REGISTRATION_SHRINKAGE.DESIGNS` for the
+  Build Up and file type of the data. If none is configured, the app says
+  "No design positions configured for …" and shows no numbers. The Core
+  Shrinkage design is never used as a stand-in.
+- **Which centre.** The via centre by default; `measured_point` switches a
+  file type to the pad centre.
+- **Limit.** None by default. Setting `usl_ppm` adds a Pass / Fail to every
+  quadrant and to the panel.
 
 ---
 
@@ -235,6 +273,7 @@ One workbook per download, containing:
 | `Via to Pad` | Via-to-Pad measurements + the Panel Map reference image |
 | `Report` | All rows with job metadata prepended and the process USL column appended |
 | `Analytics <PROC> <BU>` | The four registration charts, one sheet per process per Build Up |
+| `Shrinkage Summary` | Registration shrinkage by the report method, per process and Build Up / Panel / Side: panel and quadrant values in µm and ppm, range, alerts; a group without design positions is listed with the reason |
 | `Warnings` | Parser warnings, or a note that there were none |
 
 Process sheets are written only for processes present in the current scope.
@@ -334,6 +373,19 @@ Everything the Core Shrinkage tab measures against.
 | `outlier_um` | Per-dot residual above this = outlier / remeasure |
 | `residual_zones_um` | Colour bands for the Distortion Map (must be ascending, and within `outlier_um`) |
 | `distance_usl_mm` / `outlier_cap_mm` | Front↔back offset spec and outlier cap |
+
+### REGISTRATION_SHRINKAGE
+Everything the Shrinkage tab of the Pad-to-Via / Via-to-Pad views uses.
+
+| Key | Meaning |
+|---|---|
+| `DESIGNS` | Design position (mm) of the 16 QPs, as `product → Build Up → file type → point`. Filled for C4F from `sample_data/QP_Coordinate_Commonality_Analysis.xlsx`: BU-01 (both types), BU-02 Via to Pad, BU-03 Pad to Via. Add a Build Up or a second product as a further block. |
+| `active_design` | Which product block of `DESIGNS` applies to the uploaded files |
+| `default_method` | `company`, `centre` or `affine`: the method shown first and written to the Excel report |
+| `measured_point` | Per file type, `via` or `pad`: which measured centre is used |
+| `outlier_ppm` | A quadrant further than this from the panel average raises an alert |
+| `usl_ppm` | Optional pass/fail limit on the size of the shrinkage; `null` = report only |
+| `outlier_um` | Affine method: a point with a larger residual is rejected |
 
 ### PLOT_SETTINGS, CHART_HEIGHTS, PANEL_VIEW, FIGURE_SETTINGS, COLORS, EXCEL_EXPORT
 Vector-multiplier slider range; per-chart heights in pixels; panel-map geometry

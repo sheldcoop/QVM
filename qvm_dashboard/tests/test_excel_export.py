@@ -413,3 +413,42 @@ def test_unified_export_writes_combined_shrinkage_summary_sheet(settings):
 
     assert any('VTP | Build Up: BU-01' in v for v in values)
     assert any('PTV | Build Up: Unknown' in v for v in values)
+
+
+def test_shrinkage_sheet_uses_registration_design_and_company_numbers(settings):
+    import openpyxl
+    from src.excel_export import write_unified_excel
+    from src.registration_shrinkage import design_for
+
+    cn = settings['COLUMN_NAMES']
+
+    def frame(build_up, process, scale):
+        design = design_for(settings, 'BU-01', process)
+        out = _valid_loc_frame(settings, process=process, build_up=build_up)
+        out[cn['coord_x']] = [design[loc]['x'] * scale for loc in out[cn['location']]]
+        out[cn['coord_y']] = [design[loc]['y'] * scale for loc in out[cn['location']]]
+        return out
+
+    df = pd.concat([frame('BU-01', 'Via to Pad', 0.9999),
+                    frame('BU-02', 'Pad to Via', 1.0)], ignore_index=True)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_unified_excel(w, df.copy(), settings, {'panel': '20'})
+    buf.seek(0)
+    ws = openpyxl.load_workbook(buf)['Shrinkage Summary']
+    rows = [[c for c in row] for row in ws.iter_rows(values_only=True)]
+    text = [str(c) for row in rows for c in row if c is not None]
+
+    assert 'Method: Company (distance).' in rows[1][0]
+    header = next(row for row in rows if row and row[0] == 'Process')
+    values = rows[rows.index(header) + 1]
+    summary = dict(zip(header, values))
+    assert summary['Process'] == 'VTP' and summary['Build Up'] == 'BU-01'
+    assert summary['FP X (ppm)'] == pytest.approx(-100.0, abs=0.01)
+    assert summary['FP X (um)'] == pytest.approx(-23.25, abs=0.01)
+    assert summary['Alert Count'] == 0
+    assert not any('%' in t for t in header if isinstance(t, str))
+
+    assert any(t.startswith('PTV | Build Up: BU-02') for t in text)
+    assert any('No design positions configured for BU-02 / Pad to Via' in t for t in text)
+    assert any(t == 'Via to Pad, via centres, Company (distance)' for t in text)
