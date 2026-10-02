@@ -41,7 +41,7 @@ def _frames(app):
 def test_overview_then_company_result_in_um_with_ppm():
     app = _run()
     assert not app.exception
-    assert app.subheader[0].value == '📐 Shrinkage'
+    assert app.subheader[0].value == '📊 Shrinkage Summary'
 
     overview = _frames(app)[0]
     assert list(overview.columns)[:5] == ['Build Up', 'Panel', 'Side', 'Result', 'Panel X (um)']
@@ -53,6 +53,10 @@ def test_overview_then_company_result_in_um_with_ppm():
     assert shown['Panel X'] == ('-23.2 µm', '-100.0 ppm')
     assert shown['Panel Y'] == ('-19.4 µm', '-100.0 ppm')
     assert 'Limit' not in shown  # no limit configured
+    # Copper summary tiles on top; one panel in scope, so they are not repeated below.
+    assert shown['Alerts'] == ('0', '✓ Uniform')
+    assert 'Quadrant range X / Y' in shown
+    assert [m.label for m in app.metric].count('Panel X') == 1
     assert list(_frames(app)[1].columns)[:5] == [
         'Quadrant', 'Delta X (um)', 'Shrinkage X (ppm)', 'Delta Y (um)', 'Shrinkage Y (ppm)']
     assert 'No quadrant is more than 50 ppm' in app.success[0].value

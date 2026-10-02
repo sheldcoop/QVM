@@ -382,3 +382,58 @@ def test_box_plot_draws_when_a_site_has_no_grid_id(settings):
     content += _site_block('Via[3,1][1,1]', 'Pad[3,1][1,1]', 'VtP[3,1][1,1]', 0.0, 0.0)
     df, _ = parse_qvm_content(content, settings)
     assert len(plot_vtp_box(df, settings).data) > 0
+
+
+def _numbered_block(name, first_id, x, y, dx):
+    """One site with file-unique IDs, split into its circle part and distance part."""
+    via, pad, dist = first_id, first_id + 1, first_id + 2
+    circles = f"""
+Circle: Via_{name}(ID:{via}, From 70 Pts.)
+     Coord. X =        {x:.6f}
+     Coord. Y =        {y:.6f}
+     Diameter =         0.016742
+
+Circle: Pad_{name}(ID:{pad}, From 180 Pts.)
+     Coord. X =        {x + 0.001:.6f}
+     Coord. Y =        {y - 0.002:.6f}
+     Diameter =         0.308911
+"""
+    distance = f"""
+Distance: VtP_{name}(ID:{dist}) between Pad_{name}(ID:{pad}) and Via_{name}(ID:{via})
+           SC =         {abs(dx):.6f}
+           DX =         {dx:.6f}
+           DY =         0.000000
+"""
+    return circles, distance
+
+
+def _panel_xy(name):
+    quadrant = {'LL': (65.0, 105.0), 'UL': (65.0, 349.0), 'LR': (309.0, 105.0), 'UR': (309.0, 349.0)}
+    corner = {'1': (0.0, 194.0), '2': (0.0, 0.0), '3': (232.5, 0.0), '4': (232.5, 194.0)}
+    return (quadrant[name[:2]][0] + corner[name[3]][0], quadrant[name[:2]][1] + corner[name[3]][1])
+
+
+def test_distance_blocks_written_out_of_order_keep_their_own_circles(settings):
+    """Real case: the circles of UR_3 and UR_4 come first, then the distance of
+    UR_4, then that of UR_3. Each distance names its circles by ID."""
+    names = [f'{q}_{n}' for q in ('LL', 'UL', 'LR', 'UR') for n in (2, 1, 3, 4)]
+    parts = {name: _numbered_block(name, 1 + 3 * i, *_panel_xy(name), dx=0.001 * (i + 1))
+             for i, name in enumerate(names)}
+    content = ''.join(parts[n][0] + parts[n][1] for n in names[:-2])
+    content += parts['UR_3'][0] + parts['UR_4'][0] + parts['UR_4'][1] + parts['UR_3'][1]
+
+    df, warnings = parse_qvm_content(content, settings)
+    assert warnings == [] and len(df) == 16 and df['Grid ID'].notna().all()
+    by_location = df.set_index('Location')
+    for i, name in enumerate(names):  # DX stayed with the site it was measured on
+        assert by_location.loc[name, 'Shift (DX)'] == pytest.approx(0.001 * (i + 1))
+        assert by_location.loc[name, 'Coord. X'] == pytest.approx(_panel_xy(name)[0])
+
+
+def test_a_missing_site_does_not_move_the_panel_centre(settings):
+    """15 of 16 sites: the centre must still lie between the quadrants, not on a site."""
+    names = [f'{q}_{n}' for q in ('LL', 'UL', 'LR', 'UR') for n in (2, 1, 3, 4)][:-1]
+    content = ''.join(''.join(_numbered_block(name, 1 + 3 * i, *_panel_xy(name), dx=0.001))
+                      for i, name in enumerate(names))
+    df, warnings = parse_qvm_content(content, settings)
+    assert list(df['Location']) == names and warnings == []

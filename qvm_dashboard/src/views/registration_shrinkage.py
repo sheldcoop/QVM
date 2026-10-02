@@ -85,7 +85,46 @@ def _chart(figure, key: str) -> None:
     st.plotly_chart(figure, key=key, **full_width(st.plotly_chart))
 
 
-def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key: str) -> None:
+def _render_summary(groups: list) -> None:
+    """The copper summary tiles, same look as the Statistical Summary of
+    Quality Control. One panel in scope: its values. Several: their average,
+    with the panel furthest from zero named."""
+    reported = [g for g in groups if not g.result.full_panel.empty]
+    if not reported:
+        st.info('No shrinkage could be reported for this selection; the reason is given below.')
+        return
+    panels = pd.DataFrame([g.result.full_panel.iloc[0] for g in reported])
+    ranges = pd.DataFrame([g.result.uniformity.iloc[0] for g in reported])
+    alerts = sum(len(g.result.outliers) for g in reported)
+    many = len(reported) > 1
+    prefix = 'Mean ' if many else 'Panel '
+
+    cells = st.columns(5)
+    for cell, axis in zip(cells, ('X', 'Y')):
+        cell.metric(f'{prefix}{axis}', f"{panels[f'Delta {axis} (um)'].mean():.1f} µm",
+                    f"{panels[f'Shrinkage {axis} (ppm)'].mean():.1f} ppm", delta_color='off')
+    cells[2].metric('X − Y', f"{panels['X-Y Offset (ppm)'].mean():.1f} ppm")
+    cells[3].metric('Quadrant range X / Y',
+                    f"{ranges['QTQ Range X (ppm)'].max():.0f} / "
+                    f"{ranges['QTQ Range Y (ppm)'].max():.0f} ppm",
+                    'largest of the panels' if many else None, delta_color='off')
+    cells[4].metric('Alerts', str(alerts),
+                    f'{alerts} quadrants' if alerts else '✓ Uniform',
+                    delta_color='inverse' if alerts else 'off')
+
+    note = 'Measured − design: negative = shrink, positive = grown.'
+    if many:
+        size = panels[['Shrinkage X (ppm)', 'Shrinkage Y (ppm)']].abs().max(axis=1)
+        worst = reported[int(size.to_numpy().argmax())]
+        note = (f'Average of {len(reported)} panels. Largest change: {worst.label} '
+                f'({size.max():.0f} ppm). ' + note)
+    if len(reported) < len(groups):
+        note += f' {len(groups) - len(reported)} without a result, see the table.'
+    st.caption(note)
+
+
+def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key: str,
+                  tiles: bool = True) -> None:
     result = group.result
     if group.design_note:
         st.info(group.design_note)
@@ -107,6 +146,16 @@ def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key
                    f'{spread_y:.0f} µm in Y. This needs no design.')
         return
 
+    if tiles:
+        _render_group_tiles(group)
+    st.caption(
+        f"{result.method_label} · {group.process} · {group.point} centres · "
+        f"measured − design (negative = shrink). µm is the change over one quadrant length.")
+    _render_group_details(group, settings, outlier_ppm, key)
+
+
+def _render_group_tiles(group: GroupShrinkage) -> None:
+    result = group.result
     panel = result.full_panel.iloc[0]
     uniformity = result.uniformity.iloc[0]
     status = panel.get('Status')
@@ -120,10 +169,11 @@ def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key
     cells[4].metric('Quadrant range Y', f"{uniformity['QTQ Range Y (ppm)']:.1f} ppm")
     if status is not None:
         cells[5].metric('Limit', str(status))
-    st.caption(
-        f"{result.method_label} · {group.process} · {group.point} centres · "
-        f"measured − design (negative = shrink). µm is the change over one quadrant length.")
 
+
+def _render_group_details(group: GroupShrinkage, settings: dict, outlier_ppm: float,
+                          key: str) -> None:
+    result = group.result
     height = settings.get('CHART_HEIGHTS', {}).get('quiver', 600)
     _chart(plot_shrinkage_panel(result, group.design, f'Shrinkage Map  ·  {group.label}',
                                 height=height), f'{key}_map')
@@ -146,10 +196,13 @@ def render_registration_shrinkage(df: pd.DataFrame, settings: dict, *, key: str,
 
     ``key`` keeps the widgets of the Pad-to-Via and Via-to-Pad tabs apart.
     """
-    st.subheader('📐 Shrinkage')
     outlier_ppm = float(shrinkage_config(settings).get('outlier_ppm', 50.0))
 
     groups = compute_shrinkage_by_group(df, settings)
+    st.subheader('📊 Shrinkage Summary')
+    _render_summary(groups)
+    st.markdown('---')
+
     left, right = st.columns([3, 1])
     with left:
         st.markdown('**Overview** — one line per Build Up, Panel and Side')
@@ -160,12 +213,15 @@ def render_registration_shrinkage(df: pd.DataFrame, settings: dict, *, key: str,
         st.download_button(
             label='📥 Shrinkage Excel', data=data, file_name=f'QVM_Shrinkage_{key.upper()}.xlsx',
             mime=_EXCEL_MIME, type='primary', key=f'{key}_shrinkage_download')
-    _show(summary_frame(groups))
+    _show(summary_frame(groups).round(1))
     st.markdown('---')
+
+    # One panel in scope: its tiles are the summary above, so not drawn twice.
+    single = len(groups) == 1
 
     for index, group in enumerate(groups):
         with st.expander(group.label, expanded=len(groups) <= 2):
-            _render_group(group, settings, outlier_ppm, f'{key}_{index}')
+            _render_group(group, settings, outlier_ppm, f'{key}_{index}', tiles=not single)
 
     with st.expander('ℹ️ How is this calculated?'):
         st.markdown(_EXPLANATION)

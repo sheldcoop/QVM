@@ -32,6 +32,9 @@ class QVMParseError(Exception):
 
 
 _PTS_RE = re.compile(r"From\s+(\d+)\s*Pts\.")
+_ID_RE = re.compile(r"\(ID:\s*(\d+)")
+# 'Distance: VtP_UR_4(ID:35) between Pad_UR_4(ID:34) and Via_UR_4(ID:33)'
+_BETWEEN_RE = re.compile(r"between\s+.*?\(ID:\s*(\d+)\).*?\band\b.*?\(ID:\s*(\d+)\)")
 _PANEL_RE = re.compile(r'(?:panel[\s_]*|(?:^|[_\s-])p)(\d+)(?=$|[_\s-])', re.IGNORECASE)
 _SIDE_RE = re.compile(r'(?:^|[_\s-])(front|back|[fb])(?=$|[_\s-])', re.IGNORECASE)
 _BU_RE = re.compile(r'(?:^|[_\s-])bu[-_\s]?(\d+)(?=$|[_\s-])', re.IGNORECASE)
@@ -211,6 +214,34 @@ def _looks_like_begun_block(site: Dict[str, Any]) -> bool:
         site['distance_label'] or site['sc'] is not None or site['dx'] is not None))
 
 
+def _pair_circles_by_id(sites: List[Dict[str, Any]]) -> None:
+    """Give every Distance block the two circles it names, wherever they stand.
+
+    A Distance line says which circles it was measured between
+    (``between Pad_UR_4(ID:34) and Via_UR_4(ID:33)``). Blocks are normally
+    written circle, circle, distance; but a file can list the circles of two
+    sites first and their distances afterwards. Grouping by position would
+    then give one site four circles and the wrong DX/DY, and leave the next
+    site without coordinates. The IDs settle it. Sites whose Distance line
+    names no IDs, or IDs that are not in the file, are left as they were read;
+    so is a file in which the IDs repeat.
+    """
+    ids = [circle['id'] for site in sites for circle in site['circles']
+           if circle.get('id') is not None]
+    if len(ids) != len(set(ids)):
+        return  # IDs repeat in this file, so they do not identify a circle
+    by_id = {circle['id']: circle
+             for site in sites for circle in site['circles'] if circle.get('id') is not None}
+    for site in sites:
+        match = _BETWEEN_RE.search(site.get('distance_label') or '')
+        if not match:
+            continue
+        wanted = [int(match.group(1)), int(match.group(2))]
+        if all(circle_id in by_id for circle_id in wanted):
+            # Keep file order (lower ID first), as the positional reading would.
+            site['circles'] = [by_id[circle_id] for circle_id in sorted(wanted)]
+
+
 def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str], List[Tuple[int, str]]]:
     sites: List[Dict[str, Any]] = []
     site = _new_site()
@@ -224,8 +255,10 @@ def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str], L
         if m:
             label = m.group(1).strip()
             pts_m = _PTS_RE.search(s)
+            id_m = _ID_RE.search(s)
             site['circles'].append({
                 'label': label,
+                'id': int(id_m.group(1)) if id_m else None,
                 'kind': _circle_kind(label),
                 'location': _extract_location_from_circle(label),
                 'pts': int(pts_m.group(1)) if pts_m else None,
@@ -270,6 +303,8 @@ def _extract_sites(content: str) -> Tuple[List[Dict[str, Any]], Optional[str], L
             site['dy'] = _checked_value(site, 'DY', s)
             sites.append(site)
             site = _new_site()
+
+    _pair_circles_by_id(sites)
 
     dq_notes = [
         (i, note)
@@ -506,15 +541,13 @@ def _assign_locations(sites: List[Dict[str, Any]], settings: dict, warnings: Lis
         return
 
     if len(observed) >= 4:
-        xs = sorted(p[0] for p in observed)
-        ys = sorted(p[1] for p in observed)
-        mid = len(observed) // 2
-        if len(observed) % 2 == 0:
-            cx = (xs[mid - 1] + xs[mid]) / 2.0
-            cy = (ys[mid - 1] + ys[mid]) / 2.0
-        else:
-            cx = xs[mid]
-            cy = ys[mid]
+        # Centre of the measured area. (The median was used here before: with a
+        # site missing, an odd count puts the "centre" exactly on one of the
+        # sites and the whole row beside it lands in the wrong quadrant.)
+        xs = [p[0] for p in observed]
+        ys = [p[1] for p in observed]
+        cx = (min(xs) + max(xs)) / 2.0
+        cy = (min(ys) + max(ys)) / 2.0
     else:
         cx = fallback_cx
         cy = fallback_cy
