@@ -6,9 +6,11 @@ A Streamlit dashboard for analyzing PCB Quality Vision Machine (QVM) text logs. 
 
 ## How to Run
 
+From the repository root:
+
 ```bash
-pip install -r requirements.txt
-streamlit run app.py
+pip install -r qvm_dashboard/requirements.txt
+cd qvm_dashboard && streamlit run app.py
 ```
 
 Navigate to `http://localhost:8501` in your browser.
