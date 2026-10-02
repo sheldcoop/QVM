@@ -27,6 +27,15 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY qvm_dashboard/ ./qvm_dashboard/
 COPY pyproject.toml ./pyproject.toml
 
+# Run as non-root: restricted pod-security policies (runAsNonRoot) refuse
+# root containers, and a Streamlit/file-write flaw must not yield root.
+# The user owns /app and gets a writable HOME so Streamlit and
+# kaleido-Chrome first-run caches keep working, including under
+# read-only root filesystems (with /tmp + $HOME/.cache mounted).
+RUN useradd -m appuser && chown -R appuser:appuser /app
+ENV HOME=/home/appuser
+USER appuser
+
 WORKDIR /app/qvm_dashboard
 EXPOSE 8501
 
