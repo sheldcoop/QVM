@@ -11,6 +11,7 @@ from src.ingestion import ingest_uploaded_file
 from src.panel_mapping import create_four_quarters_view
 from src.parser import QVMParseError
 from src.utils import decode_upload_bytes, is_via_to_pad as is_via_to_pad_mask, load_settings
+from src.views.base import full_width
 from src.views.core_shrinkage import CoreShrinkageView
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
@@ -143,10 +144,10 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
             help="Exaggerates arrow length for visibility",
         )
         fig_q = plot_quiver(quiver_df, settings, multiplier=multiplier)
-        st.plotly_chart(fig_q, use_container_width=True)
+        st.plotly_chart(fig_q, **full_width(st.plotly_chart))
     with tab3:
         fig = plot_vtp_box(filtered_df, settings)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, **full_width(st.plotly_chart))
 
     with tab4:
         prefix = 'vtp' if is_via_to_pad_mask(filtered_df).any() else 'ptv'
@@ -343,7 +344,7 @@ def main() -> None:
 
     if main_view == "Panel Map":
         fig = create_four_quarters_view(settings)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, **full_width(st.plotly_chart))
         return
 
     if main_view == "Core Shrinkage":

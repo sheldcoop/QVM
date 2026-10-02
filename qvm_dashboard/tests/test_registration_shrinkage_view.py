@@ -62,3 +62,44 @@ def test_build_up_without_design_uses_an_equivalent_one_and_says_so():
     assert 'those of BU-01 / Via to Pad are used' in note
     assert {m.label: m.delta for m in app.metric}['Panel X'] == '-100.0 ppm'
     assert len(app.warning) == 0
+
+
+def _local_screen():
+    import pandas as pd
+
+    from src.registration_shrinkage import design_for
+    from src.utils import load_settings
+    from src.views.registration_shrinkage import render_registration_shrinkage
+
+    settings = load_settings()
+    design = design_for(settings, 'BU-01', 'Via to Pad')
+    rows = []
+    for side, wrong_product in (('F', False), ('B', True)):
+        for index, (name, xy) in enumerate(design.items()):
+            x, y = (xy['x'] * 0.992, xy['y']) if wrong_product else (index * 1e-4, -index * 1e-4)
+            rows.append({'Location': name, 'Coord. X': x, 'Coord. Y': y, 'Build Up': 'BU-01',
+                         'Panel': '09', 'Side': side, 'Process': 'Via to Pad'})
+    render_registration_shrinkage(pd.DataFrame(rows), settings, key='real')
+
+
+def test_unusable_measurements_get_an_explanation_instead_of_numbers():
+    app = AppTest.from_function(_local_screen, default_timeout=60).run()
+    assert not app.exception
+    assert len(app.metric) == 0
+    warnings = [w.value for w in app.warning]
+    assert any('does not match the design' in w for w in warnings)  # side B
+    assert any('positions relative to each site' in w for w in warnings)  # side F
+    sizes = app.dataframe[0].value
+    assert list(sizes.columns)[:4] == [
+        'Quadrant', 'X Measured (mm)', 'X Design (mm)', 'X Difference (ppm)']
+    assert any('needs no design' in c.value for c in app.caption)
+
+
+def test_full_width_helper_fits_the_installed_streamlit():
+    import streamlit as st
+
+    from src.views.base import full_width
+
+    assert full_width(st.dataframe) == {'width': 'stretch'}
+    assert full_width(st.plotly_chart) in ({'width': 'stretch'}, {'use_container_width': True})
+    assert full_width(lambda figure, use_container_width=False: None) == {'use_container_width': True}

@@ -17,6 +17,7 @@ from src.registration_shrinkage import (
     shrinkage_config,
 )
 from src.visuals.shrinkage import plot_shrinkage_quiver
+from src.views.base import full_width
 
 _QUADRANT_COLUMNS = [
     'Quadrant', 'Delta X (um)', 'Shrinkage X (ppm)', 'Delta Y (um)', 'Shrinkage Y (ppm)',
@@ -43,7 +44,19 @@ def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key
     for warning in result.warnings:
         st.warning(warning)
     if result.quadrant.empty:
-        st.info('No shrinkage result for this scope.')
+        if result.lengths.empty:
+            st.info('No shrinkage result for this scope.')
+            return
+        # Withheld because the design does not fit: the measured sizes still
+        # show how the quadrants compare with each other.
+        st.markdown('**Measured quadrant sizes**')
+        _show(result.lengths)
+        spread_x = (result.lengths['X Measured (mm)'].max()
+                    - result.lengths['X Measured (mm)'].min()) * 1000
+        spread_y = (result.lengths['Y Measured (mm)'].max()
+                    - result.lengths['Y Measured (mm)'].min()) * 1000
+        st.caption(f'Largest minus smallest quadrant: {spread_x:.0f} µm in X, '
+                   f'{spread_y:.0f} µm in Y. This needs no design.')
         return
 
     panel = result.full_panel.iloc[0]
@@ -79,7 +92,7 @@ def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key
         _show(result.outliers)
     st.plotly_chart(
         plot_shrinkage_quiver(result, f'Quadrant vs panel average — {group.label}'),
-        use_container_width=True, key=f'{key}_quiver')
+        **full_width(st.plotly_chart), key=f'{key}_quiver')
 
     with st.expander('Compare the three methods'):
         _show(group.compare(settings))

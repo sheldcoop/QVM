@@ -21,7 +21,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.views.base import BaseView
+from src.views.base import BaseView, full_width
 from src.chart_helpers import apply_dark_layout
 from src.panel_mapping import get_rounded_rect_path
 from src import theme
@@ -249,12 +249,12 @@ class CoreShrinkageView(BaseView):
                           key=f"cs_dm_scale_{lbl}",
                           help="Displacements are tiny vs the panel; magnify to see the pattern.")
         st.plotly_chart(self._distortion_fig(dev, nominal, lbl, scale),
-                        use_container_width=True)
+                        **full_width(st.plotly_chart))
 
         st.markdown("---")
         st.caption("**3D warp** — height = per-dot deviation (µm). Reveals panel bow/dish; "
                    "drag to rotate.")
-        st.plotly_chart(self._warp_surface(dev, lbl), use_container_width=True)
+        st.plotly_chart(self._warp_surface(dev, lbl), **full_width(st.plotly_chart))
 
     def _panel_shapes(self, nominal):
         """Four equal copper quarter blocks separated by a clean cross-gap, drawn

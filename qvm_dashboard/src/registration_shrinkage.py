@@ -66,6 +66,12 @@ _QUADRANTS = ("UL", "LL", "LR", "UR")
 _TL, _BL, _BR, _TR = "1", "2", "3", "4"
 _DEFAULT_OUTLIER_PPM = 50.0
 _DEFAULT_OUTLIER_UM = 50.0
+# A quadrant further than this from its design size is not shrinkage but a wrong
+# design (another product) or a wrong file; real shrinkage stays far below it.
+_DEFAULT_MAX_PLAUSIBLE_PPM = 2000.0
+# Measured points closer together than this fraction of the design span are not
+# panel positions at all (each site reported in its own local coordinates).
+_COLLAPSED_FRACTION = 0.01
 _OUTLIER_COLUMNS = [
     "Quadrant", "X Deviation from FP (ppm)", "Y Deviation from FP (ppm)", "Alert",
 ]
@@ -91,15 +97,20 @@ class ShrinkageResult:
     method: str = METHOD_COMPANY
     details: pd.DataFrame = field(default_factory=pd.DataFrame)
     points: pd.DataFrame = field(default_factory=pd.DataFrame)
+    # Measured against design quadrant size. Also filled when the result is
+    # withheld, so the reader can see why (and still judge quadrant against quadrant).
+    lengths: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @property
     def method_label(self) -> str:
         return METHOD_LABELS.get(self.method, self.method)
 
 
-def _empty(method: str, warnings: List[str]) -> ShrinkageResult:
+def _empty(method: str, warnings: List[str],
+           lengths: Optional[pd.DataFrame] = None) -> ShrinkageResult:
     return ShrinkageResult(
-        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), warnings, method)
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), warnings, method,
+        lengths=lengths if lengths is not None else pd.DataFrame())
 
 
 # --------------------------------------------------------------------- settings
@@ -316,6 +327,68 @@ def _assemble(
     )
 
 
+def _span(points: PointMap, names: List[str]) -> tuple:
+    xs = [points[n]["x"] for n in names]
+    ys = [points[n]["y"] for n in names]
+    return max(xs) - min(xs), max(ys) - min(ys)
+
+
+def _plausibility(design: PointMap, measured: PointMap,
+                  max_plausible_ppm: Optional[float]) -> tuple:
+    """(reason to withhold the result or None, measured-vs-design quadrant sizes).
+
+    Two situations make every shrinkage number meaningless, and both occur in
+    real files:
+
+    * the file holds each site in its own local coordinates, so all points sit
+      within a few microns of each other and there is no panel geometry;
+    * the design positions are those of another product, so the "shrinkage" is
+      really the difference between two layouts.
+    """
+    common = [name for name in design if name in measured]
+    if len(common) >= 2:
+        design_span, measured_span = _span(design, common), _span(measured, common)
+        if all(m <= d * _COLLAPSED_FRACTION for m, d in zip(measured_span, design_span) if d > 0):
+            return (
+                f"The measured positions of all points lie within "
+                f"{max(measured_span) * 1000:.0f} um of each other, while the design spans "
+                f"{design_span[0]:.1f} x {design_span[1]:.1f} mm. This file holds positions "
+                f"relative to each site, not positions on the panel, so shrinkage cannot be "
+                f"calculated from it. Export the measurement in panel coordinates.",
+                pd.DataFrame())
+
+    rows = []
+    for quadrant in _QUADRANTS:
+        design_corners, measured_corners = _corners(design, quadrant), _corners(measured, quadrant)
+        if design_corners is None or measured_corners is None:
+            continue
+        d, m = _company_lengths(design_corners), _company_lengths(measured_corners)
+        if d["x"] <= 0.0 or d["y"] <= 0.0:
+            continue
+        rows.append({
+            "Quadrant": quadrant,
+            "X Measured (mm)": m["x"], "X Design (mm)": d["x"],
+            "X Difference (ppm)": _to_ppm(m["x"] / d["x"]),
+            "Y Measured (mm)": m["y"], "Y Design (mm)": d["y"],
+            "Y Difference (ppm)": _to_ppm(m["y"] / d["y"]),
+        })
+    lengths = pd.DataFrame(rows).round(3)
+    if lengths.empty or max_plausible_ppm is None:
+        return None, lengths
+
+    worst = max(lengths["X Difference (ppm)"].abs().max(), lengths["Y Difference (ppm)"].abs().max())
+    if worst <= float(max_plausible_ppm):
+        return None, lengths
+    return (
+        f"The measured quadrant size ({lengths['X Measured (mm)'].mean():.3f} x "
+        f"{lengths['Y Measured (mm)'].mean():.3f} mm) does not match the design "
+        f"({lengths['X Design (mm)'].mean():.3f} x {lengths['Y Design (mm)'].mean():.3f} mm): "
+        f"up to {worst:.0f} ppm apart, more than shrinkage can explain (limit "
+        f"{float(max_plausible_ppm):.0f} ppm). The design positions are probably not those "
+        f"of this product, so shrinkage is not reported. The measured sizes are listed below.",
+        lengths)
+
+
 def _quadrant_row(quadrant: str, design_len: Dict[str, float], scale_x: float, scale_y: float,
                   measured_len: Optional[Dict[str, float]] = None) -> dict:
     """One quadrant line; Delta is the change over the quadrant's design length."""
@@ -345,8 +418,14 @@ def compute_shrinkage(
     outlier_ppm: float = _DEFAULT_OUTLIER_PPM,
     usl_ppm: Optional[float] = None,
     outlier_um: float = _DEFAULT_OUTLIER_UM,
+    max_plausible_ppm: Optional[float] = _DEFAULT_MAX_PLAUSIBLE_PPM,
 ) -> ShrinkageResult:
-    """Shrinkage of one group of measurements against its design, by ``method``."""
+    """Shrinkage of one group of measurements against its design, by ``method``.
+
+    No numbers are reported when the measurement cannot be a panel measured
+    against this design: positions that are local to each site, or a quadrant
+    size further than ``max_plausible_ppm`` from the design.
+    """
     if method not in METHOD_LABELS:
         raise ValueError(f"Unknown shrinkage method '{method}'. Use one of {list(METHOD_LABELS)}.")
     if measured_df.empty:
@@ -359,6 +438,10 @@ def compute_shrinkage(
     if not design:
         return _empty(method, ["No design positions configured."])
     measured = _point_map(measured_df, location_col, x_col, y_col)
+
+    refusal, lengths = _plausibility(design, measured, max_plausible_ppm)
+    if refusal is not None:
+        return _empty(method, [refusal], lengths)
 
     warnings: List[str] = []
     rows: List[dict] = []
@@ -404,7 +487,9 @@ def compute_shrinkage(
             "Shrinkage X (ppm)": float(quadrant_frame["Shrinkage X (ppm)"].mean()),
             "Shrinkage Y (ppm)": float(quadrant_frame["Shrinkage Y (ppm)"].mean()),
         }
-        return _assemble(method, rows, full_panel, warnings, outlier_ppm, usl_ppm)
+        result = _assemble(method, rows, full_panel, warnings, outlier_ppm, usl_ppm)
+        result.lengths = lengths
+        return result
 
     used = [name for q in quadrant_frame["Quadrant"] for name in _quadrant_locations(q)]
     names, design_xy, measured_xy = _matched(design, measured, used)
@@ -446,7 +531,9 @@ def compute_shrinkage(
         "Shrinkage X (ppm)": _to_ppm(scales[0]),
         "Shrinkage Y (ppm)": _to_ppm(scales[1]),
     }
-    return _assemble(method, rows, full_panel, warnings, outlier_ppm, usl_ppm, details, points)
+    result = _assemble(method, rows, full_panel, warnings, outlier_ppm, usl_ppm, details, points)
+    result.lengths = lengths
+    return result
 
 
 def compute_distance_shrinkage(
@@ -457,11 +544,13 @@ def compute_distance_shrinkage(
     y_col: str = "Coord. Y",
     outlier_ppm: float = _DEFAULT_OUTLIER_PPM,
     usl_ppm: Optional[float] = None,
+    max_plausible_ppm: Optional[float] = _DEFAULT_MAX_PLAUSIBLE_PPM,
 ) -> ShrinkageResult:
     """The company (distance) method. Kept as a named entry point."""
     return compute_shrinkage(
         measured_df, nominal_coords, method=METHOD_COMPANY, location_col=location_col,
-        x_col=x_col, y_col=y_col, outlier_ppm=outlier_ppm, usl_ppm=usl_ppm)
+        x_col=x_col, y_col=y_col, outlier_ppm=outlier_ppm, usl_ppm=usl_ppm,
+        max_plausible_ppm=max_plausible_ppm)
 
 
 def compare_methods(
@@ -543,6 +632,7 @@ def compute_shrinkage_by_group(
     outlier_ppm = float(cfg.get("outlier_ppm", _DEFAULT_OUTLIER_PPM))
     outlier_um = float(cfg.get("outlier_um", _DEFAULT_OUTLIER_UM))
     usl_ppm = cfg.get("usl_ppm")
+    max_plausible_ppm = cfg.get("max_plausible_ppm", _DEFAULT_MAX_PLAUSIBLE_PPM)
 
     present = [c for c in group_cols if c in measured_df.columns]
     if present and not measured_df.empty:
@@ -573,6 +663,6 @@ def compute_shrinkage_by_group(
             result = compute_shrinkage(
                 frame, design, method=method, location_col=columns[0], x_col=columns[1],
                 y_col=columns[2], outlier_ppm=outlier_ppm, usl_ppm=usl_ppm,
-                outlier_um=outlier_um)
+                outlier_um=outlier_um, max_plausible_ppm=max_plausible_ppm)
         out.append(GroupShrinkage(labels, process, point, design, result, frame, columns, note))
     return out

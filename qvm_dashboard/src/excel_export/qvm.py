@@ -237,6 +237,12 @@ def _write_shrinkage_summary_sheet(
                 result.outliers.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
                 row += len(result.outliers) + 2
 
+        if result.quadrant.empty and not result.lengths.empty:
+            ws.cell(row=row, column=1, value='Measured quadrant sizes (no shrinkage reported)')
+            row += 1
+            result.lengths.to_excel(writer, sheet_name=sheet_name, index=False, startrow=row - 1)
+            row += len(result.lengths) + 2
+
         if result.warnings:
             ws.cell(row=row, column=1, value='Warnings')
             row += 1

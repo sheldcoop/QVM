@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 
-from .base import BaseView
+from .base import BaseView, full_width
 from src.chart_helpers import get_rings
 from src.visuals import plot_vtp_bullseye, plot_vtp_site_bars
 
@@ -64,8 +64,8 @@ class RegistrationScatterView(BaseView):
         col_left, col_right = st.columns(2)
         with col_left:
             fig_bull = plot_vtp_bullseye(filtered_df, self.settings)
-            st.plotly_chart(fig_bull, use_container_width=True)
+            st.plotly_chart(fig_bull, **full_width(st.plotly_chart))
 
         with col_right:
             fig_bars = plot_vtp_site_bars(filtered_df, self.settings)
-            st.plotly_chart(fig_bars, use_container_width=True)
+            st.plotly_chart(fig_bars, **full_width(st.plotly_chart))

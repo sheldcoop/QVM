@@ -144,6 +144,26 @@ short lengths inside the quadrants and not the long distance across the panel.
   `settings.yaml`. The company and centre-based methods only need the
   distances, which are the same for all four C4F datasets.
 
+## What the first real files showed
+
+Two Via-to-Pad files of one panel (front and back) were run through all three
+methods. Neither gave a shrinkage number, for two different reasons, and both
+are now recognised by the app instead of being reported as shrinkage.
+
+| File | What it contains | What a blind calculation would say | What the app says now |
+|---|---|---|---|
+| Front | Every via within 9 µm of (0, 0): each site measured in its own local coordinates | −999,994 ppm | Positions are relative to each site; export in panel coordinates |
+| Back | Real panel positions; quadrants of 230.67 × 194.02 mm | −7,873 ppm in X, +641 ppm in Y | Does not match the configured design (232.5 × 193.9 mm); design is probably of another product |
+
+What can be said about the back file without a design: the four quadrants
+measure 230.675, 230.671, 230.661 and 230.672 mm in X (14 µm between largest
+and smallest) and 194.028, 194.018, 194.023 and 194.028 mm in Y (10 µm). The
+affine fit also shows the panel lay rotated by 0.058° on the machine, which
+is harmless (0.5 ppm).
+
+To get shrinkage for that product, its 16 design positions have to be added to
+`REGISTRATION_SHRINKAGE.DESIGNS`.
+
 ## Limits of this comparison
 
 - The example panels are constructed, not measured. They show what each method

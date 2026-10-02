@@ -222,6 +222,14 @@ Everything is **measured minus design** (negative = shrink).
   same shape and differ by a shift, because a shift changes none of the three
   results; if they differ in shape, the app shows the reason and no numbers.
   The Core Shrinkage design is never used.
+- **When no number is shown.** Two situations make any shrinkage figure
+  meaningless, so the app explains instead of reporting one:
+  - *Positions relative to each site.* All points lie within a few microns of
+    each other: the file was exported with each site in its own local
+    coordinates, so it contains no panel geometry. Export in panel coordinates.
+  - *Design of another product.* A quadrant is more than `max_plausible_ppm`
+    from its design size. The measured quadrant sizes are still listed, with
+    the spread between quadrants, which needs no design.
 - **Which centre.** The via centre by default; `measured_point` switches a
   file type to the pad centre.
 - **Limit.** None by default. Setting `usl_ppm` adds a Pass / Fail to every
@@ -390,6 +398,7 @@ Everything the Shrinkage tab of the Pad-to-Via / Via-to-Pad views uses.
 | `outlier_ppm` | A quadrant further than this from the panel average raises an alert |
 | `usl_ppm` | Optional pass/fail limit on the size of the shrinkage; `null` = report only |
 | `outlier_um` | Affine method: a point with a larger residual is rejected |
+| `max_plausible_ppm` | A quadrant further than this from its design size is treated as a wrong design or file, not as shrinkage, and no result is reported. `null` switches the check off. |
 
 ### PLOT_SETTINGS, CHART_HEIGHTS, PANEL_VIEW, FIGURE_SETTINGS, COLORS, EXCEL_EXPORT
 Vector-multiplier slider range; per-chart heights in pixels; panel-map geometry

@@ -179,6 +179,9 @@ REGISTRATION_SHRINKAGE:
   outlier_ppm: 50          # a quadrant this far from the panel average raises an alert
   usl_ppm: null            # optional pass/fail limit on |shrinkage| in ppm; null = report only
   outlier_um: 50           # affine method: a point with a larger residual is an outlier
+  # A quadrant further than this from its design size is not shrinkage: the design is
+  # that of another product, or the file is wrong. No result is reported then.
+  max_plausible_ppm: 2000
   active_design: C4F       # which block of DESIGNS applies to the uploaded files
   # When the data's Build Up / file type has no entry below (for example a file name
   # without a Build Up), use another configured design. Only done when all configured

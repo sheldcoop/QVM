@@ -446,3 +446,45 @@ def test_no_stand_in_when_configured_designs_differ_in_shape(settings):
     assert group.result.quadrant.empty and 'differ in shape' in group.result.warnings[0]
     core = settings['CORE_SHRINKAGE']['NOMINAL_COORDS']
     assert resolve_design(settings, 'Unknown', 'Via to Pad')[0] != core
+
+
+# --------------------------------------------- lessons from the first real files
+def test_site_local_positions_are_refused_not_reported(settings):
+    """Real case: a file whose every site is measured in its own local frame,
+    so all 16 'positions' are within a few microns of (0, 0)."""
+    design = _design(settings, 'BU-01', 'Via to Pad')
+    rng = np.random.default_rng(1)
+    local = _frame({name: rng.normal(0, 0.003, 2) for name in design})
+    for method in METHOD_LABELS:
+        result = compute_shrinkage(local, design, method=method)
+        assert result.quadrant.empty and result.full_panel.empty and result.lengths.empty
+        assert 'positions relative to each site' in result.warnings[0]
+        assert 'Export the measurement in panel coordinates' in result.warnings[0]
+    assert compare_methods(local, design).empty
+
+
+def test_design_of_another_product_is_refused_with_the_measured_sizes(settings):
+    """Real case: quadrants of 230.67 x 194.02 mm measured against a 232.5 x 193.9 design
+    would read as -7900 ppm of 'shrinkage'."""
+    design = _design(settings, 'BU-01', 'Via to Pad')
+    other = {}
+    for name, xy in _points(design).items():
+        corner = _points(design)[f'{name[:2]}_2']  # bottom-left of the quadrant
+        other[name] = corner + (xy - corner) * np.array([230.67 / 232.5, 194.02 / 193.9])
+
+    result = compute_distance_shrinkage(_frame(other), design)
+    assert result.quadrant.empty and result.full_panel.empty
+    message = result.warnings[0]
+    assert 'does not match the design (232.500 x 193.900 mm)' in message
+    assert '230.670 x 194.020 mm' in message and 'limit 2000 ppm' in message
+    assert list(result.lengths['Quadrant']) == ['UL', 'LL', 'LR', 'UR']
+    assert result.lengths['X Difference (ppm)'].tolist() == pytest.approx([-7870.97] * 4, abs=0.1)
+    assert result.lengths['Y Difference (ppm)'].tolist() == pytest.approx([618.88] * 4, abs=0.1)
+
+    # The limit is a setting: with it off, the numbers come back (and say what they are).
+    forced = compute_distance_shrinkage(_frame(other), design, max_plausible_ppm=None)
+    assert _panel(forced)['Shrinkage X (ppm)'] == pytest.approx(-7870.97, abs=0.1)
+    # Ordinary shrinkage is nowhere near the limit.
+    fine = compute_distance_shrinkage(_frame({n: xy * 0.9992 for n, xy in _points(design).items()}), design)
+    assert _panel(fine)['Shrinkage X (ppm)'] == pytest.approx(-800.0, abs=0.01)
+    assert not fine.lengths.empty

@@ -34,6 +34,7 @@ def test_every_key_the_code_reads_is_defined_in_settings(settings):
     assert read == {
         'DESIGNS', 'active_design', 'measured_point', 'default_method',
         'outlier_ppm', 'outlier_um', 'usl_ppm', 'fallback_to_equivalent_design',
+        'max_plausible_ppm',
     }
     assert read <= set(section), f'read but not defined: {sorted(read - set(section))}'
     assert section['active_design'] in section['DESIGNS']
