@@ -15,6 +15,7 @@ from ._shared import (
     _REGION_MAP,
     _add_panel_map,
     _fig_to_xl_image,
+    _files_sheet,
     _notify,
     _safe_sheet_name,
     _warnings_sheet,
@@ -350,6 +351,7 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
     - 'Analytics <PROC> <BU>' — one analytics sheet per process and Build Up
     - 'Shrinkage Summary' — one combined shrinkage sheet for all process/BU sections
     - 'Warnings' — parser warnings
+    - 'Files' — input-file manifest (only when ``meta['file_records']`` is set)
 
     ``warn`` is the user-facing warning sink (the app passes
     ``st.sidebar.warning``); ``None`` means log-only.
@@ -411,3 +413,9 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
 
     ws_warn = writer.book.create_sheet(_safe_sheet_name('Warnings', used_sheet_names))
     _warnings_sheet(ws_warn, warnings or [])
+
+    file_records = (meta or {}).get('file_records')
+    if file_records is not None:
+        ws_files = writer.book.create_sheet(
+            _safe_sheet_name('Files', used_sheet_names))
+        _files_sheet(ws_files, file_records)

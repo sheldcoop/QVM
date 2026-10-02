@@ -120,6 +120,12 @@ Sample files for both layers, plus the reference calculation workbook, are in
 
 Use the sidebar to upload one or more `.txt` files. Multiple files (multiple panels or sides) can be uploaded at once — they are concatenated into a combined dataset. Use the **Panel** and **Side** scope filters that appear in each view to isolate a single panel or side.
 
+Accepted text encodings are UTF-8 (with or without BOM), UTF-16 (with BOM),
+and Latin-1; the detected encoding is recorded per file. Every exported
+workbook contains a `Files` sheet listing each uploaded file, its encoding,
+parsed row count, and — for files that could not be parsed — the reason it was
+skipped, so a combined report always shows whether it is complete.
+
 Filename defaults are still supported and recommended:
 
 - Include `VTP` or `PTV` in the filename.

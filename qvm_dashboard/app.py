@@ -11,7 +11,7 @@ from src.core_shrinkage_parser import parse_cs_filename, parse_core_shrinkage_co
 from src.ingestion import ingest_uploaded_file
 from src.panel_mapping import create_four_quarters_view
 from src.parser import QVMParseError
-from src.utils import is_via_to_pad as is_via_to_pad_mask, load_settings
+from src.utils import decode_upload_bytes, is_via_to_pad as is_via_to_pad_mask, load_settings
 from src.views.core_shrinkage import CoreShrinkageView
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
@@ -50,9 +50,9 @@ def _parse_upload(name: str, data: bytes, settings: dict,
     Returns the (df, parse_warnings, ui_warnings) slice that main() consumes.
     """
     uploaded = SimpleNamespace(name=name, getvalue=lambda: data)
-    df, parse_warnings, ui_warnings, _, _ = ingest_uploaded_file(
+    df, parse_warnings, ui_warnings, _, filename_info = ingest_uploaded_file(
         uploaded, settings, file_override=file_override)
-    return df, parse_warnings, ui_warnings
+    return df, parse_warnings, ui_warnings, filename_info.get('detected_encoding', 'utf-8')
 
 
 @st.cache_data(max_entries=8, ttl=3600, show_spinner=False)
@@ -64,10 +64,11 @@ def _parse_cs_upload(name: str, data: bytes, layer: str, panel: str,
     every widget interaction, so keying on the file's bytes keeps a nav click
     from re-parsing every upload.
     """
-    cs_df = parse_core_shrinkage_content(data.decode('utf-8'), layer)
+    text, encoding = decode_upload_bytes(data)
+    cs_df = parse_core_shrinkage_content(text, layer)
     cs_df['Panel'] = panel
     cs_df['grid_id'] = cs_df['location'].map(grid_mapping)
-    return cs_df
+    return cs_df, encoding
 
 
 def load_css(file_path: str, settings: dict = None) -> None:
@@ -395,6 +396,17 @@ def main() -> None:
     all_data = []
     all_warnings = []
     cs_data = []
+    # Input-to-output traceability: one record per upload, including files
+    # that fail to parse, so every workbook manifest can prove completeness.
+    file_records = []
+
+    def _record(filename, pipeline, encoding, rows, status, detail=''):
+        file_records.append({
+            'filename': filename, 'pipeline': pipeline,
+            'encoding': encoding or 'unknown', 'rows': int(rows),
+            'status': status, 'detail': detail,
+        })
+
     if uploaded_files:
         for file_index, file in enumerate(uploaded_files):
             logger.info('Parsing file: %s', file.name)
@@ -405,32 +417,53 @@ def main() -> None:
             cs_info = parse_cs_filename(file.name)
             if cs_info['is_core_shrinkage']:
                 try:
-                    cs_data.append(_parse_cs_upload(
-                        file.name, file.getvalue(), cs_info['layer'],
-                        cs_info['Panel Number'], settings.get('GRID_MAPPING', {})))
+                    raw = file.getvalue()
+                    cs_df, cs_encoding = _parse_cs_upload(
+                        file.name, raw, cs_info['layer'],
+                        cs_info['Panel Number'], settings.get('GRID_MAPPING', {}))
+                    cs_data.append(cs_df)
+                    _record(file.name, 'Core Shrinkage', cs_encoding,
+                            len(cs_df), 'ok')
                     logger.info('Parsed Core Shrinkage file %s: layer=%s panel=%s',
                                 file.name, cs_info['layer'], cs_info['Panel Number'])
                 except UnicodeDecodeError as e:
+                    _record(file.name, 'Core Shrinkage', 'unknown',
+                            0, 'skipped', f'not a valid text file ({e})')
                     logger.warning('Decode failed for %s: %s', file.name, e)
                     st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
                 except Exception as e:
+                    try:
+                        _, enc = decode_upload_bytes(file.getvalue())
+                    except Exception:
+                        enc = 'unknown'
+                    _record(file.name, 'Core Shrinkage', enc,
+                            0, 'skipped', f'{type(e).__name__}: {e}')
                     logger.warning('Core Shrinkage parse failed for %s: %s', file.name, e)
                     st.sidebar.error(f"❌ `{file.name}`: {e}")
                 continue
 
             try:
                 file_override = file_overrides[file_index] if file_index < len(file_overrides) else {}
-                df, file_warnings, ui_warnings = _parse_upload(
-                    file.name, file.getvalue(), settings, file_override)
+                raw = file.getvalue()
+                df, file_warnings, ui_warnings, encoding = _parse_upload(
+                    file.name, raw, settings, file_override)
                 all_warnings.extend(f"[{file.name}] {w}" for w in file_warnings)
+                _record(file.name, 'QVM', encoding, len(df), 'ok')
                 logger.info('Parsed %s: %d rows, process=%s',
                             file.name, len(df),
                             df['Process'].iloc[0] if not df.empty else 'unknown')
             except QVMParseError as e:
+                try:
+                    _, enc = decode_upload_bytes(file.getvalue())
+                except Exception:
+                    enc = 'unknown'
+                _record(file.name, 'QVM', enc, 0, 'skipped', str(e))
                 logger.warning('Parse failed for %s: %s', file.name, e)
                 st.sidebar.error(f"❌ `{file.name}`: {e}")
                 continue
             except UnicodeDecodeError as e:
+                _record(file.name, 'QVM', 'unknown', 0, 'skipped',
+                        f'not a valid text file ({e})')
                 logger.warning('Decode failed for %s: %s', file.name, e)
                 st.sidebar.error(f"❌ `{file.name}`: not a valid text file ({e}).")
                 continue
@@ -440,6 +473,9 @@ def main() -> None:
             all_data.append(df)
 
     st.session_state['parse_warnings'] = all_warnings
+    # Every export below receives meta, so the workbooks can carry the
+    # Files manifest (processed + skipped uploads) for traceability.
+    meta['file_records'] = file_records
 
     main_view = render_nav_buttons(
         ["Panel Map", "Pad to Via", "Via to Pad", "Core Shrinkage"],

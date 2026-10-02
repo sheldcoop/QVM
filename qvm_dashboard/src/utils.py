@@ -86,6 +86,31 @@ def calculate_annular_ring(df: pd.DataFrame, settings: Dict) -> pd.DataFrame:
     return out
 
 
+def decode_upload_bytes(data: bytes) -> tuple:
+    """Decode uploaded file bytes to text, tolerating machine-export encodings.
+
+    Detection order (first success wins):
+    1. UTF-8 (BOM stripped when present) — preserves current behaviour for
+       every file that already parses today.
+    2. UTF-16, only when a UTF-16 BOM is present.
+    3. Latin-1 (single-byte superset of ASCII; always succeeds).
+
+    Returns (text, encoding_label) where the label is one of
+    ``utf-8`` / ``utf-8-sig`` / ``utf-16`` / ``latin-1``. Callers must record
+    the label so a workbook can show how each file was read.
+    """
+    import codecs
+    if data.startswith(codecs.BOM_UTF8):
+        return data.decode('utf-8-sig'), 'utf-8-sig'
+    try:
+        return data.decode('utf-8'), 'utf-8'
+    except UnicodeDecodeError:
+        pass
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode('utf-16'), 'utf-16'
+    return data.decode('latin-1'), 'latin-1'
+
+
 def resolve_columns(settings: dict, keys: Iterable[str]) -> dict:
     """Resolve a set of column-name aliases from settings['COLUMN_NAMES'].
 

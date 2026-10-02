@@ -201,6 +201,58 @@ def _warnings_sheet(ws, warnings: list) -> None:
             ws.cell(row=i, column=1, value=msg)
 
 
+def _safe_text(value) -> str:
+    """Neutralise Excel formula injection: values starting with ``= + - @``
+    (or a tab/CR) are stored with a leading apostrophe so Excel shows them
+    as text instead of evaluating them as formulas."""
+    text = '' if value is None else str(value)
+    if text[:1] in ('=', '+', '-', '@', '\t', '\r', '\n'):
+        return "'" + text
+    return text
+
+
+#: Columns of the Files manifest sheet (input-to-output traceability).
+FILES_SHEET_COLUMNS = ['Filename', 'Pipeline', 'Encoding', 'Rows', 'Status', 'Detail']
+
+
+def _files_sheet(ws, file_records: list) -> None:
+    """Write the input-file manifest: every upload that fed (or was rejected
+    from) this workbook, with its detected encoding, parsed row count, and
+    — for skipped files — the rejection reason.
+
+    All cells go through :func:`_safe_text` so hostile filenames cannot
+    become live formulas.
+    """
+    try:
+        import openpyxl.styles as xl_styles
+    except ImportError:
+        return
+
+    header_fill = xl_styles.PatternFill(fill_type='solid', fgColor='404040')
+    header_font = xl_styles.Font(bold=True, color='FFFFFF')
+    widths = {'A': 48, 'B': 12, 'C': 12, 'D': 8, 'E': 10, 'F': 70}
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    for i, name in enumerate(FILES_SHEET_COLUMNS, start=1):
+        cell = ws.cell(row=1, column=i, value=name)
+        cell.fill = header_fill
+        cell.font = header_font
+
+    for r, rec in enumerate(file_records or [], start=2):
+        rec = rec or {}
+        ws.cell(row=r, column=1, value=_safe_text(rec.get('filename', '')))
+        ws.cell(row=r, column=2, value=_safe_text(rec.get('pipeline', '')))
+        ws.cell(row=r, column=3, value=_safe_text(rec.get('encoding', '')))
+        ws.cell(row=r, column=4, value=rec.get('rows', 0))
+        ws.cell(row=r, column=5, value=_safe_text(rec.get('status', '')))
+        ws.cell(row=r, column=6, value=_safe_text(rec.get('detail', '')))
+
+    if not file_records:
+        ws.cell(row=2, column=1,
+                value='No source files recorded for this export.')
+
+
 def _safe_sheet_name(sheet_name: str, existing: set[str]) -> str:
     """Return an Excel-safe, unique worksheet name (<=31 chars)."""
     base = re.sub(r'[\[\]:*?/\\]', '-', str(sheet_name).strip()) or 'Sheet'

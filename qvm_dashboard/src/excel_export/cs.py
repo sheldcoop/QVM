@@ -7,7 +7,7 @@ from src.core_shrinkage_parser import (
     compute_centered_deviation_table, compute_scale_factor,
     compute_shrinkage_summary, layer_frame, qp_shrinkage_um, summary_frame,
 )
-from ._shared import _warnings_sheet
+from ._shared import _files_sheet, _safe_sheet_name, _warnings_sheet
 
 
 def write_core_shrinkage_excel(writer: pd.ExcelWriter,
@@ -36,6 +36,8 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
     - 'Residuals - Back'        same                              (when nominal_coords set)
     - 'Report'                  job metadata + main measurement table
     - 'Warnings'                parser warnings
+    - 'Files'                   input-file manifest (only when
+                                ``meta['file_records']`` is set)
 
     Units: deviations/residuals/QP in µm, shrinkage in ppm (rationalised).
     """
@@ -110,3 +112,10 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
     # Warnings sheet
     ws_warn = writer.book.create_sheet('Warnings')
     _warnings_sheet(ws_warn, warnings or [])
+
+    # Files manifest (input-to-output traceability) — only when the caller
+    # supplies records, so existing callers see no layout change.
+    file_records = (meta or {}).get('file_records')
+    if file_records is not None:
+        ws_files = writer.book.create_sheet('Files')
+        _files_sheet(ws_files, file_records)
