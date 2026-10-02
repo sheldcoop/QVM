@@ -242,6 +242,9 @@ side-by-side Front/Back table when both are loaded, and — when
 `NOMINAL_COORDS` is configured — `CS Summary`, `QP Shrinkage`, `Scale Factor`,
 `Affine`, `Coordinates` and `Residuals` sheets per layer, plus `Report` and
 `Warnings`. Deviations and residuals are in µm, shrinkage in ppm.
+Shrinkage ppm uses the measured − nominal convention everywhere in the app
+(negative = panel shrank, positive = panel expanded), matching the
+`Core Shrinkage Calculation.xlsx` reference workbook.
 
 ## Configuration (`config/settings.yaml`)
 

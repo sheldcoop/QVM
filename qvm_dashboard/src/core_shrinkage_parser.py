@@ -279,8 +279,10 @@ def compute_scale_factor(df: pd.DataFrame) -> pd.DataFrame:
     Returns a 5-row DataFrame (4 quadrants + Overall):
     Quadrant | X Scale | Y Scale | X Shrinkage (ppm) | Y Shrinkage (ppm)
 
-    Scale = measured_pitch / nominal_pitch; ppm = (1 − scale) × 1,000,000.
-    Positive ppm means the panel shrank; negative means it expanded.
+    Scale = measured_pitch / nominal_pitch; ppm = (scale − 1) × 1,000,000.
+    Negative ppm means the panel shrank; positive means it expanded
+    (measured − nominal, matching the registration path and the customer
+    reference workbook).
     Returns empty DataFrame if QP data is unavailable.
     """
     qp = compute_qp_shrinkage(df)
@@ -301,8 +303,8 @@ def compute_scale_factor(df: pd.DataFrame) -> pd.DataFrame:
             'Quadrant':           r['Quadrant'],
             'X Scale':            round(float(x_scale), 6),
             'Y Scale':            round(float(y_scale), 6),
-            'X Shrinkage (ppm)':  round((1.0 - float(x_scale)) * 1e6, 1),
-            'Y Shrinkage (ppm)':  round((1.0 - float(y_scale)) * 1e6, 1),
+            'X Shrinkage (ppm)':  round((float(x_scale) - 1.0) * 1e6, 1),
+            'Y Shrinkage (ppm)':  round((float(y_scale) - 1.0) * 1e6, 1),
         })
 
     result = pd.DataFrame(rows)

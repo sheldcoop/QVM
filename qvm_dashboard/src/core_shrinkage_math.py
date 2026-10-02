@@ -108,8 +108,8 @@ def _classify(Sx_ppm: float, Sy_ppm: float, max_res_um: float, cfg: dict) -> str
 
 
 def _to_ppm(scale: float) -> float:
-    """Scale factor → shrinkage ppm. + = shrink, − = expand."""
-    return (1.0 - float(scale)) * 1e6
+    """Scale factor → shrinkage ppm (measured − nominal: − = shrink, + = expand)."""
+    return (float(scale) - 1.0) * 1e6
 
 
 def _rigid_fit(nom_arr: np.ndarray, meas_arr: np.ndarray):

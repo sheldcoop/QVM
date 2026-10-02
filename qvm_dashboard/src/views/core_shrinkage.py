@@ -135,7 +135,7 @@ class CoreShrinkageView(BaseView):
             else:
                 st.caption(f"Rotation {s['rotation_deg']:.3f}° · Shear {s['shear_deg']:.3f}° · "
                            f"{s['n_points']} fiducials · spec ±{usl:.0f} ppm · "
-                           f"sign: **+ shrink / − expand**.")
+                           f"sign: **− shrink / + expand** (measured − nominal).")
 
             st.dataframe(self._styled_residuals(ldf, nominal, a),
                          use_container_width=True, hide_index=True)
@@ -162,7 +162,7 @@ class CoreShrinkageView(BaseView):
         with t_global:
             st.caption("Whole-panel best-fit. Translation = datum offset (not a defect); "
                        "robust ppm excludes flagged outlier dots. "
-                       "Shrinkage ppm sign: **+ shrink / − expand**.")
+                       "Shrinkage ppm sign: **− shrink / + expand** (measured − nominal).")
             cols = st.columns(len(layers))
             for col, (lbl, ldf) in zip(cols, layers):
                 with col:
@@ -180,7 +180,7 @@ class CoreShrinkageView(BaseView):
 
         with t_qp:
             st.caption("Per-quadrant pitch error (µm) and ppm — the uniformity check. "
-                       "Quadrants close together ⇒ uniform. ppm: **+ shrink / − expand**.")
+                       "Quadrants close together ⇒ uniform. ppm: **− shrink / + expand**.")
             for lbl, ldf in layers:
                 st.markdown(f"**{lbl}**")
                 qp = qp_shrinkage_um(ldf)
@@ -428,13 +428,14 @@ class CoreShrinkageView(BaseView):
 
 def _ppm_dir(v) -> str:
     """Format a scale-error ppm with its physical direction. The code reports
-    ppm = (1 − scale)·1e6, so positive = shrink, negative = expand."""
+    ppm = (scale − 1)·1e6 (measured − nominal), so negative = shrink,
+    positive = expand."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return "—"
     v = float(v)
     if abs(v) < 0.5:
         return "0 ppm"
-    return f"{v:+.0f} ppm ({'shrink' if v > 0 else 'expand'})"
+    return f"{v:+.0f} ppm ({'shrink' if v < 0 else 'expand'})"
 
 
 def _highlight_outlier(row):
@@ -475,10 +476,11 @@ def _method() -> None:
         st.markdown(
             "The fit's 2×2 matrix is split (QR decomposition) into rotation × per-axis "
             "scale, so **X Scale** is genuinely the X-axis stretch (SVD could swap X/Y).\n\n"
-            "**ppm = (1 − scale) × 1,000,000**\n\n"
-            "- **positive ppm → panel SHRANK** (smaller than CAM)\n"
-            "- **negative ppm → panel EXPANDED** (larger than CAM)\n\n"
-            "Example: scale 1.000465 → ppm = (1 − 1.000465)·1e6 = **−465 ppm = expansion**. "
+            "**ppm = (scale − 1) × 1,000,000** (measured − nominal, same sign as "
+            "the registration Analytics tab)\n\n"
+            "- **negative ppm → panel SHRANK** (smaller than CAM)\n"
+            "- **positive ppm → panel EXPANDED** (larger than CAM)\n\n"
+            "Example: scale 0.999535 → ppm = (0.999535 − 1)·1e6 = **−465 ppm = shrinkage**. "
             "This is the number you feed back as artwork pre-scale compensation.")
 
     with st.expander("Residual RMS (µm) — fit quality", expanded=False):
