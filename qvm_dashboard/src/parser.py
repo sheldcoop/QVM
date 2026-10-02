@@ -436,34 +436,51 @@ def _positions_are_site_local(observed: List[Tuple[float, float]]) -> bool:
     return (max(xs) - min(xs)) < _SITE_LOCAL_SPAN_MM and (max(ys) - min(ys)) < _SITE_LOCAL_SPAN_MM
 
 
-def _assign_locations_without_positions(sites: List[Dict[str, Any]], grid_mapping: dict,
+def _assign_locations_without_positions(sites: List[Dict[str, Any]], settings: dict,
                                         warnings: List[str]) -> None:
-    """Name the sites from the labels in the file, because positions cannot.
+    """Name the sites when positions cannot (all positions within 1 mm).
 
-    Labels such as ``LL2_Via`` or ``Via_UL_3`` say where a site is and are used.
-    Labels such as ``Via[1,1][1,2]`` do not: those sites keep their label, get
-    no Grid ID, and nothing is guessed. DX / DY / SC are unaffected either way.
+    1. Labels that say where a site is (``LL2_Via``, ``Via_UL_3``) are used.
+    2. Otherwise the sites are taken to be in the measurement order defined in
+       ``POSITIONAL_MAPPING`` (settings.yaml): first block = first Grid ID.
+       Blocks beyond the defined order get no Grid ID.
+
+    DX / DY / SC are unaffected either way.
     """
+    grid_mapping = settings.get('GRID_MAPPING', {})
+    by_grid = {str(grid): location for location, grid in grid_mapping.items()}
+    order = [str(grid) for grid in (settings.get('POSITIONAL_MAPPING') or [])]
+
     hints = [s.get('location_hint', '') for s in sites]
-    usable = all(hints) and len(set(hints)) == len(hints)
+    named = all(hints) and len(set(hints)) == len(hints)
+    unplaced = 0
     for i, s in enumerate(sites):
-        if usable:
-            s['location'] = hints[i]
-            s['grid_id'] = int(grid_mapping[hints[i]]) if hints[i] in grid_mapping else None
+        if named:
+            location = hints[i]
+        elif i < len(order) and order[i] in by_grid:
+            location = by_grid[order[i]]
         else:
+            location = ''
+        if location:
+            s['location'] = location
+            s['grid_id'] = int(grid_mapping[location]) if location in grid_mapping else None
+        else:
+            unplaced += 1
             s['location'] = s.get('label_hint') or f'Site {i + 1}'
             s['grid_id'] = None
-    if usable:
-        msg = ('All site positions in this file lie within 1 mm of each other (each site was '
-               'exported in its own local coordinates). Site names were taken from the labels '
-               'in the file instead of from positions. Shrinkage and position-based charts '
-               'are not available for this file.')
+
+    start = ('All site positions in this file lie within 1 mm of each other (each site was '
+             'exported in its own local coordinates), so sites cannot be told apart by position. ')
+    if named:
+        msg = start + 'Site names were taken from the labels in the file.'
     else:
-        msg = ('All site positions in this file lie within 1 mm of each other (each site was '
-               'exported in its own local coordinates), and its labels do not name the sites '
-               '(UL_1 ... UR_4). Sites are listed in file order without Grid ID. DX, DY and SC '
-               'are valid; shrinkage and position-based charts are not available. Export the '
-               'file in panel coordinates to get them.')
+        msg = start + ('Grid IDs were assigned from the measurement order defined in '
+                       'POSITIONAL_MAPPING (settings.yaml); they are correct only if this file '
+                       'follows that order.')
+        if unplaced:
+            msg += f' {unplaced} site(s) beyond that order have no Grid ID.'
+    msg += (' DX, DY and SC are valid; shrinkage and position-based charts need a file exported '
+            'in panel coordinates.')
     logger.warning(msg)
     warnings.append(msg)
 
@@ -485,7 +502,7 @@ def _assign_locations(sites: List[Dict[str, Any]], settings: dict, warnings: Lis
             observed.append((x, y))
 
     if len(observed) >= 4 and _positions_are_site_local(observed):
-        _assign_locations_without_positions(sites, grid_mapping, warnings)
+        _assign_locations_without_positions(sites, settings, warnings)
         return
 
     if len(observed) >= 4:

@@ -48,11 +48,14 @@ order. Site identity (`UL_1` ... `UR_4`) is assigned from measured coordinates.
 
 One exception: a file exported with every site in its own local coordinates
 has all positions within 1 mm of each other, so positions cannot tell the
-sites apart. Then the names in the file are used (`LL2_Via`, `Via_UL_3`). If
-the names do not say where a site is either (`Via[1,1][1,2]`), the sites are
-listed in file order without Grid ID and a warning says so; nothing is guessed.
-DX, DY and SC stay valid; shrinkage and position-based charts need a file
-exported in panel coordinates.
+sites apart. Then, in this order:
+
+1. the names in the file are used if they name the corner (`LL2_Via`, `Via_UL_3`);
+2. otherwise the sites are taken to be in the measurement order defined in
+   [`POSITIONAL_MAPPING`](#positional_mapping), and a warning says so.
+
+DX, DY and SC stay valid either way; shrinkage and position-based charts need
+a file exported in panel coordinates.
 
 ### Pad-to-Via (PtV) Format
 
@@ -314,10 +317,12 @@ Shrinkage ppm uses the measured − nominal convention everywhere in the app
 ## Configuration (`config/settings.yaml`)
 
 ### POSITIONAL_MAPPING
-Legacy compatibility mapping for historical workflows. The current unified QVM
-parser no longer assigns identity by block order; it assigns locations from
-coordinates. Keep this map consistent with your panel layout for any external
-tools that still consume it.
+The measurement order of the 16 sites: block 0 is the first site in the file.
+The parser assigns locations from coordinates and does **not** use this list
+for files with real positions. It is the fallback for files whose positions
+are all about zero (each site exported in its own local coordinates) and whose
+labels do not name the corner: those sites get their Grid ID from this order.
+Keep it equal to the order the measurement program follows.
 
 ```yaml
 POSITIONAL_MAPPING:
@@ -339,7 +344,7 @@ POSITIONAL_MAPPING:
   - "44"   # block 15 → UR_4
 ```
 
-Changing this list is no longer required for normal QVM parsing.
+It only matters for files without usable positions; such files show a warning that their Grid IDs come from this order.
 
 ### GRID_MAPPING
 Maps canonical location strings (e.g., `UL_1`) to Grid IDs (e.g., `11`). Used

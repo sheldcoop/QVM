@@ -94,7 +94,9 @@ def plot_vtp_box(df: pd.DataFrame, settings: dict) -> go.Figure:
         loc   = row.get(loc_col, '') if loc_col in df_plot.columns else ''
         grid  = row.get('grid_str', '')
         q     = row.get('quarter', '') or ''
-        parts = [p for p in [loc, f'Grid {grid}', q] if p and p != 'nan']
+        # A site without Grid ID or quarter carries NaN here; show only what exists.
+        parts = [str(p) for p in (loc, f'Grid {grid}', q)
+                 if isinstance(p, str) and p and 'nan' not in p.lower()]
         return f"{' · '.join(parts)} — {row['sc_um']:.2f} µm"
 
     hover_all = [_hover(row) for _, row in df_plot.iterrows()]

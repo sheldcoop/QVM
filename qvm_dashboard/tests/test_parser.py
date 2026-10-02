@@ -348,15 +348,37 @@ def test_site_local_positions_use_the_names_in_the_file(settings):
     assert len(warnings) == 1 and 'taken from the labels in the file' in warnings[0]
 
 
-def test_site_local_positions_without_usable_names_are_not_guessed(settings):
-    """Real case: labels 'Via[1,1][1,2]' and positions all about zero."""
+def test_site_local_positions_without_usable_names_follow_the_defined_order(settings):
+    """Real case: labels 'Via[1,1][1,2]' and positions all about zero. The sites are
+    then taken to be in the POSITIONAL_MAPPING order."""
     labels = [f'[{a},{b}][{c},{d}]' for a in (1, 2) for b in (1, 2) for c in (1, 2) for d in (1, 2)]
     content = ''.join(
         _site_block(f'Via{label}', f'Pad{label}', f'VtP{label}', 0.0001 * i, -0.0002 * i)
         for i, label in enumerate(labels))
     df, warnings = parse_qvm_content(content, settings)
-    assert len(df) == 16 and list(df['Location']) == labels
-    assert df['Grid ID'].isna().all()
+    assert list(df['Location']) == [
+        'LL_2', 'LL_1', 'LL_3', 'LL_4', 'UL_2', 'UL_1', 'UL_3', 'UL_4',
+        'LR_2', 'LR_1', 'LR_3', 'LR_4', 'UR_2', 'UR_1', 'UR_3', 'UR_4']
+    assert df['Grid ID'].tolist() == [int(g) for g in settings['POSITIONAL_MAPPING']]
     assert df['Shift (DX)'].notna().all()  # the registration values are untouched
     assert len(warnings) == 1
-    assert 'do not name the sites' in warnings[0] and 'Export the file in panel coordinates' in warnings[0]
+    assert 'assigned from the measurement order defined in POSITIONAL_MAPPING' in warnings[0]
+    assert 'correct only if this file follows that order' in warnings[0]
+
+    # More sites than the defined order: the extra ones are not guessed.
+    extra = content + _site_block('Via[3,1][1,1]', 'Pad[3,1][1,1]', 'VtP[3,1][1,1]', 0.0, 0.0)
+    more, more_warnings = parse_qvm_content(extra, settings)
+    assert pd.isna(more['Grid ID'].iloc[-1]) and more['Location'].iloc[-1] == '[3,1][1,1]'
+    assert '1 site(s) beyond that order have no Grid ID' in more_warnings[0]
+
+
+def test_box_plot_draws_when_a_site_has_no_grid_id(settings):
+    from src.visuals import plot_vtp_box
+
+    labels = [f'[{a},{b}][{c},{d}]' for a in (1, 2) for b in (1, 2) for c in (1, 2) for d in (1, 2)]
+    content = ''.join(
+        _site_block(f'Via{label}', f'Pad{label}', f'VtP{label}', 0.0001 * i, -0.0002 * i)
+        for i, label in enumerate(labels))
+    content += _site_block('Via[3,1][1,1]', 'Pad[3,1][1,1]', 'VtP[3,1][1,1]', 0.0, 0.0)
+    df, _ = parse_qvm_content(content, settings)
+    assert len(plot_vtp_box(df, settings).data) > 0
