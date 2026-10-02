@@ -129,3 +129,26 @@ def test_normal_text_untouched(settings):
               for c in row if isinstance(c.value, str)]
     assert 'C4F line 3' in values
     assert not any(v.startswith("'") for v in values)
+
+
+def test_text_columns_are_sanitised_whatever_their_dtype(settings):
+    """A Build Up or Side starting with "=" must never become a formula.
+
+    pandas 3 gives text columns the ``str`` dtype instead of ``object``; the
+    sanitiser used to check for ``object`` only and silently skipped them.
+    """
+    from src.excel_export._shared import _sanitize_frame
+
+    df = _qvm_frame(settings)
+    df['Build Up'] = ['=1+1']
+    df['Side'] = ['=HYPERLINK("http://x","F")']
+    for column in ('Build Up', 'Side'):
+        for dtype in (df[column].dtype, object):
+            cleaned = _sanitize_frame(df.astype({column: dtype}))
+            assert not str(cleaned[column].iloc[0]).startswith('='), (column, dtype)
+
+    wb = _unified_wb(settings, df, {'panel': '20'})
+    for sheet in ('Pad to Via', 'Report', 'Shrinkage Summary'):
+        formulas = [(c.coordinate, c.value) for row in wb[sheet].iter_rows() for c in row
+                    if c.data_type == 'f']
+        assert formulas == [], f'{sheet}: {formulas}'

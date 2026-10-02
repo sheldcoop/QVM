@@ -221,7 +221,9 @@ def _sanitize_frame(df):
     untouched; ordinary text is byte-identical, so display is unaffected."""
     out = df.copy()
     for col in out.columns:
-        if out[col].dtype == object:
+        # pandas 3 stores text columns as ``str`` dtype, not ``object``; both
+        # must be covered or a text cell starting with "=" is written as a formula.
+        if out[col].dtype == object or pd.api.types.is_string_dtype(out[col]):
             out[col] = [_safe_text(v) if isinstance(v, str) else v
                         for v in out[col].tolist()]
     return out
