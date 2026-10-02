@@ -1,5 +1,6 @@
-"""QVM Dashboard core module."""
-from src.parser import parse_qvm_file, QVMParseError
-from src.utils import load_settings, resolve_columns
+"""QVM Dashboard core module.
 
-__all__ = ['parse_qvm_file', 'QVMParseError', 'load_settings', 'resolve_columns']
+Deliberately import-free: chart-only consumers (e.g. `from src import theme`)
+must not pay for pandas and the full parser. Import submodules directly
+(`from src.parser import ...`, `from src.theme import ...`).
+"""

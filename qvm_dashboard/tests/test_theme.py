@@ -1,6 +1,9 @@
 """Tests for the centralized design tokens in src/theme.py."""
 
 import re
+import subprocess
+import sys
+from pathlib import Path
 
 from src import theme
 
@@ -49,3 +52,24 @@ def test_quarter_map_and_order_consistent():
     # Grid ID first digit → quarter
     assert theme.QUARTER_MAP['1'] == 'UL'
     assert theme.QUARTER_MAP['4'] == 'UR'
+
+
+def test_theme_import_does_not_pull_the_parser():
+    """Finding 12: chart modules do `from src import theme`; the package
+    init must not make them pay for pandas and the full parser."""
+    package_root = Path(__file__).resolve().parent.parent
+    probe = (
+        'from src import theme; import sys; '
+        'print("pandas" in sys.modules); print("src.parser" in sys.modules)'
+    )
+    completed = subprocess.run(
+        [sys.executable, '-c', probe],
+        cwd=package_root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode == 0, completed.stderr
+    pandas_loaded, parser_loaded = completed.stdout.split()
+    assert pandas_loaded == 'False', 'importing theme loads pandas'
+    assert parser_loaded == 'False', 'importing theme loads src.parser'
