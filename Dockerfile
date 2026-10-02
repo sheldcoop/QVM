@@ -10,8 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps: kaleido's Chrome needs these libs to launch.
+# Chart embedding renders Plotly figures to PNG via kaleido, which needs a
+# real browser binary: the libraries below let it launch, and `chromium`
+# provides it (kaleido discovers `chromium` on PATH). Without the browser,
+# every exported workbook silently degrades to placeholder graphics.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 \
