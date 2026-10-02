@@ -7,7 +7,13 @@ from src.core_shrinkage_parser import (
     compute_centered_deviation_table, compute_scale_factor,
     compute_shrinkage_summary, layer_frame, qp_shrinkage_um, summary_frame,
 )
-from ._shared import _files_sheet, _safe_sheet_name, _warnings_sheet
+from ._shared import (
+    _files_sheet,
+    _safe_sheet_name,
+    _safe_text,
+    _sanitize_frame,
+    _warnings_sheet,
+)
 
 
 def write_core_shrinkage_excel(writer: pd.ExcelWriter,
@@ -41,6 +47,11 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
 
     Units: deviations/residuals/QP in µm, shrinkage in ppm (rationalised).
     """
+    # Neutralise formula injection at the write layer (see qvm.py): every
+    # sheet below derives from these frames. Analysis stays in memory.
+    front_df = _sanitize_frame(front_df)
+    back_df = _sanitize_frame(back_df)
+
     if not front_df.empty:
         layer_frame(front_df).to_excel(writer, sheet_name='Core Shrinkage - Front', index=False)
     if not back_df.empty:
@@ -95,7 +106,8 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
                 if not coords.empty:
                     coords.to_excel(writer, sheet_name=f'Coordinates - {lbl}', index=False)
 
-    # Report sheet — job metadata prepended to the main table
+    # Report sheet — job metadata prepended to the main table. Sidebar text
+    # is neutralised against formula injection at insertion.
     report = main.copy()
     for meta_key, col_name in [
         ('project_name', 'Project_Name'),
@@ -106,7 +118,7 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
         ('process',      'Process'),
         ('panel',        'Job_Panel'),
     ]:
-        report.insert(0, col_name, meta.get(meta_key, ''))
+        report.insert(0, col_name, _safe_text(meta.get(meta_key, '')))
     report.to_excel(writer, sheet_name='Report', index=False)
 
     # Warnings sheet

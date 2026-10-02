@@ -198,7 +198,7 @@ def _warnings_sheet(ws, warnings: list) -> None:
         ws['A2'] = 'No warnings for this file.'
     else:
         for i, msg in enumerate(warnings, start=2):
-            ws.cell(row=i, column=1, value=msg)
+            ws.cell(row=i, column=1, value=_safe_text(msg))
 
 
 def _safe_text(value) -> str:
@@ -213,6 +213,18 @@ def _safe_text(value) -> str:
 
 #: Columns of the Files manifest sheet (input-to-output traceability).
 FILES_SHEET_COLUMNS = ['Filename', 'Pipeline', 'Encoding', 'Rows', 'Status', 'Detail']
+
+
+def _sanitize_frame(df):
+    """Copy a frame with formula-injection neutralisation applied to every
+    text cell (see :func:`_safe_text`). Numbers, dates, and NaN pass through
+    untouched; ordinary text is byte-identical, so display is unaffected."""
+    out = df.copy()
+    for col in out.columns:
+        if out[col].dtype == object:
+            out[col] = [_safe_text(v) if isinstance(v, str) else v
+                        for v in out[col].tolist()]
+    return out
 
 
 def _files_sheet(ws, file_records: list) -> None:

@@ -18,6 +18,8 @@ from ._shared import (
     _files_sheet,
     _notify,
     _safe_sheet_name,
+    _safe_text,
+    _sanitize_frame,
     _warnings_sheet,
     _write_chart_fallback,
 )
@@ -314,14 +316,16 @@ def _report_sheet(df: pd.DataFrame, grid_id_col: str, meta: dict,
         s.insert(0, 'Fiducial', None)
         s.insert(0, 'Fiducial_Number', None)
 
+    # Job-level metadata comes from sidebar text inputs: neutralise formula
+    # injection at insertion (the frame was sanitised before this ran).
     s.insert(0, 'Side',        side_vals)
     s.insert(0, 'Panel',       panel_vals)
-    s.insert(0, 'Process',     meta.get('process', ''))
+    s.insert(0, 'Process',     _safe_text(meta.get('process', '')))
     s.insert(0, 'Buildup',     build_up_vals)
-    s.insert(0, 'Lot_Name',    meta.get('lot_name', ''))
-    s.insert(0, 'Lot_Number',  meta.get('lot_number', ''))
-    s.insert(0, 'Part_Number', meta.get('part_number', ''))
-    s.insert(0, 'Project_Name', meta.get('project_name', ''))
+    s.insert(0, 'Lot_Name',    _safe_text(meta.get('lot_name', '')))
+    s.insert(0, 'Lot_Number',  _safe_text(meta.get('lot_number', '')))
+    s.insert(0, 'Part_Number', _safe_text(meta.get('part_number', '')))
+    s.insert(0, 'Project_Name', _safe_text(meta.get('project_name', '')))
     if grid_id_col in s.columns:
         s = s.drop(columns=[grid_id_col])
 
@@ -362,6 +366,11 @@ def write_unified_excel(writer: pd.ExcelWriter, scoped_df: pd.DataFrame,
         ws_warn = writer.book.create_sheet('Warnings')
         _warnings_sheet(ws_warn, warnings or [])
         return
+
+    # Neutralise formula injection at the write layer: every sheet below
+    # derives from this frame, so one sanitised copy covers process sheets,
+    # Report, and analytics tables. In-memory analysis frames are untouched.
+    scoped_df = _sanitize_frame(scoped_df)
 
     process_frames = _process_slices(scoped_df)
     vtp_usl = float(settings.get('VTP_REGISTRATION', {}).get('vtp_usl_um', 10.0))
