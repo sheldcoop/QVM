@@ -151,14 +151,14 @@ def _write_shrinkage_summary_sheet(
     cols = resolve_columns(settings, ('location', 'coord_x', 'coord_y'))
     loc_col, x_col, y_col = cols['location'], cols['coord_x'], cols['coord_y']
 
-    nominal_coords = (
-        settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
-        or settings.get('CORE_SHRINKAGE', {}).get('NOMINAL_COORDS', {})
-    )
+    # Canonical key: CORE_SHRINKAGE.NOMINAL_COORDS is the only nominals
+    # section defined in settings.yaml. outlier_ppm has no settings key;
+    # 50.0 is the long-standing effective default, kept explicit.
+    nominal_coords = settings.get('CORE_SHRINKAGE', {}).get('NOMINAL_COORDS', {})
     if not nominal_coords:
         return False
 
-    outlier_ppm = float(settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
+    outlier_ppm = 50.0
     sections = []
     summary_rows = []
     for process_code, proc_df in process_frames.items():

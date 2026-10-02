@@ -221,11 +221,9 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
         st.plotly_chart(fig, use_container_width=True)
 
     with tab4:
-        cs_cfg = settings.get('CORE_SHRINKAGE', {})
-        nominal_coords = (
-            settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
-            or cs_cfg.get('NOMINAL_COORDS', {})
-        )
+        # Canonical key: CORE_SHRINKAGE.NOMINAL_COORDS is the only nominals
+        # section defined in settings.yaml.
+        nominal_coords = settings.get('CORE_SHRINKAGE', {}).get('NOMINAL_COORDS', {})
         if not nominal_coords:
             st.info('Nominal coordinates are not configured for shrinkage analytics.')
         else:
@@ -236,7 +234,9 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
             if any(c not in filtered_df.columns for c in (loc_col, x_col, y_col)):
                 st.info('Shrinkage analytics requires Location, Coord. X, and Coord. Y columns.')
             else:
-                outlier_ppm = float(settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
+                # outlier_ppm has no settings key; 50.0 is the
+                # long-standing effective default, kept explicit.
+                outlier_ppm = 50.0
                 groups = compute_distance_shrinkage_by_group(
                     filtered_df,
                     nominal_coords,

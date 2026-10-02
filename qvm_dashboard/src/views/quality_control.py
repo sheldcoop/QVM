@@ -229,12 +229,11 @@ component breakdown.
         )
 
     def _render_distance_shrinkage(self, filtered_df: pd.DataFrame) -> None:
-        cs_cfg = self.settings.get('CORE_SHRINKAGE', {})
-        nominal_coords = (
-            self.settings.get('REGISTRATION_SHRINKAGE', {}).get('NOMINAL_COORDS')
-            or cs_cfg.get('NOMINAL_COORDS', {})
-        )
-        outlier_ppm = float(self.settings.get('REGISTRATION_SHRINKAGE', {}).get('outlier_ppm', 50.0))
+        # Canonical key: CORE_SHRINKAGE.NOMINAL_COORDS is the only nominals
+        # section defined in settings.yaml. outlier_ppm has no settings key;
+        # 50.0 is the long-standing effective default, kept explicit.
+        nominal_coords = self.settings.get('CORE_SHRINKAGE', {}).get('NOMINAL_COORDS', {})
+        outlier_ppm = 50.0
         if not nominal_coords:
             return
 
