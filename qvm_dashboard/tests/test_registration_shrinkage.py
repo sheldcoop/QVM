@@ -230,12 +230,16 @@ def test_groups_use_their_own_design_and_say_when_there_is_none(settings):
         frames.append(_frame({n: xy * scale for n, xy in _points(design).items()},
                              **{'Build Up': build_up, 'Panel': '20', 'Side': 'F', 'Process': process}))
 
-    ptv = compute_shrinkage_by_group(pd.concat(frames[::2]), settings)
+    strict = dict(settings)
+    strict['REGISTRATION_SHRINKAGE'] = {
+        **settings['REGISTRATION_SHRINKAGE'], 'fallback_to_equivalent_design': False}
+    ptv = compute_shrinkage_by_group(pd.concat(frames[::2]), strict)
     vtp = compute_shrinkage_by_group(frames[1], settings)
 
     assert [g.group['Build Up'] for g in ptv] == ['BU-01', 'BU-02']
     assert _panel(ptv[0].result)['Shrinkage X (ppm)'] == pytest.approx(-100.0, abs=0.01)
     assert ptv[0].label == 'Build Up: BU-01, Panel: 20, Side: F' and ptv[0].point == 'via'
+    assert ptv[0].design_note is None
     assert ptv[1].result.quadrant.empty and ptv[1].design is None
     assert 'No design positions configured for BU-02 / Pad to Via' in ptv[1].result.warnings[0]
 
@@ -392,3 +396,53 @@ def test_the_one_dimensional_example_of_the_methods_document():
     assert centre_ppm(even) == pytest.approx(-100.0, abs=0.01)
     assert company_ppm(apart) == pytest.approx(0.0, abs=0.01)
     assert centre_ppm(apart) == pytest.approx(76.7, abs=0.05)
+
+
+def test_missing_build_up_uses_an_equivalent_design_and_says_so(settings):
+    from src.registration_shrinkage import resolve_design
+
+    # A file name without a Build Up gives 'Unknown'; BU-02 Pad to Via is not configured.
+    for build_up, process, source in (('Unknown', 'Via to Pad', 'BU-01 / Via to Pad'),
+                                      ('BU-02', 'Pad to Via', 'BU-01 / Pad to Via'),
+                                      ('Unknown', 'Pad to Via', 'BU-01 / Pad to Via')):
+        design, note = resolve_design(settings, build_up, process)
+        assert design is not None and f'those of {source} are used' in note
+        assert 'differ only by a shift' in note
+    exact, note = resolve_design(settings, 'BU-03', 'Pad to Via')
+    assert exact == design_for(settings, 'BU-03', 'Pad to Via') and note is None
+
+    # The stand-in gives exactly the result the right design would give, for every method:
+    # measure a BU-03 panel, once against its own design and once as 'Unknown'.
+    own = _design(settings, 'BU-03', 'Pad to Via')
+    rng = np.random.default_rng(5)
+    measured = {n: xy * 0.99988 + rng.normal(0, 0.004, 2) + np.array([301.4, 323.7])
+                for n, xy in _points(own).items()}
+    for method in METHOD_LABELS:
+        results = []
+        for build_up in ('BU-03', 'Unknown'):
+            frame = _frame(measured, **{'Build Up': build_up, 'Panel': '20', 'Side': 'F',
+                                        'Process': 'Pad to Via'})
+            group = compute_shrinkage_by_group(frame, settings, method=method)[0]
+            results.append(group)
+        assert results[0].design_note is None and results[1].design_note is not None
+        pd.testing.assert_frame_equal(results[0].result.quadrant, results[1].result.quadrant)
+        pd.testing.assert_frame_equal(results[0].result.full_panel, results[1].result.full_panel)
+
+
+def test_no_stand_in_when_configured_designs_differ_in_shape(settings):
+    from src.registration_shrinkage import resolve_design
+
+    cfg = settings['REGISTRATION_SHRINKAGE']
+    other = {name: {'x': xy['x'] * 1.1, 'y': xy['y']}
+             for name, xy in cfg['DESIGNS']['C4F']['BU-01']['Pad to Via'].items()}
+    mixed = dict(settings)
+    mixed['REGISTRATION_SHRINKAGE'] = {
+        **cfg, 'DESIGNS': {'C4F': {**cfg['DESIGNS']['C4F'], 'BU-05': {'Pad to Via': other}}}}
+    design, note = resolve_design(mixed, 'Unknown', 'Pad to Via')
+    assert design is None and 'differ in shape' in note
+    frame = _frame(_points(other), **{'Build Up': 'Unknown', 'Panel': '1', 'Side': 'F',
+                                      'Process': 'Pad to Via'})
+    group = compute_shrinkage_by_group(frame, mixed)[0]
+    assert group.result.quadrant.empty and 'differ in shape' in group.result.warnings[0]
+    core = settings['CORE_SHRINKAGE']['NOMINAL_COORDS']
+    assert resolve_design(settings, 'Unknown', 'Via to Pad')[0] != core

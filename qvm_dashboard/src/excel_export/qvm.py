@@ -207,6 +207,9 @@ def _write_shrinkage_summary_sheet(
         ws.cell(row=row, column=1,
                 value=f'{group.process}, {group.point} centres, {result.method_label}')
         row += 1
+        if group.design_note:
+            ws.cell(row=row, column=1, value=group.design_note)
+            row += 1
 
         if not result.quadrant.empty:
             ws.cell(row=row, column=1, value='Full Panel')

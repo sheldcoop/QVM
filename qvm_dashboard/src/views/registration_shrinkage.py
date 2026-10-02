@@ -33,11 +33,13 @@ _COMPARE_HELP = (
 def _show(frame: pd.DataFrame, columns=None) -> None:
     if columns is not None:
         frame = frame[[c for c in columns if c in frame.columns]]
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width='stretch', hide_index=True)
 
 
 def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key: str) -> None:
     result = group.result
+    if group.design_note:
+        st.info(group.design_note)
     for warning in result.warnings:
         st.warning(warning)
     if result.quadrant.empty:

@@ -180,9 +180,13 @@ REGISTRATION_SHRINKAGE:
   usl_ppm: null            # optional pass/fail limit on |shrinkage| in ppm; null = report only
   outlier_um: 50           # affine method: a point with a larger residual is an outlier
   active_design: C4F       # which block of DESIGNS applies to the uploaded files
+  # When the data's Build Up / file type has no entry below (for example a file name
+  # without a Build Up), use another configured design. Only done when all configured
+  # designs have the same shape and differ by a shift, which leaves shrinkage unchanged.
+  fallback_to_equivalent_design: true
   # Design (nominal) position of the 16 QPs per Build Up and file type, from
-  # sample_data/QP_Coordinate_Commonality_Analysis.xlsx. A Build Up / type without an
-  # entry gets no shrinkage numbers (the core positions are never used as a stand-in).
+  # sample_data/QP_Coordinate_Commonality_Analysis.xlsx. The core positions are never
+  # used as a stand-in.
   DESIGNS:
     C4F:
       BU-01:

@@ -54,8 +54,11 @@ def test_other_methods_can_be_chosen(method):
         assert 'Rotation (deg)' in app.dataframe[1].value.columns
 
 
-def test_build_up_without_design_gets_a_message_not_numbers():
-    app = _run(build_up='BU-07', in_expanders=True)
+def test_build_up_without_design_uses_an_equivalent_one_and_says_so():
+    app = _run(build_up='Unknown', in_expanders=True)
     assert not app.exception
-    assert len(app.metric) == 0
-    assert 'No design positions configured for BU-07 / Via to Pad' in app.warning[0].value
+    note = app.info[0].value
+    assert 'No design positions configured for Unknown / Via to Pad' in note
+    assert 'those of BU-01 / Via to Pad are used' in note
+    assert {m.label: m.delta for m in app.metric}['Panel X'] == '-100.0 ppm'
+    assert len(app.warning) == 0

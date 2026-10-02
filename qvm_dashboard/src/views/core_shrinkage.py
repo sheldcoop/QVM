@@ -139,7 +139,7 @@ class CoreShrinkageView(BaseView):
                            f"sign: **− shrink / + expand** (measured − nominal).")
 
             st.dataframe(self._styled_residuals(ldf, nominal, a),
-                         use_container_width=True, hide_index=True)
+                         width='stretch', hide_index=True)
             st.markdown("---")
 
     def _styled_residuals(self, ldf: pd.DataFrame, nominal: dict, a: dict):
@@ -173,7 +173,7 @@ class CoreShrinkageView(BaseView):
                     if sframe.empty:
                         st.info("Needs ≥ 4 fiducials.")
                     else:
-                        st.dataframe(sframe, use_container_width=True, hide_index=True)
+                        st.dataframe(sframe, width='stretch', hide_index=True)
             if len(layers) == 2 and ana['Front'] and ana['Back']:
                 tf, tb = ana['Front']['fit']['theta_deg'], ana['Back']['fit']['theta_deg']
                 st.info(f"**Layer-to-layer twist:** {tf - tb:.4f}°  "
@@ -193,7 +193,7 @@ class CoreShrinkageView(BaseView):
                     qp, sf[['Quadrant', 'X Shrinkage (ppm)', 'Y Shrinkage (ppm)']],
                     on='Quadrant', how='right')
                 merged.loc[merged['Quadrant'] == 'Overall', 'Quadrant'] = 'Full Panel (Avg)'
-                st.dataframe(merged, use_container_width=True, hide_index=True)
+                st.dataframe(merged, width='stretch', hide_index=True)
                 chart = sf[sf['Quadrant'] != 'Overall'].set_index('Quadrant')
                 if not chart.empty:
                     st.bar_chart(chart[['X Shrinkage (ppm)', 'Y Shrinkage (ppm)']])
@@ -204,7 +204,7 @@ class CoreShrinkageView(BaseView):
             for lbl, ldf in layers:
                 st.markdown(f"**{lbl}**")
                 st.dataframe(self._styled_residuals(ldf, nominal, ana[lbl]),
-                             use_container_width=True, hide_index=True)
+                             width='stretch', hide_index=True)
 
         with t_coord:
             st.caption("CAM nominal vs raw physical vs physical re-centred on the CAM datum "
@@ -214,13 +214,13 @@ class CoreShrinkageView(BaseView):
                 st.markdown(f"**{lbl}**")
                 st.dataframe(
                     compute_centered_deviation_table(ldf, nominal, self.settings, analysis=ana[lbl]),
-                    use_container_width=True, hide_index=True)
+                    width='stretch', hide_index=True)
 
         with t_fb:
             if len(layers) == 2:
                 st.caption("Front-pad vs Back-land overlay per dot (µm).")
                 fb = compute_front_back_registration(front_df, back_df)
-                st.dataframe(fb, use_container_width=True, hide_index=True)
+                st.dataframe(fb, width='stretch', hide_index=True)
             else:
                 st.info("Front vs Back registration needs both layers uploaded.")
 
@@ -399,11 +399,11 @@ class CoreShrinkageView(BaseView):
     def _raw_tables(self, front_df, back_df) -> None:
         if not front_df.empty and not back_df.empty:
             st.subheader("Front vs Back")
-            st.dataframe(both_frame(front_df, back_df), use_container_width=True, hide_index=True)
+            st.dataframe(both_frame(front_df, back_df), width='stretch', hide_index=True)
         elif not front_df.empty:
-            st.dataframe(layer_frame(front_df), use_container_width=True, hide_index=True)
+            st.dataframe(layer_frame(front_df), width='stretch', hide_index=True)
         else:
-            st.dataframe(layer_frame(back_df), use_container_width=True, hide_index=True)
+            st.dataframe(layer_frame(back_df), width='stretch', hide_index=True)
 
     def _show_export(self, front_df, back_df, meta, nominal_coords) -> None:
         buffer   = BytesIO()

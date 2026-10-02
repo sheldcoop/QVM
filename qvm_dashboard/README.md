@@ -216,9 +216,12 @@ Everything is **measured minus design** (negative = shrink).
   [SHRINKAGE_METHODS.md](SHRINKAGE_METHODS.md) explains what that means, with
   worked examples.
 - **Design positions.** Taken from `REGISTRATION_SHRINKAGE.DESIGNS` for the
-  Build Up and file type of the data. If none is configured, the app says
-  "No design positions configured for …" and shows no numbers. The Core
-  Shrinkage design is never used as a stand-in.
+  Build Up and file type of the data. If there is no entry (for example the
+  file name carries no Build Up), another configured design stands in and a
+  note says which one. This is only done when all configured designs have the
+  same shape and differ by a shift, because a shift changes none of the three
+  results; if they differ in shape, the app shows the reason and no numbers.
+  The Core Shrinkage design is never used.
 - **Which centre.** The via centre by default; `measured_point` switches a
   file type to the pad centre.
 - **Limit.** None by default. Setting `usl_ppm` adds a Pass / Fail to every
@@ -381,6 +384,7 @@ Everything the Shrinkage tab of the Pad-to-Via / Via-to-Pad views uses.
 |---|---|
 | `DESIGNS` | Design position (mm) of the 16 QPs, as `product → Build Up → file type → point`. Filled for C4F from `sample_data/QP_Coordinate_Commonality_Analysis.xlsx`: BU-01 (both types), BU-02 Via to Pad, BU-03 Pad to Via. Add a Build Up or a second product as a further block. |
 | `active_design` | Which product block of `DESIGNS` applies to the uploaded files |
+| `fallback_to_equivalent_design` | `true`: a Build Up / file type without an entry uses another configured design, provided all configured designs differ only by a shift. `false`: no entry, no numbers. |
 | `default_method` | `company`, `centre` or `affine`: the method shown first and written to the Excel report |
 | `measured_point` | Per file type, `via` or `pad`: which measured centre is used |
 | `outlier_ppm` | A quadrant further than this from the panel average raises an alert |

@@ -33,7 +33,7 @@ def test_every_key_the_code_reads_is_defined_in_settings(settings):
     read = set(re.findall(r'(?:cfg|shrinkage_config\(settings\))\.get\(\s*["\'](\w+)["\']', source))
     assert read == {
         'DESIGNS', 'active_design', 'measured_point', 'default_method',
-        'outlier_ppm', 'outlier_um', 'usl_ppm',
+        'outlier_ppm', 'outlier_um', 'usl_ppm', 'fallback_to_equivalent_design',
     }
     assert read <= set(section), f'read but not defined: {sorted(read - set(section))}'
     assert section['active_design'] in section['DESIGNS']

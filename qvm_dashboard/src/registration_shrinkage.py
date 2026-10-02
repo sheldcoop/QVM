@@ -24,8 +24,11 @@ convention everywhere: measured minus design, so negative = shrink.
     Reuses the kernels in ``src.core_shrinkage_math``.
 
 Design positions come from ``REGISTRATION_SHRINKAGE.DESIGNS`` in settings.yaml,
-per Build Up and file type. There is no fallback to the core design: a Build Up
-without an entry gets a warning and no numbers.
+per Build Up and file type. When the data's Build Up / file type has no entry
+(for example a file name without a Build Up), another configured design is
+used, but only if all configured designs have the same shape and differ by a
+pure shift: a shift changes none of the three methods' results. Otherwise the
+group gets a warning and no numbers. The core design is never used.
 """
 
 from __future__ import annotations
@@ -125,6 +128,54 @@ def design_for(settings: dict, build_up: object, process: object) -> Optional[Po
     positions = {normalize_process(k): v for k, v in by_process.items()}.get(
         normalize_process(process))
     return positions or None
+
+
+def _all_designs(settings: dict) -> List[tuple]:
+    """Every configured design of the active product as (Build Up, file type, positions)."""
+    cfg = shrinkage_config(settings)
+    product = (cfg.get("DESIGNS") or {}).get(cfg.get("active_design")) or {}
+    return [
+        (normalize_build_up(build_up), normalize_process(process), positions)
+        for build_up, by_process in product.items()
+        for process, positions in (by_process or {}).items()
+        if positions
+    ]
+
+
+def _same_shape(first: PointMap, second: PointMap, tolerance_mm: float = 1e-6) -> bool:
+    """True when two designs have the same points and differ only by one shift."""
+    a, b = _design_map(first), _design_map(second)
+    if set(a) != set(b) or not a:
+        return False
+    names = sorted(a)
+    delta = np.array([[b[n]["x"] - a[n]["x"], b[n]["y"] - a[n]["y"]] for n in names])
+    return bool(np.all(np.abs(delta - delta[0]) <= tolerance_mm))
+
+
+def resolve_design(settings: dict, build_up: object, process: object) -> tuple:
+    """(design positions or None, note or None) for one Build Up and file type.
+
+    The exact entry is used when there is one. Otherwise a stand-in is taken
+    from the configured designs (same file type preferred), provided all of
+    them have the same shape; the note says which one and why that is safe.
+    """
+    exact = design_for(settings, build_up, process)
+    if exact is not None:
+        return exact, None
+    wanted = f"{normalize_build_up(build_up)} / {normalize_process(process)}"
+    candidates = _all_designs(settings)
+    if not candidates or not shrinkage_config(settings).get("fallback_to_equivalent_design", True):
+        return None, None
+    if not all(_same_shape(candidates[0][2], other[2]) for other in candidates[1:]):
+        return None, (
+            f"No design positions configured for {wanted}, and the configured designs "
+            f"differ in shape, so none of them can stand in.")
+    same_type = [c for c in candidates if c[1] == normalize_process(process)]
+    source_build_up, source_process, positions = (same_type or candidates)[0]
+    return positions, (
+        f"No design positions configured for {wanted}; those of {source_build_up} / "
+        f"{source_process} are used. All configured designs have the same shape and differ "
+        f"only by a shift, which does not change the shrinkage result.")
 
 
 def measured_point(settings: dict, process: object) -> str:
@@ -461,6 +512,7 @@ class GroupShrinkage:
     result: ShrinkageResult
     measured: pd.DataFrame
     columns: tuple
+    design_note: Optional[str] = None  # set when a stand-in design was used
 
     @property
     def label(self) -> str:
@@ -508,18 +560,19 @@ def compute_shrinkage_by_group(
         process_values = frame["Process"] if "Process" in frame.columns else pd.Series(dtype=str)
         process = normalize_process(process_values.iloc[0]) if len(process_values) else PROCESS_PTV
         build_up = labels.get("Build Up", "Unknown")
-        design = design_for(settings, build_up, process)
+        design, note = resolve_design(settings, build_up, process)
         columns = measured_columns(settings, process)
         point = measured_point(settings, process)
 
         if design is None:
-            result = _empty(method, [
+            result = _empty(method, [note or (
                 f"No design positions configured for {build_up} / {process} "
-                f"(REGISTRATION_SHRINKAGE.DESIGNS in settings.yaml); shrinkage not calculated."])
+                f"(REGISTRATION_SHRINKAGE.DESIGNS in settings.yaml); shrinkage not calculated.")])
+            note = None
         else:
             result = compute_shrinkage(
                 frame, design, method=method, location_col=columns[0], x_col=columns[1],
                 y_col=columns[2], outlier_ppm=outlier_ppm, usl_ppm=usl_ppm,
                 outlier_um=outlier_um)
-        out.append(GroupShrinkage(labels, process, point, design, result, frame, columns))
+        out.append(GroupShrinkage(labels, process, point, design, result, frame, columns, note))
     return out

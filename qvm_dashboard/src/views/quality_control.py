@@ -163,7 +163,7 @@ component breakdown.
                if col != grid_id_col and display_df[col].dtype in ('float64', 'float32', 'int64', 'int32')}
         if fmt:
             styled = styled.format(fmt)
-        st.dataframe(styled, use_container_width=True)
+        st.dataframe(styled, width='stretch')
 
         # --- Distance-based shrinkage (PTV/VTP only; additive section) ---
         self._render_distance_shrinkage(filtered_df, is_via_to_pad)

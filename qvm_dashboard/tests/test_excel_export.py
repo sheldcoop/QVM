@@ -449,6 +449,10 @@ def test_shrinkage_sheet_uses_registration_design_and_company_numbers(settings):
     assert summary['Alert Count'] == 0
     assert not any('%' in t for t in header if isinstance(t, str))
 
+    # BU-02 Pad to Via has no entry: the equivalent BU-01 design stands in, and says so.
     assert any(t.startswith('PTV | Build Up: BU-02') for t in text)
-    assert any('No design positions configured for BU-02 / Pad to Via' in t for t in text)
+    assert any('No design positions configured for BU-02 / Pad to Via; those of BU-01 / '
+               'Pad to Via are used' in t for t in text)
+    second = dict(zip(header, rows[rows.index(header) + 2]))
+    assert second['Build Up'] == 'BU-02' and second['FP X (ppm)'] == pytest.approx(0.0, abs=0.01)
     assert any(t == 'Via to Pad, via centres, Company (distance)' for t in text)
