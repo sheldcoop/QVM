@@ -666,3 +666,33 @@ def compute_shrinkage_by_group(
                 outlier_um=outlier_um, max_plausible_ppm=max_plausible_ppm)
         out.append(GroupShrinkage(labels, process, point, design, result, frame, columns, note))
     return out
+
+
+# ---------------------------------------------------------------------- overview
+def summary_frame(groups: List[GroupShrinkage]) -> pd.DataFrame:
+    """One line per Build Up / Panel / Side: the panel result, or why there is none."""
+    rows = []
+    for group in groups:
+        row: Dict[str, object] = dict(group.group)
+        result = group.result
+        if result.full_panel.empty:
+            reason = result.warnings[0] if result.warnings else "No result"
+            row.update({"Result": "No result", "Why": reason.split(". ")[0].rstrip(".") + "."})
+        else:
+            panel, uniformity = result.full_panel.iloc[0], result.uniformity.iloc[0]
+            row.update({
+                "Result": str(panel["Status"]) if "Status" in panel else "Reported",
+                "Panel X (um)": panel["Delta X (um)"],
+                "Panel X (ppm)": panel["Shrinkage X (ppm)"],
+                "Panel Y (um)": panel["Delta Y (um)"],
+                "Panel Y (ppm)": panel["Shrinkage Y (ppm)"],
+                "Quadrant range X (ppm)": uniformity["QTQ Range X (ppm)"],
+                "Quadrant range Y (ppm)": uniformity["QTQ Range Y (ppm)"],
+                "Alerts": len(result.outliers),
+                "Why": "",
+            })
+        rows.append(row)
+    frame = pd.DataFrame(rows)
+    if "Why" in frame.columns:  # reasons last
+        frame = frame[[c for c in frame.columns if c != "Why"] + ["Why"]]
+    return frame

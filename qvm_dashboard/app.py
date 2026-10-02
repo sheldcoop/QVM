@@ -113,12 +113,15 @@ def _render_sub_views(filtered_df: pd.DataFrame, sub_view: str, settings: dict,
         )
     elif sub_view == "Analytics":
         _render_registration_analytics(filtered_df, settings)
+    elif sub_view == "Shrinkage":
+        render_registration_shrinkage(
+            filtered_df, settings, key='vtp' if is_via_to_pad else 'ptv', meta=meta or {})
 
 
 def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) -> None:
     """Render the shared 3-tab registration analytics used by both processes."""
 
-    tab1, tab2, tab3, tab4 = st.tabs(["Registration Scatter", "Quiver Plot", "Box Plot", "Shrinkage"])
+    tab1, tab2, tab3 = st.tabs(["Registration Scatter", "Quiver Plot", "Box Plot"])
     with tab1:
         if 'Side' in filtered_df.columns and filtered_df['Side'].nunique() > 1:
             side_options = ['Both'] + sorted(filtered_df['Side'].unique().tolist())
@@ -148,10 +151,6 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
     with tab3:
         fig = plot_vtp_box(filtered_df, settings)
         st.plotly_chart(fig, **full_width(st.plotly_chart))
-
-    with tab4:
-        prefix = 'vtp' if is_via_to_pad_mask(filtered_df).any() else 'ptv'
-        render_registration_shrinkage(filtered_df, settings, key=f'{prefix}_analytics')
 
 
 def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
@@ -187,7 +186,7 @@ def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
     st.markdown("<br>", unsafe_allow_html=True)
 
     sub_view = render_nav_buttons(
-        ["Quality Control", "Analytics"],
+        ["Quality Control", "Analytics", "Shrinkage"],
         state_key=f"{key_prefix}_sub_view",
         default="Quality Control",
     )

@@ -162,7 +162,8 @@ The top navigation bar has four tabs:
 
 ## Pad-to-Via / Via-to-Pad Sub-Views
 
-Both QVM process tabs expose the same two sub-views. (Core Shrinkage has its
+Both QVM process tabs expose the same three sub-views: Quality Control,
+Analytics and Shrinkage. (Core Shrinkage has its
 own four — see [below](#core-shrinkage-sub-views).)
 
 ### Quality Control
@@ -175,12 +176,8 @@ The Excel export button produces **one workbook** covering the current Build Up,
 Panel and Side scope, with separate Pad-to-Via and Via-to-Pad sheets. See
 [Excel Export](#excel-export) below.
 
-Below the table, a folded **Shrinkage** block per Build Up / Panel / Side shows
-the same result as the Shrinkage tab (see
-[Registration shrinkage](#registration-shrinkage)).
-
 ### Analytics
-Four tabs, identical for both processes:
+Three tabs, identical for both processes:
 
 - **Registration Scatter** — DX/DY bullseye with concentric tolerance rings,
   plus a per-site SC bar chart ordered by Grid ID.
@@ -189,15 +186,24 @@ Four tabs, identical for both processes:
   blue = global offset), with a sensitivity slider to amplify small errors.
 - **Box Plot** — SC distribution: one "All sites" box plus one box per panel
   quarter.
-- **Shrinkage** — how much the panel changed size against its design; see
-  below.
 
-### Registration shrinkage
+### Shrinkage
+<a id="registration-shrinkage"></a>
 
-Shown per Build Up, Panel and Side, separately for Pad-to-Via and Via-to-Pad.
-Everything is **measured minus design** (negative = shrink).
+How much the panel changed size against its design, per Build Up, Panel and
+Side, separately for Pad-to-Via and Via-to-Pad. Everything is **measured minus
+design** (negative = shrink). The page has, top to bottom:
 
-- **Method.** A choice at the top of the tab:
+1. **Overview** — one line per Build Up / Panel / Side with the panel result,
+   or the reason there is none — and the **Shrinkage Excel** download.
+2. **Method choice** for the details.
+3. **One block per group**: panel tiles, the quadrant table, a bar chart of the
+   quadrants against the panel value, the quadrant-versus-panel arrows, and
+   "Compare the three methods". With the affine fit, also the fit values and a
+   map of how far each point lies from the fit.
+4. **How is this calculated?** — the explanation in short.
+
+- **Method.**
   - **Company (distance)**, the default and the one written to the Excel
     report. It is the calculation of `sample_data/Core Shrinkage
     Calculation.xlsx`: in each quadrant, the two X lengths and the two Y
@@ -284,7 +290,7 @@ One workbook per download, containing:
 | `Via to Pad` | Via-to-Pad measurements + the Panel Map reference image |
 | `Report` | All rows with job metadata prepended and the process USL column appended |
 | `Analytics <PROC> <BU>` | The four registration charts, one sheet per process per Build Up |
-| `Shrinkage Summary` | Registration shrinkage by the report method, per process and Build Up / Panel / Side: panel and quadrant values in µm and ppm, range, alerts; a group without design positions is listed with the reason |
+| `Shrinkage Summary` | (main export) Registration shrinkage by the report method, per process and Build Up / Panel / Side: panel and quadrant values in µm and ppm, range, alerts; a group without design positions is listed with the reason |
 | `Warnings` | Parser warnings, or a note that there were none |
 
 Process sheets are written only for processes present in the current scope.
@@ -294,6 +300,10 @@ rest of the workbook is unaffected.
 
 The filename is built from the data in scope, e.g.
 `QVM_VTP_P20_F_BU-01_Lot-1234.xlsx`.
+
+The **Shrinkage** sub-view exports its own workbook: `Summary`, `Quadrants`,
+`Method Comparison`, `Quadrant Sizes`, `Charts` (quadrant bars and arrows per
+group) and `Notes`.
 
 **Core Shrinkage** exports its own workbook: per-layer measurement sheets, the
 side-by-side Front/Back table when both are loaded, and — when

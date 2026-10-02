@@ -456,3 +456,46 @@ def test_shrinkage_sheet_uses_registration_design_and_company_numbers(settings):
     second = dict(zip(header, rows[rows.index(header) + 2]))
     assert second['Build Up'] == 'BU-02' and second['FP X (ppm)'] == pytest.approx(0.0, abs=0.01)
     assert any(t == 'Via to Pad, via centres, Company (distance)' for t in text)
+
+
+def test_shrinkage_workbook_has_tables_comparison_charts_and_notes(settings):
+    import openpyxl
+    from src.excel_export import write_shrinkage_excel
+    from src.registration_shrinkage import design_for
+
+    cn = settings['COLUMN_NAMES']
+    design = design_for(settings, 'BU-01', 'Via to Pad')
+
+    def frame(build_up, side, scale):
+        out = _valid_loc_frame(settings, process='Via to Pad', build_up=build_up, side=side)
+        out[cn['coord_x']] = [design[loc]['x'] * scale for loc in out[cn['location']]]
+        out[cn['coord_y']] = [design[loc]['y'] * scale for loc in out[cn['location']]]
+        return out
+
+    df = pd.concat([frame('BU-01', 'F', 0.9999), frame('=EVIL()', 'B', 0.9)], ignore_index=True)
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        write_shrinkage_excel(w, df, settings, {'lot_number': '1234'})
+    buf.seek(0)
+    wb = openpyxl.load_workbook(buf)
+    assert wb.sheetnames == ['Summary', 'Quadrants', 'Method Comparison', 'Quadrant Sizes',
+                             'Charts', 'Notes']
+
+    summary = pd.read_excel(buf, sheet_name='Summary')
+    reported = summary[summary['Result'] == 'Reported'].iloc[0]
+    assert reported['Build Up'] == 'BU-01' and reported['Panel X (ppm)'] == pytest.approx(-100.0, abs=0.01)
+    refused = summary[summary['Result'] == 'No result'].iloc[0]
+    assert 'does not match the design' in refused['Why']
+
+    assert len(pd.read_excel(buf, sheet_name='Quadrants')) == 4
+    comparison = pd.read_excel(buf, sheet_name='Method Comparison')
+    assert list(comparison['Method']) == ['Company (distance)', 'Centre-based', 'Affine fit']
+    assert len(pd.read_excel(buf, sheet_name='Quadrant Sizes')) == 8  # both groups
+
+    assert len(wb['Charts']._images) == 2  # bars and arrows for the one reported group
+    notes = [row[0].value for row in wb['Notes'].iter_rows() if row[0].value]
+    assert notes[1].startswith('Report method: Company (distance)')
+    assert 'Lot Number: 1234' in notes
+    formulas = [(ws.title, c.coordinate) for ws in wb for row in ws.iter_rows() for c in row
+                if c.data_type == 'f']
+    assert formulas == []

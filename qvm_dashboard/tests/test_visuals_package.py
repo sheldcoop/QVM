@@ -12,7 +12,7 @@ def test_public_api_is_importable():
         assert hasattr(visuals, name), f'visuals.{name} missing from public API'
     assert set(visuals.__all__) == {
         'plot_vtp_bullseye', 'plot_vtp_site_bars', 'plot_quiver', 'plot_vtp_box',
-        'plot_shrinkage_quiver',
+        'plot_shrinkage_quiver', 'plot_quadrant_bars', 'plot_fit_residuals',
     }, '__all__ must list exactly the charts the dashboard renders'
 
 
@@ -75,3 +75,29 @@ def test_bullseye_and_quiver_legend_below_axis_title(vtp_df, settings):
         assert legends, 'expected a bottom legend annotation'
         assert all(a.y < -0.12 for a in legends), \
             'legend must be moved below the axis-title band'
+
+
+def test_shrinkage_bars_and_residual_map(settings):
+    import pandas as pd
+
+    from src.registration_shrinkage import compute_shrinkage, design_for
+    from src.visuals import plot_fit_residuals, plot_quadrant_bars
+
+    design = design_for(settings, 'BU-01', 'Pad to Via')
+    rows = [{'Location': name, 'Coord. X': xy['x'] * 0.9999 + (0.08 if name == 'UL_4' else 0.0),
+             'Coord. Y': xy['y'] * 0.9999} for name, xy in design.items()]
+    frame = pd.DataFrame(rows)
+
+    bars = plot_quadrant_bars(compute_shrinkage(frame, design), 'bars')
+    assert [type(t).__name__ for t in bars.data] == ['Bar', 'Scatter', 'Bar', 'Scatter']
+    assert list(bars.data[0].x) == ['UL', 'LL', 'LR', 'UR']
+    assert bars.data[0].marker.color == theme.PALETTE['blue']
+    assert bars.layout.paper_bgcolor == theme.PAPER_BG
+
+    affine = compute_shrinkage(frame, design, method='affine')
+    residuals = plot_fit_residuals(affine, design, 'fit')
+    names = {trace.name: list(trace.text) for trace in residuals.data}
+    assert names['Rejected'] == ['UL_4'] and len(names['Used in the fit']) == 15
+    assert residuals.data[-1].marker.color == theme.PALETTE['red']
+    # Nothing to draw for the other methods, and no error.
+    assert len(plot_fit_residuals(compute_shrinkage(frame, design), design, 'x').data) == 0

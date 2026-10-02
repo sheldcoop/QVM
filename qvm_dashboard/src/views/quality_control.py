@@ -13,7 +13,6 @@ from src.views.base import BaseView
 from src.display_frame import build_display_frame
 from src.utils import is_via_to_pad as is_via_to_pad_mask
 from src.excel_export import write_unified_excel
-from src.views.registration_shrinkage import render_registration_shrinkage
 
 logger = logging.getLogger(__name__)
 
@@ -165,9 +164,6 @@ component breakdown.
             styled = styled.format(fmt)
         st.dataframe(styled, width='stretch')
 
-        # --- Distance-based shrinkage (PTV/VTP only; additive section) ---
-        self._render_distance_shrinkage(filtered_df, is_via_to_pad)
-
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -227,14 +223,6 @@ component breakdown.
             mime=_EXCEL_MIME,
             type='primary',
         )
-
-    def _render_distance_shrinkage(self, filtered_df: pd.DataFrame, is_via_to_pad: bool) -> None:
-        """Shrinkage per Build Up / Panel / Side, folded away below the QC table."""
-        st.markdown('---')
-        st.subheader('Shrinkage')
-        render_registration_shrinkage(
-            filtered_df, self.settings,
-            key=f"{'vtp' if is_via_to_pad else 'ptv'}_qc", in_expanders=True)
 
     @staticmethod
     def _safe_token(value: str) -> str:
