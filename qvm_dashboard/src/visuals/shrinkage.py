@@ -170,3 +170,40 @@ def plot_quadrant_bars(result, title: str, *, height: int = 520) -> go.Figure:
         hoverlabel=dict(bgcolor=theme.PLOT_BG, font=dict(color=theme.TEXT)),
         margin=dict(l=70, r=30, t=60, b=80),
     )
+
+
+def plot_quadrant_diagram(x_mm: float, y_mm: float, *, height: int = 380) -> go.Figure:
+    """One quadrant with its four points and the four lengths the method measures."""
+    copper, sky = _BAR_COLOURS['X'], _BAR_COLOURS['Y']
+    fig = go.Figure()
+    fig.add_shape(type='rect', x0=0, x1=x_mm, y0=0, y1=y_mm, layer='below',
+                  line=dict(color=theme.CARD_BD, width=1.2), fillcolor=theme.CARD_BG)
+    corners = {'1': (0, y_mm), '2': (0, 0), '3': (x_mm, 0), '4': (x_mm, y_mm)}
+    names = {'1': '1  top-left', '2': '2  bottom-left', '3': '3  bottom-right', '4': '4  top-right'}
+    where = {'1': 'top left', '2': 'bottom left', '3': 'bottom right', '4': 'top right'}
+    fig.add_trace(go.Scatter(
+        x=[xy[0] for xy in corners.values()], y=[xy[1] for xy in corners.values()],
+        mode='markers+text', text=[names[c] for c in corners],
+        textposition=[where[c] for c in corners], textfont=dict(size=13, color=theme.TEXT),
+        marker=dict(size=14, color=theme.PALETTE['blue']), hoverinfo='skip', showlegend=False))
+
+    inset_x, inset_y = x_mm * 0.04, y_mm * 0.07
+    lengths = (  # label, tail, head, colour, label position
+        ('X1 = x4 − x1', (inset_x, y_mm - inset_y), (x_mm - inset_x, y_mm - inset_y), copper, (x_mm / 2, y_mm - 2.2 * inset_y)),
+        ('X2 = x3 − x2', (inset_x, inset_y), (x_mm - inset_x, inset_y), copper, (x_mm / 2, 2.2 * inset_y)),
+        ('Y1 = y1 − y2', (inset_x, inset_y * 1.6), (inset_x, y_mm - inset_y * 1.6), sky, (x_mm * 0.17, y_mm / 2)),
+        ('Y2 = y4 − y3', (x_mm - inset_x, inset_y * 1.6), (x_mm - inset_x, y_mm - inset_y * 1.6), sky, (x_mm * 0.83, y_mm / 2)),
+    )
+    for label, tail, head, colour, at in lengths:
+        fig.add_annotation(x=head[0], y=head[1], ax=tail[0], ay=tail[1], xref='x', yref='y',
+                           axref='x', ayref='y', text='', showarrow=True, arrowhead=2,
+                           arrowside='end+start', arrowwidth=2.4, arrowcolor=colour)
+        fig.add_annotation(x=at[0], y=at[1], xref='x', yref='y', showarrow=False, text=f'<b>{label}</b>',
+                           font=dict(size=13, color=colour))
+    fig.add_annotation(x=x_mm / 2, y=y_mm / 2, xref='x', yref='y', showarrow=False,
+                       text=f'one quadrant<br>design {x_mm:g} × {y_mm:g} mm',
+                       font=dict(size=12, color=theme.TEXT_MUTED))
+    hidden = dict(showgrid=False, zeroline=False, showticklabels=False)
+    fig.update_xaxes(range=[-x_mm * 0.22, x_mm * 1.22], **hidden)
+    fig.update_yaxes(range=[-y_mm * 0.2, y_mm * 1.2], **hidden)
+    return apply_dark_layout(fig, height=height, margin=dict(t=20, b=20, l=20, r=20))

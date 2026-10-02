@@ -7,6 +7,7 @@ Centralizes all sidebar logic for cleaner app.py.
 import streamlit as st
 from typing import Dict, List, Optional
 from src.parser import parse_filename
+from src.registration_shrinkage import design_lengths
 
 # Selectbox label → the value stored on the override. The first entry of each
 # map is the "Auto" choice, which leaves the parsed value in charge.
@@ -103,7 +104,29 @@ def _render_job_info() -> Dict[str, str]:
         }
 
 
-def render_sidebar() -> Dict:
+def _render_shrinkage_design(settings: Optional[dict]) -> Dict[str, float]:
+    """The design size of one quadrant, the only design input of the Shrinkage tab.
+
+    Pre-filled from ``REGISTRATION_SHRINKAGE.design_quadrant_mm``; a typed value
+    applies to this session.
+    """
+    default_x, default_y = design_lengths(settings or {}) or (232.5, 193.9)
+    with st.expander("📐 Shrinkage design size", expanded=False):
+        st.caption(
+            "Design size of one quadrant: the distance between its corner points. "
+            "Used by the Shrinkage tab of Pad to Via and Via to Pad. Enter the design "
+            "value, not a measured one.")
+        return {
+            'design_x_mm': st.number_input(
+                "Quadrant length X (mm)", min_value=1.0, value=float(default_x),
+                step=0.001, format="%.3f", key="shrinkage_design_x"),
+            'design_y_mm': st.number_input(
+                "Quadrant length Y (mm)", min_value=1.0, value=float(default_y),
+                step=0.001, format="%.3f", key="shrinkage_design_y"),
+        }
+
+
+def render_sidebar(settings: Optional[dict] = None) -> Dict:
     """
     Render complete sidebar with file upload and configuration.
 
@@ -122,6 +145,7 @@ def render_sidebar() -> Dict:
             'uploaded_files': uploaded_files,
             'file_overrides': file_overrides,
             **_render_job_info(),
+            **_render_shrinkage_design(settings),
         }
 
 

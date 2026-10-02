@@ -209,8 +209,9 @@ def _write_shrinkage_summary_sheet(
         ws.cell(row=row, column=1,
                 value=f'{group.process}, {group.point} centres, {result.method_label}')
         row += 1
-        if group.design_note:
-            ws.cell(row=row, column=1, value=group.design_note)
+        if group.lengths:
+            ws.cell(row=row, column=1,
+                    value=f'Design quadrant size: {group.lengths[0]:g} x {group.lengths[1]:g} mm')
             row += 1
 
         if not result.quadrant.empty:

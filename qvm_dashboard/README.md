@@ -168,6 +168,7 @@ The top navigation bar has four tabs:
 | **Pad to Via** | Analysis of PtV files — Quality Control and Analytics |
 | **Via to Pad** | Analysis of VtP files — Quality Control and Analytics |
 | **Core Shrinkage** | Analysis of Core Shrinkage CAM-order files — 4 sub-views |
+| **Documentation** | How registration shrinkage is calculated, step by step, with a diagram and a worked example run by the app itself |
 
 ---
 
@@ -223,18 +224,19 @@ design** (negative = shrink). The page has, top to bottom:
   sheet's mm value × 1000: the change over one quadrant length) and in
   **ppm**. Below: the quadrant-to-quadrant range, and an alert for any
   quadrant more than `outlier_ppm` from the panel average.
-- **Design positions.** Taken from `REGISTRATION_SHRINKAGE.DESIGNS` for the
-  Build Up and file type of the data. If there is no entry (for example the
-  file name carries no Build Up), another configured design stands in and a
-  note says which one. This is only done when all configured designs have the
-  same shape and differ by a shift, because a shift changes no length; if they differ in shape, the app shows the reason and no numbers.
-  The Core Shrinkage design is never used.
+- **Design.** Two numbers: the size of one quadrant in X and in Y (the
+  distance between its corner points). All four quadrants have that size, and
+  the calculation needs nothing else. They are set in the sidebar under
+  **📐 Shrinkage design size**, pre-filled from
+  `REGISTRATION_SHRINKAGE.design_quadrant_mm`, and apply to every Build Up and
+  both file types. Enter the design value, never a measured one. The Core
+  Shrinkage design is never used.
 - **When no number is shown.** Two situations make any shrinkage figure
   meaningless, so the app explains instead of reporting one:
   - *Positions relative to each site.* All points lie within a few microns of
     each other: the file was exported with each site in its own local
     coordinates, so it contains no panel geometry. Export in panel coordinates.
-  - *Design of another product.* A quadrant is more than `max_plausible_ppm`
+  - *Wrong design size.* A quadrant is more than `max_plausible_ppm`
     from its design size. The measured quadrant sizes are still listed, with
     the spread between quadrants, which needs no design.
 - **Which centre.** The via centre by default; `measured_point` switches a
@@ -303,7 +305,9 @@ The filename is built from the data in scope, e.g.
 `QVM_VTP_P20_F_BU-01_Lot-1234.xlsx`.
 
 The **Shrinkage** sub-view exports its own workbook: `Summary`, `Quadrants`,
-`Quadrant Sizes`, `Charts` (panel map and quadrant bars per group) and `Notes`.
+`Quadrant Sizes`, `Calculation` (every step as live Excel formulas on the design
+size and the measured positions, with the app's numbers beside them for
+cross-checking), `Charts` (panel map and quadrant bars per group) and `Notes`.
 
 **Core Shrinkage** exports its own workbook: per-layer measurement sheets, the
 side-by-side Front/Back table when both are loaded, and — when
@@ -402,9 +406,8 @@ Everything the Shrinkage tab of the Pad-to-Via / Via-to-Pad views uses.
 
 | Key | Meaning |
 |---|---|
-| `DESIGNS` | Design position (mm) of the 16 QPs, as `product → Build Up → file type → point`. Filled for C4F from `sample_data/QP_Coordinate_Commonality_Analysis.xlsx`: BU-01 (both types), BU-02 Via to Pad, BU-03 Pad to Via. Add a Build Up or a second product as a further block. |
-| `active_design` | Which product block of `DESIGNS` applies to the uploaded files |
-| `fallback_to_equivalent_design` | `true`: a Build Up / file type without an entry uses another configured design, provided all configured designs differ only by a shift. `false`: no entry, no numbers. |
+| `design_quadrant_mm` | `{x, y}`: design size of one quadrant in mm. Default of the two sidebar boxes; a value typed there replaces it for the session. C4F: 232.5 × 193.9, from `sample_data/QP_Coordinate_Commonality_Analysis.xlsx`. |
+| `map_gap_mm` | `{x, y}`: gap between the quadrants, only for drawing the Shrinkage Map. No effect on any number. |
 | `measured_point` | Per file type, `via` or `pad`: which measured centre is used |
 | `outlier_ppm` | A quadrant further than this from the panel average raises an alert |
 | `usl_ppm` | Optional pass/fail limit on the size of the shrinkage; `null` = report only |

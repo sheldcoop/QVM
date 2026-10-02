@@ -449,10 +449,9 @@ def test_shrinkage_sheet_uses_registration_design_and_company_numbers(settings):
     assert summary['Alert Count'] == 0
     assert not any('%' in t for t in header if isinstance(t, str))
 
-    # BU-02 Pad to Via has no entry: the equivalent BU-01 design stands in, and says so.
+    # One design size for every Build Up and file type, and the sheet states it.
     assert any(t.startswith('PTV | Build Up: BU-02') for t in text)
-    assert any('No design positions configured for BU-02 / Pad to Via; those of BU-01 / '
-               'Pad to Via are used' in t for t in text)
+    assert text.count('Design quadrant size: 232.5 x 193.9 mm') == 2
     second = dict(zip(header, rows[rows.index(header) + 2]))
     assert second['Build Up'] == 'BU-02' and second['FP X (ppm)'] == pytest.approx(0.0, abs=0.01)
     assert any(t == 'Via to Pad, via centres, Company (distance)' for t in text)
@@ -505,8 +504,14 @@ def test_shrinkage_workbook_has_tables_comparison_charts_and_notes(settings):
 
     # The formulas, worked out by hand here, give what the app reports.
     cell = {c.coordinate: c.value for row in calc.iter_rows() for c in row}
+    size = next(r for r in range(1, calc.max_row) if cell.get(f'A{r}') == 'Design X (mm)')
+    assert (cell[f'B{size}'], cell[f'B{size + 1}']) == (232.5, 193.9)
     head = next(r for r in range(1, calc.max_row) if cell.get(f'A{r}') == 'Point')
-    x1 = cell[f'D{head + 4}'] - cell[f'D{head + 1}']   # UL: x(4) - x(1)
-    x2 = cell[f'D{head + 3}'] - cell[f'D{head + 2}']   # UL: x(3) - x(2)
-    d1 = cell[f'B{head + 4}'] - cell[f'B{head + 1}']
-    assert ((x1 + x2) / 2 / d1 - 1) * 1e6 == pytest.approx(-100.0, abs=0.01)
+    assert cell[f'A{head + 1}'] == 'UL_1'
+    x1 = cell[f'B{head + 4}'] - cell[f'B{head + 1}']   # UL: x(4) - x(1)
+    x2 = cell[f'B{head + 3}'] - cell[f'B{head + 2}']   # UL: x(3) - x(2)
+    assert ((x1 + x2) / 2 / cell[f'B{size}'] - 1) * 1e6 == pytest.approx(-100.0, abs=0.01)
+    assert f'=B{head + 4}-B{head + 1}' in texts and f'=$B${size}' in texts
+    assert 'Design quadrant size: 232.5 x 193.9 mm' in notes
+    # Copper header on the table sheets.
+    assert wb['Summary']['A1'].fill.start_color.rgb.endswith('B87333')

@@ -15,6 +15,8 @@ from src.views.base import full_width
 from src.views.core_shrinkage import CoreShrinkageView
 from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
+from src.registration_shrinkage import with_design_lengths
+from src.views.documentation import render_documentation
 from src.views.registration_shrinkage import render_registration_shrinkage
 from src.scope import (
     _apply_scope_filters,
@@ -239,7 +241,7 @@ def main() -> None:
     load_css(os.path.join(os.path.dirname(__file__), "assets", "styles.css"), settings)
     st.title(ui_strings.get('dashboard_title', 'QVM Dashboard'))
 
-    sidebar_config = render_sidebar()
+    sidebar_config = render_sidebar(settings)
     uploaded_files = sidebar_config['uploaded_files']
     file_overrides = sidebar_config.get('file_overrides', [])
     meta = {
@@ -336,10 +338,19 @@ def main() -> None:
     meta['file_records'] = file_records
 
     main_view = render_nav_buttons(
-        ["Panel Map", "Pad to Via", "Via to Pad", "Core Shrinkage"],
+        ["Panel Map", "Pad to Via", "Via to Pad", "Core Shrinkage", "Documentation"],
         state_key="main_view",
         default="Panel Map",
     )
+
+    # The design quadrant size typed in the sidebar replaces the settings value
+    # from here on (display and exports); parsing above does not depend on it.
+    settings = with_design_lengths(
+        settings, sidebar_config['design_x_mm'], sidebar_config['design_y_mm'])
+
+    if main_view == "Documentation":
+        render_documentation(settings)
+        return
 
     if main_view == "Panel Map":
         fig = create_four_quarters_view(settings)

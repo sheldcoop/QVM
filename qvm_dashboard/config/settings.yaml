@@ -179,84 +179,13 @@ REGISTRATION_SHRINKAGE:
   # A quadrant further than this from its design size is not shrinkage: the design is
   # that of another product, or the file is wrong. No result is reported then.
   max_plausible_ppm: 2000
-  active_design: C4F       # which block of DESIGNS applies to the uploaded files
-  # When the data's Build Up / file type has no entry below (for example a file name
-  # without a Build Up), use another configured design. Only done when all configured
-  # designs have the same shape and differ by a shift, which leaves shrinkage unchanged.
-  fallback_to_equivalent_design: true
-  # Design (nominal) position of the 16 QPs per Build Up and file type, from
-  # sample_data/QP_Coordinate_Commonality_Analysis.xlsx. The core positions are never
-  # used as a stand-in.
-  DESIGNS:
-    C4F:
-      BU-01:
-        Via to Pad:   # workbook dataset 'BU01 Via-to-map' (to be confirmed)
-          UL_1: {x:  -237.375, y:   218.075}
-          UL_2: {x:  -237.375, y:    24.175}
-          UL_3: {x:    -4.875, y:    24.175}
-          UL_4: {x:    -4.875, y:   218.075}
-          LL_1: {x:  -237.375, y:   -25.925}
-          LL_2: {x:  -237.375, y:  -219.825}
-          LL_3: {x:    -4.875, y:  -219.825}
-          LL_4: {x:    -4.875, y:   -25.925}
-          LR_1: {x:     5.625, y:   -25.925}
-          LR_2: {x:     5.625, y:  -219.825}
-          LR_3: {x:   238.125, y:  -219.825}
-          LR_4: {x:   238.125, y:   -25.925}
-          UR_1: {x:     5.625, y:   218.075}
-          UR_2: {x:     5.625, y:    24.175}
-          UR_3: {x:   238.125, y:    24.175}
-          UR_4: {x:   238.125, y:   218.075}
-        Pad to Via:   # workbook dataset 'BU01 PtV'
-          UL_1: {x:  -238.125, y:   218.075}
-          UL_2: {x:  -238.125, y:    24.175}
-          UL_3: {x:    -5.625, y:    24.175}
-          UL_4: {x:    -5.625, y:   218.075}
-          LL_1: {x:  -238.125, y:   -25.925}
-          LL_2: {x:  -238.125, y:  -219.825}
-          LL_3: {x:    -5.625, y:  -219.825}
-          LL_4: {x:    -5.625, y:   -25.925}
-          LR_1: {x:     4.875, y:   -25.925}
-          LR_2: {x:     4.875, y:  -219.825}
-          LR_3: {x:   237.375, y:  -219.825}
-          LR_4: {x:   237.375, y:   -25.925}
-          UR_1: {x:     4.875, y:   218.075}
-          UR_2: {x:     4.875, y:    24.175}
-          UR_3: {x:   237.375, y:    24.175}
-          UR_4: {x:   237.375, y:   218.075}
-      BU-02:
-        Via to Pad:   # workbook dataset 'BU02 VtP'
-          UL_1: {x:  -237.375, y:   219.575}
-          UL_2: {x:  -237.375, y:    25.675}
-          UL_3: {x:    -4.875, y:    25.675}
-          UL_4: {x:    -4.875, y:   219.575}
-          LL_1: {x:  -237.375, y:   -24.425}
-          LL_2: {x:  -237.375, y:  -218.325}
-          LL_3: {x:    -4.875, y:  -218.325}
-          LL_4: {x:    -4.875, y:   -24.425}
-          LR_1: {x:     5.625, y:   -24.425}
-          LR_2: {x:     5.625, y:  -218.325}
-          LR_3: {x:   238.125, y:  -218.325}
-          LR_4: {x:   238.125, y:   -24.425}
-          UR_1: {x:     5.625, y:   219.575}
-          UR_2: {x:     5.625, y:    25.675}
-          UR_3: {x:   238.125, y:    25.675}
-          UR_4: {x:   238.125, y:   219.575}
-      BU-03:
-        Pad to Via:   # workbook dataset 'BU03 PtV'
-          UL_1: {x:  -238.125, y:   219.575}
-          UL_2: {x:  -238.125, y:    25.675}
-          UL_3: {x:    -5.625, y:    25.675}
-          UL_4: {x:    -5.625, y:   219.575}
-          LL_1: {x:  -238.125, y:   -24.425}
-          LL_2: {x:  -238.125, y:  -218.325}
-          LL_3: {x:    -5.625, y:  -218.325}
-          LL_4: {x:    -5.625, y:   -24.425}
-          LR_1: {x:     4.875, y:   -24.425}
-          LR_2: {x:     4.875, y:  -218.325}
-          LR_3: {x:   237.375, y:  -218.325}
-          LR_4: {x:   237.375, y:   -24.425}
-          UR_1: {x:     4.875, y:   219.575}
-          UR_2: {x:     4.875, y:    25.675}
-          UR_3: {x:   237.375, y:    25.675}
-          UR_4: {x:   237.375, y:   219.575}
+  # Design size of one quadrant (mm): the distance between its corner points in X
+  # and in Y. All four quadrants have the same size, and this is all the
+  # calculation needs. These are the defaults of the two boxes in the sidebar
+  # ("Shrinkage design size"); a value typed there replaces them for the session.
+  # C4F: from sample_data/QP_Coordinate_Commonality_Analysis.xlsx (all four
+  # datasets there give 232.5 x 193.9).
+  design_quadrant_mm: {x: 232.5, y: 193.9}
+  # Gap between the quadrants (mm). Only used to draw the Shrinkage Map; it has
+  # no effect on any number.
+  map_gap_mm: {x: 9.75, y: 50.1}

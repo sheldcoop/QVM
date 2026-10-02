@@ -13,6 +13,9 @@ from src.registration_shrinkage import (
     compute_distance_shrinkage,
     compute_shrinkage_by_group,
     design_for,
+    design_lengths,
+    layout_from_lengths,
+    with_design_lengths,
     measured_columns,
     measured_point,
     normalize_build_up,
@@ -174,59 +177,57 @@ def test_missing_points_and_missing_design_are_reported(settings):
     assert nothing.quadrant.empty and nothing.warnings == ['No design positions configured.']
 
 
-# ------------------------------------------------------------- design lookup
-def test_design_positions_come_per_build_up_and_file_type(settings):
-    ptv_bu1 = design_for(settings, 'BU-1', 'Post PFC Pad to Via')
-    vtp_bu1 = design_for(settings, 'bu01', 'Via to Pad')
-    vtp_bu2 = design_for(settings, 'BU-02', 'Via to Pad')
-    assert ptv_bu1['UL_1'] == {'x': -238.125, 'y': 218.075}
-    assert vtp_bu1['UL_1'] == {'x': -237.375, 'y': 218.075}
-    assert vtp_bu2['UL_1'] == {'x': -237.375, 'y': 219.575}
-
-    # Not in the company's coordinate workbook: no numbers, and never the core design.
-    assert design_for(settings, 'BU-02', 'Pad to Via') is None
-    assert design_for(settings, 'BU-09', 'Via to Pad') is None
-    assert design_for(settings, 'Unknown', 'Via to Pad') is None
+# ------------------------------------------------------------- design size
+def test_the_design_is_two_lengths_for_every_build_up_and_file_type(settings):
+    assert design_lengths(settings) == (232.5, 193.9)
+    design = design_for(settings)
+    assert len(design) == 16 and design != settings['CORE_SHRINKAGE']['NOMINAL_COORDS']
+    assert design == design_for(settings, 'BU-09', 'Via to Pad')  # one size for all
+    result = compute_distance_shrinkage(_frame(_points(design)), design)
+    assert set(result.quadrant['X Design (mm)']) == {232.5}
+    assert set(result.quadrant['Y Design (mm)']) == {193.9}
     assert normalize_build_up(' BU 3 ') == 'BU-03'
 
 
-def test_every_configured_design_has_the_registration_pitch(settings):
-    designs = settings['REGISTRATION_SHRINKAGE']['DESIGNS']['C4F']
-    core = settings['CORE_SHRINKAGE']['NOMINAL_COORDS']
-    count = 0
-    for by_process in designs.values():
-        for design in by_process.values():
-            count += 1
-            assert len(design) == 16 and design != core
-            result = compute_distance_shrinkage(_frame(_points(design)), design)
-            assert set(result.quadrant['X Design (mm)']) == {232.5}
-            assert set(result.quadrant['Y Design (mm)']) == {193.9}
-    assert count == 4
+def test_only_the_lengths_matter_not_where_the_quadrants_sit(settings):
+    """The gap between quadrants is for the map; it changes no number."""
+    rng = np.random.default_rng(3)
+    measured = {n: xy * 0.99985 + rng.normal(0, 0.004, 2) + np.array([301.4, 323.7])
+                for n, xy in _points(layout_from_lengths(232.5, 193.9, 9.75, 50.1)).items()}
+    frame = _frame(measured)
+    near = compute_distance_shrinkage(frame, layout_from_lengths(232.5, 193.9, 0.0, 0.0))
+    far = compute_distance_shrinkage(frame, layout_from_lengths(232.5, 193.9, 80.0, 5.0))
+    pd.testing.assert_frame_equal(near.quadrant, far.quadrant)
+    pd.testing.assert_frame_equal(near.full_panel, far.full_panel)
 
 
-def test_groups_use_their_own_design_and_say_when_there_is_none(settings):
-    frames = []
-    for build_up, process, scale in (('BU-01', 'Pad to Via', 0.9999), ('BU-02', 'Via to Pad', 1.0002),
-                                     ('BU-02', 'Pad to Via', 1.0)):
-        design = design_for(settings, build_up, process) or _design(settings)
-        frames.append(_frame({n: xy * scale for n, xy in _points(design).items()},
-                             **{'Build Up': build_up, 'Panel': '20', 'Side': 'F', 'Process': process}))
+def test_design_size_from_the_sidebar_replaces_the_settings_value(settings):
+    typed = with_design_lengths(settings, 230.0, 190.0)
+    assert design_lengths(typed) == (230.0, 190.0)
+    assert design_lengths(settings) == (232.5, 193.9)  # the loaded settings are untouched
 
-    strict = dict(settings)
-    strict['REGISTRATION_SHRINKAGE'] = {
-        **settings['REGISTRATION_SHRINKAGE'], 'fallback_to_equivalent_design': False}
-    ptv = compute_shrinkage_by_group(pd.concat(frames[::2]), strict)
-    vtp = compute_shrinkage_by_group(frames[1], settings)
+    frame = _frame({n: xy * 0.9999 for n, xy in _points(design_for(typed)).items()},
+                   **{'Build Up': 'Unknown', 'Panel': '20', 'Side': 'F', 'Process': 'Pad to Via'})
+    group = compute_shrinkage_by_group(frame, typed)[0]
+    assert group.lengths == (230.0, 190.0) and group.point == 'via'
+    assert group.label == 'Build Up: Unknown, Panel: 20, Side: F'
+    assert _panel(group.result)['Shrinkage X (ppm)'] == pytest.approx(-100.0, abs=0.01)
+    assert _panel(group.result)['Delta X (um)'] == pytest.approx(-23.0, abs=0.01)
 
-    assert [g.group['Build Up'] for g in ptv] == ['BU-01', 'BU-02']
-    assert _panel(ptv[0].result)['Shrinkage X (ppm)'] == pytest.approx(-100.0, abs=0.01)
-    assert ptv[0].label == 'Build Up: BU-01, Panel: 20, Side: F' and ptv[0].point == 'via'
-    assert ptv[0].design_note is None
-    assert ptv[1].result.quadrant.empty and ptv[1].design is None
-    assert 'No design positions configured for BU-02 / Pad to Via' in ptv[1].result.warnings[0]
+    # The same panel against the wrong size is refused, not reported as shrinkage.
+    wrong = compute_shrinkage_by_group(frame, settings)[0]
+    assert wrong.result.quadrant.empty and 'does not match the design' in wrong.result.warnings[0]
 
-    assert vtp[0].process == 'Via to Pad'
-    assert _panel(vtp[0].result)['Shrinkage Y (ppm)'] == pytest.approx(200.0, abs=0.01)
+
+@pytest.mark.parametrize('x, y', [(None, 193.9), (0, 193.9), ('abc', 1.0), (232.5, -1)])
+def test_no_design_size_means_no_numbers_and_a_clear_reason(settings, x, y):
+    blank = with_design_lengths(settings, x, y)
+    assert design_lengths(blank) is None and design_for(blank) is None
+    frame = _frame(_points(design_for(settings)),
+                   **{'Build Up': 'BU-01', 'Panel': '1', 'Side': 'F', 'Process': 'Via to Pad'})
+    group = compute_shrinkage_by_group(frame, blank)[0]
+    assert group.result.quadrant.empty
+    assert 'No design quadrant size is set' in group.result.warnings[0]
 
 
 def test_measured_point_can_be_switched_to_the_pad(settings):
@@ -269,54 +270,6 @@ Distance: VtP_LL_2(ID:3) between Pad_LL_2(ID:2) and Via_LL_2(ID:1)
     assert _panel(from_via.result)['Shrinkage X (ppm)'] == pytest.approx(0.0, abs=0.01)
     assert _panel(from_pad.result)['Shrinkage X (ppm)'] == pytest.approx(-100.0, abs=0.01)
     assert from_pad.point == 'pad'
-
-
-def test_missing_build_up_uses_an_equivalent_design_and_says_so(settings):
-    from src.registration_shrinkage import resolve_design
-
-    # A file name without a Build Up gives 'Unknown'; BU-02 Pad to Via is not configured.
-    for build_up, process, source in (('Unknown', 'Via to Pad', 'BU-01 / Via to Pad'),
-                                      ('BU-02', 'Pad to Via', 'BU-01 / Pad to Via'),
-                                      ('Unknown', 'Pad to Via', 'BU-01 / Pad to Via')):
-        design, note = resolve_design(settings, build_up, process)
-        assert design is not None and f'those of {source} are used' in note
-        assert 'differ only by a shift' in note
-    exact, note = resolve_design(settings, 'BU-03', 'Pad to Via')
-    assert exact == design_for(settings, 'BU-03', 'Pad to Via') and note is None
-
-    # The stand-in gives exactly the result the right design would give:
-    # measure a BU-03 panel, once against its own design and once as 'Unknown'.
-    own = _design(settings, 'BU-03', 'Pad to Via')
-    rng = np.random.default_rng(5)
-    measured = {n: xy * 0.99988 + rng.normal(0, 0.004, 2) + np.array([301.4, 323.7])
-                for n, xy in _points(own).items()}
-    results = []
-    for build_up in ('BU-03', 'Unknown'):
-        frame = _frame(measured, **{'Build Up': build_up, 'Panel': '20', 'Side': 'F',
-                                    'Process': 'Pad to Via'})
-        results.append(compute_shrinkage_by_group(frame, settings)[0])
-    assert results[0].design_note is None and results[1].design_note is not None
-    pd.testing.assert_frame_equal(results[0].result.quadrant, results[1].result.quadrant)
-    pd.testing.assert_frame_equal(results[0].result.full_panel, results[1].result.full_panel)
-
-
-def test_no_stand_in_when_configured_designs_differ_in_shape(settings):
-    from src.registration_shrinkage import resolve_design
-
-    cfg = settings['REGISTRATION_SHRINKAGE']
-    other = {name: {'x': xy['x'] * 1.1, 'y': xy['y']}
-             for name, xy in cfg['DESIGNS']['C4F']['BU-01']['Pad to Via'].items()}
-    mixed = dict(settings)
-    mixed['REGISTRATION_SHRINKAGE'] = {
-        **cfg, 'DESIGNS': {'C4F': {**cfg['DESIGNS']['C4F'], 'BU-05': {'Pad to Via': other}}}}
-    design, note = resolve_design(mixed, 'Unknown', 'Pad to Via')
-    assert design is None and 'differ in shape' in note
-    frame = _frame(_points(other), **{'Build Up': 'Unknown', 'Panel': '1', 'Side': 'F',
-                                      'Process': 'Pad to Via'})
-    group = compute_shrinkage_by_group(frame, mixed)[0]
-    assert group.result.quadrant.empty and 'differ in shape' in group.result.warnings[0]
-    core = settings['CORE_SHRINKAGE']['NOMINAL_COORDS']
-    assert resolve_design(settings, 'Unknown', 'Via to Pad')[0] != core
 
 
 # --------------------------------------------- lessons from the first real files

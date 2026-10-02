@@ -11,12 +11,10 @@ lengths of an axis. Full panel = mean of the four quadrants. Sign convention:
 measured minus design, so negative = shrink. Only lengths are used, so the
 position of the machine origin does not matter.
 
-Design positions come from ``REGISTRATION_SHRINKAGE.DESIGNS`` in settings.yaml,
-per Build Up and file type. When the data's Build Up / file type has no entry
-(for example a file name without a Build Up), another configured design is
-used, but only if all configured designs have the same shape and differ by a
-pure shift: a shift changes no length. Otherwise the group gets a warning and
-no numbers. The core design is never used.
+The design is two numbers: the size of one quadrant in X and in Y
+(``REGISTRATION_SHRINKAGE.design_quadrant_mm``, or the boxes in the sidebar).
+All four quadrants have that size. Nothing else of the design is needed,
+because only lengths inside a quadrant are compared.
 
 No numbers are reported either when the file holds positions relative to each
 site, or when a quadrant is further from its design size than shrinkage can
@@ -29,7 +27,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 from src.core_shrinkage_math import _to_ppm
@@ -101,64 +98,58 @@ def normalize_process(value: object) -> str:
     return PROCESS_VTP if PROCESS_VTP.lower() in str(value).lower() else PROCESS_PTV
 
 
-def design_for(settings: dict, build_up: object, process: object) -> Optional[PointMap]:
-    """Design positions for one Build Up and file type, or None when not configured."""
-    cfg = shrinkage_config(settings)
-    designs = cfg.get("DESIGNS") or {}
-    product = designs.get(cfg.get("active_design")) or {}
-    by_build_up = {normalize_build_up(k): v for k, v in product.items()}
-    by_process = by_build_up.get(normalize_build_up(build_up)) or {}
-    positions = {normalize_process(k): v for k, v in by_process.items()}.get(
-        normalize_process(process))
-    return positions or None
+def design_lengths(settings: dict) -> Optional[tuple]:
+    """(X, Y) design size of one quadrant in mm, or None when not set.
 
-
-def _all_designs(settings: dict) -> List[tuple]:
-    """Every configured design of the active product as (Build Up, file type, positions)."""
-    cfg = shrinkage_config(settings)
-    product = (cfg.get("DESIGNS") or {}).get(cfg.get("active_design")) or {}
-    return [
-        (normalize_build_up(build_up), normalize_process(process), positions)
-        for build_up, by_process in product.items()
-        for process, positions in (by_process or {}).items()
-        if positions
-    ]
-
-
-def _same_shape(first: PointMap, second: PointMap, tolerance_mm: float = 1e-6) -> bool:
-    """True when two designs have the same points and differ only by one shift."""
-    a, b = _design_map(first), _design_map(second)
-    if set(a) != set(b) or not a:
-        return False
-    names = sorted(a)
-    delta = np.array([[b[n]["x"] - a[n]["x"], b[n]["y"] - a[n]["y"]] for n in names])
-    return bool(np.all(np.abs(delta - delta[0]) <= tolerance_mm))
-
-
-def resolve_design(settings: dict, build_up: object, process: object) -> tuple:
-    """(design positions or None, note or None) for one Build Up and file type.
-
-    The exact entry is used when there is one. Otherwise a stand-in is taken
-    from the configured designs (same file type preferred), provided all of
-    them have the same shape; the note says which one and why that is safe.
+    Read from ``REGISTRATION_SHRINKAGE.design_quadrant_mm``; the sidebar boxes
+    replace it for the session through :func:`with_design_lengths`.
     """
-    exact = design_for(settings, build_up, process)
-    if exact is not None:
-        return exact, None
-    wanted = f"{normalize_build_up(build_up)} / {normalize_process(process)}"
-    candidates = _all_designs(settings)
-    if not candidates or not shrinkage_config(settings).get("fallback_to_equivalent_design", True):
-        return None, None
-    if not all(_same_shape(candidates[0][2], other[2]) for other in candidates[1:]):
-        return None, (
-            f"No design positions configured for {wanted}, and the configured designs "
-            f"differ in shape, so none of them can stand in.")
-    same_type = [c for c in candidates if c[1] == normalize_process(process)]
-    source_build_up, source_process, positions = (same_type or candidates)[0]
-    return positions, (
-        f"No design positions configured for {wanted}; those of {source_build_up} / "
-        f"{source_process} are used. All configured designs have the same shape and differ "
-        f"only by a shift, which does not change the shrinkage result.")
+    size = shrinkage_config(settings).get("design_quadrant_mm") or {}
+    try:
+        x, y = float(size.get("x")), float(size.get("y"))
+    except (TypeError, ValueError):
+        return None
+    return (x, y) if x > 0.0 and y > 0.0 else None
+
+
+def with_design_lengths(settings: dict, x_mm: object, y_mm: object) -> dict:
+    """A copy of the settings with the design quadrant size replaced."""
+    out = dict(settings)
+    out["REGISTRATION_SHRINKAGE"] = {
+        **shrinkage_config(settings), "design_quadrant_mm": {"x": x_mm, "y": y_mm}}
+    return out
+
+
+def layout_from_lengths(x_mm: float, y_mm: float, gap_x: float = 10.0,
+                        gap_y: float = 10.0) -> PointMap:
+    """The 16 design points of a panel whose four quadrants are x_mm by y_mm.
+
+    The calculation only uses the lengths inside a quadrant, so where the
+    quadrants sit (the gap) changes no number; it is there for the map.
+    """
+    points: PointMap = {}
+    for quadrant in _QUADRANTS:
+        left = -(gap_x / 2.0 + x_mm) if quadrant[1] == "L" else gap_x / 2.0
+        bottom = gap_y / 2.0 if quadrant[0] == "U" else -(gap_y / 2.0 + y_mm)
+        corners = {_TL: (left, bottom + y_mm), _BL: (left, bottom),
+                   _BR: (left + x_mm, bottom), _TR: (left + x_mm, bottom + y_mm)}
+        for corner, (x, y) in corners.items():
+            points[f"{quadrant}_{corner}"] = {"x": x, "y": y}
+    return points
+
+
+def design_for(settings: dict, build_up: object = None, process: object = None) -> Optional[PointMap]:
+    """Design points built from the design quadrant size, or None when it is not set.
+
+    One size applies to every Build Up and file type (``build_up`` and
+    ``process`` are accepted for callers that have them, and not used).
+    """
+    lengths = design_lengths(settings)
+    if lengths is None:
+        return None
+    gap = shrinkage_config(settings).get("map_gap_mm") or {}
+    return layout_from_lengths(lengths[0], lengths[1],
+                               float(gap.get("x", 10.0)), float(gap.get("y", 10.0)))
 
 
 def measured_point(settings: dict, process: object) -> str:
@@ -277,8 +268,9 @@ def _plausibility(design: PointMap, measured: PointMap,
         f"{lengths['Y Measured (mm)'].mean():.3f} mm) does not match the design "
         f"({lengths['X Design (mm)'].mean():.3f} x {lengths['Y Design (mm)'].mean():.3f} mm): "
         f"up to {worst:.0f} ppm apart, more than shrinkage can explain (limit "
-        f"{float(max_plausible_ppm):.0f} ppm). The design positions are probably not those "
-        f"of this product, so shrinkage is not reported. The measured sizes are listed below.",
+        f"{float(max_plausible_ppm):.0f} ppm). The design size is probably not that of "
+        f"this product (see Shrinkage design size in the sidebar), so shrinkage is not "
+        f"reported. The measured sizes are listed below.",
         lengths)
 
 
@@ -396,7 +388,7 @@ class GroupShrinkage:
     result: ShrinkageResult
     measured: pd.DataFrame
     columns: tuple
-    design_note: Optional[str] = None  # set when a stand-in design was used
+    lengths: Optional[tuple] = None  # design quadrant size (X, Y) in mm
 
     @property
     def label(self) -> str:
@@ -410,11 +402,13 @@ def compute_shrinkage_by_group(
     *,
     group_cols: tuple = GROUP_COLUMNS,
 ) -> List[GroupShrinkage]:
-    """Shrinkage per Build Up / Panel / Side, each against its own design positions."""
+    """Shrinkage per Build Up / Panel / Side, against the design quadrant size."""
     cfg = shrinkage_config(settings)
     outlier_ppm = float(cfg.get("outlier_ppm", _DEFAULT_OUTLIER_PPM))
     usl_ppm = cfg.get("usl_ppm")
     max_plausible_ppm = cfg.get("max_plausible_ppm", _DEFAULT_MAX_PLAUSIBLE_PPM)
+    lengths = design_lengths(settings)
+    design = design_for(settings)
 
     present = [c for c in group_cols if c in measured_df.columns]
     if present and not measured_df.empty:
@@ -431,21 +425,19 @@ def compute_shrinkage_by_group(
         }
         process_values = frame["Process"] if "Process" in frame.columns else pd.Series(dtype=str)
         process = normalize_process(process_values.iloc[0]) if len(process_values) else PROCESS_PTV
-        build_up = labels.get("Build Up", "Unknown")
-        design, note = resolve_design(settings, build_up, process)
         columns = measured_columns(settings, process)
         point = measured_point(settings, process)
 
         if design is None:
-            result = _empty([note or (
-                f"No design positions configured for {build_up} / {process} "
-                f"(REGISTRATION_SHRINKAGE.DESIGNS in settings.yaml); shrinkage not calculated.")])
-            note = None
+            result = _empty([
+                "No design quadrant size is set, so shrinkage is not calculated. Enter it in "
+                "the sidebar (Shrinkage design size) or in REGISTRATION_SHRINKAGE."
+                "design_quadrant_mm in settings.yaml."])
         else:
             result = compute_distance_shrinkage(
                 frame, design, location_col=columns[0], x_col=columns[1], y_col=columns[2],
                 outlier_ppm=outlier_ppm, usl_ppm=usl_ppm, max_plausible_ppm=max_plausible_ppm)
-        out.append(GroupShrinkage(labels, process, point, design, result, frame, columns, note))
+        out.append(GroupShrinkage(labels, process, point, design, result, frame, columns, lengths))
     return out
 
 

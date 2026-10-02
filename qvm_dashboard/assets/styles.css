@@ -98,3 +98,42 @@ button[data-testid="stBaseButton-secondary"]:active {
     padding-top: 3rem !important;
 }
 
+
+/* Tables of the Shrinkage and Documentation tabs: copper header, as the tiles. */
+.qvm-table-wrap {
+    overflow-x: auto;
+    margin: 0.25rem 0 1rem 0;
+}
+
+.qvm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+}
+
+.qvm-table th {
+    background-color: var(--panel-color);
+    color: #FFFFFF;
+    font-weight: 600;
+    text-align: right;
+    padding: 9px 14px;
+    white-space: nowrap;
+    border: none;
+}
+
+.qvm-table td {
+    text-align: right;
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(184, 115, 51, 0.35);
+    font-variant-numeric: tabular-nums;
+}
+
+.qvm-table th:first-child,
+.qvm-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+}
+
+.qvm-table tbody tr:hover td {
+    background-color: rgba(184, 115, 51, 0.12);
+}

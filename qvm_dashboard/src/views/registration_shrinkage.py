@@ -8,6 +8,7 @@ All numbers come from ``src.registration_shrinkage`` and all figures from
 ``src.visuals.shrinkage``; this module only lays them out.
 """
 
+import html
 import logging
 from io import BytesIO
 
@@ -49,10 +50,15 @@ panel. Each is given in µm (the change over one quadrant length) and in ppm
 **Uniformity.** *Quadrant range* is the largest minus the smallest quadrant.
 A quadrant further than the alert limit from the panel value is listed.
 
+**The design** is two numbers: the size of one quadrant in X and in Y, set in
+the sidebar under *Shrinkage design size*. All four quadrants have that size.
+
 **When no number is shown.** Either the file holds positions relative to each
 site (no panel geometry), or the measured quadrant size is too far from the
-design to be shrinkage (design of another product). In the second case the
-measured quadrant sizes are still listed.
+design size to be shrinkage (wrong design size, or another product). In the
+second case the measured quadrant sizes are still listed.
+
+The **Documentation** tab explains every step with an example.
 """
 
 
@@ -75,10 +81,25 @@ def build_shrinkage_workbook(df: pd.DataFrame, settings: dict, meta: dict) -> tu
     return buffer.getvalue(), error
 
 
+def _cell(column: str, value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ''
+    if isinstance(value, float):
+        return f'{value:,.3f}' if '(mm)' in column else f'{value:,.1f}'
+    return html.escape(str(value))  # file-derived text (Build Up, Panel) stays text
+
+
 def _show(frame: pd.DataFrame, columns=None) -> None:
+    """A table with the copper header of the app (styles.css: .qvm-table)."""
     if columns is not None:
         frame = frame[[c for c in columns if c in frame.columns]]
-    st.dataframe(frame, width='stretch', hide_index=True)
+    head = ''.join(f'<th>{html.escape(str(c))}</th>' for c in frame.columns)
+    body = ''.join(
+        '<tr>' + ''.join(f'<td>{_cell(str(c), v)}</td>' for c, v in zip(frame.columns, row)) + '</tr>'
+        for row in frame.itertuples(index=False, name=None))
+    st.markdown(
+        f'<div class="qvm-table-wrap"><table class="qvm-table"><thead><tr>{head}</tr></thead>'
+        f'<tbody>{body}</tbody></table></div>', unsafe_allow_html=True)
 
 
 def _chart(figure, key: str) -> None:
@@ -127,8 +148,6 @@ def _render_summary(groups: list) -> None:
 def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key: str,
                   tiles: bool = True) -> None:
     result = group.result
-    if group.design_note:
-        st.info(group.design_note)
     for warning in result.warnings:
         st.warning(warning)
     if result.quadrant.empty:
@@ -151,6 +170,7 @@ def _render_group(group: GroupShrinkage, settings: dict, outlier_ppm: float, key
         _render_group_tiles(group)
     st.caption(
         f"{result.method_label} · {group.process} · {group.point} centres · "
+        f"design quadrant {group.lengths[0]:g} × {group.lengths[1]:g} mm · "
         f"measured − design (negative = shrink). µm is the change over one quadrant length.")
     _render_group_details(group, settings, outlier_ppm, key)
 
@@ -214,7 +234,7 @@ def render_registration_shrinkage(df: pd.DataFrame, settings: dict, *, key: str,
         st.download_button(
             label='📥 Shrinkage Excel', data=data, file_name=f'QVM_Shrinkage_{key.upper()}.xlsx',
             mime=_EXCEL_MIME, type='primary', key=f'{key}_shrinkage_download')
-    _show(summary_frame(groups).round(1))
+    _show(summary_frame(groups))
     st.markdown('---')
 
     # One panel in scope: its tiles are the summary above, so not drawn twice.

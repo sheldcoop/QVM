@@ -18,7 +18,6 @@ from openpyxl.utils import get_column_letter
 
 from src.registration_shrinkage import (
     METHOD_LABEL,
-    _design_map,
     _point_map,
     compute_shrinkage_by_group,
     shrinkage_config,
@@ -52,6 +51,7 @@ def _write(writer: pd.ExcelWriter, name: str, frame: pd.DataFrame, empty_note: s
     if frame.empty:
         frame = pd.DataFrame({'info': [empty_note]})
     frame.to_excel(writer, sheet_name=name, index=False)
+    _copper_header(writer.sheets[name])
 
 
 _QUADRANTS = ('UL', 'LL', 'LR', 'UR')
@@ -60,7 +60,8 @@ _HEAD = PatternFill('solid', start_color='B87333')            # copper, as in th
 _HEAD_FONT = Font(bold=True, color='FFFFFF')
 _RESULT = PatternFill('solid', start_color='F6E3D0')
 _EXPLAIN = (
-    'How to read this sheet. Every number below the positions is an Excel formula: click a cell to see it.',
+    'How to read this sheet. Every number below the positions is an Excel formula: click a cell to see it. '
+    'Change a Design value (shaded) and everything recalculates.',
     'Points of a quadrant: 1 = top-left, 2 = bottom-left, 3 = bottom-right, 4 = top-right.',
     'X1 = x(4) - x(1), the top edge.  X2 = x(3) - x(2), the bottom edge.  X length = average of X1 and X2.',
     'Y1 = y(1) - y(2), the left edge.  Y2 = y(4) - y(3), the right edge.  Y length = average of Y1 and Y2.',
@@ -72,9 +73,9 @@ _EXPLAIN = (
 )
 _STEP_HEADERS = (
     'Quadrant',
-    'X1 design', 'X2 design', 'X design (mm)', 'X1 measured', 'X2 measured', 'X measured (mm)',
+    'X design (mm)', 'X1 measured', 'X2 measured', 'X measured (mm)',
     'Delta X (um)', 'Shrinkage X (ppm)',
-    'Y1 design', 'Y2 design', 'Y design (mm)', 'Y1 measured', 'Y2 measured', 'Y measured (mm)',
+    'Y design (mm)', 'Y1 measured', 'Y2 measured', 'Y measured (mm)',
     'Delta Y (um)', 'Shrinkage Y (ppm)',
 )
 
@@ -85,13 +86,24 @@ def _header(sheet, row: int, titles) -> None:
         cell.fill, cell.font = _HEAD, _HEAD_FONT
 
 
+def _copper_header(sheet) -> None:
+    """Copper header row and readable column widths for a table sheet."""
+    for cell in sheet[1]:
+        cell.fill, cell.font = _HEAD, _HEAD_FONT
+        width = max(len(str(cell.value or '')) + 3, 12)
+        sheet.column_dimensions[cell.column_letter].width = min(width, 60)
+    sheet.freeze_panes = 'A2'
+
+
 def _write_calculation(sheet, groups) -> None:
     """The company calculation as live formulas, one block per reported group.
 
-    Only the positions are typed in as numbers; lengths, um, ppm, panel
-    average, X - Y and range are formulas on them, so the user can follow and
-    check every step. The app's own result is printed below for comparison.
-    Formulas are built from cell addresses only, never from text of the file.
+    Only the design quadrant size and the measured positions are typed in as
+    numbers; lengths, um, ppm, panel average, X - Y and range are formulas on
+    them, so the user can follow and check every step, or change the design
+    size and watch the result move. The app's own result is printed below for
+    comparison. Formulas are built from cell addresses only, never from text
+    of the file.
     """
     for row, line in enumerate(_EXPLAIN, start=1):
         sheet.cell(row=row, column=1, value=line)
@@ -100,12 +112,10 @@ def _write_calculation(sheet, groups) -> None:
 
     written = False
     for group in groups:
-        if group.result.quadrant.empty or not group.design:
+        if group.result.quadrant.empty or not group.lengths:
             continue
-        design = _design_map(group.design)
         measured = _point_map(group.measured, *group.columns)
-        quadrants = [q for q in _QUADRANTS
-                     if all(f'{q}_{c}' in design and f'{q}_{c}' in measured for c in '1234')]
+        quadrants = [q for q in _QUADRANTS if all(f'{q}_{c}' in measured for c in '1234')]
         if not quadrants:
             continue
         written = True
@@ -113,18 +123,23 @@ def _write_calculation(sheet, groups) -> None:
         sheet.cell(row=row, column=1,
                    value=_safe_text(f'{group.process} | {group.label} | {group.point} centres')).font = _BOLD
         row += 1
-        sheet.cell(row=row, column=1, value='Step 1: positions (mm)').font = _BOLD
+        sheet.cell(row=row, column=1, value='Step 1: design quadrant size and measured positions (mm)').font = _BOLD
         row += 1
-        _header(sheet, row, ('Point', 'Design X', 'Design Y', 'Measured X', 'Measured Y'))
+        design_x, design_y = f'$B${row}', f'$B${row + 1}'
+        for title, value in (('Design X (mm)', group.lengths[0]), ('Design Y (mm)', group.lengths[1])):
+            sheet.cell(row=row, column=1, value=title).font = _BOLD
+            sheet.cell(row=row, column=2, value=float(value)).fill = _RESULT
+            row += 1
+        row += 1
+        _header(sheet, row, ('Point', 'Measured X', 'Measured Y'))
         at = {}  # point name -> its row
         for quadrant in quadrants:
             for corner in '1234':
                 row += 1
                 name = f'{quadrant}_{corner}'
                 at[name] = row
-                values = (name, design[name]['x'], design[name]['y'],
-                          measured[name]['x'], measured[name]['y'])
-                for column, value in enumerate(values, start=1):
+                for column, value in enumerate(
+                        (name, measured[name]['x'], measured[name]['y']), start=1):
                     sheet.cell(row=row, column=column, value=value)
 
         row += 2
@@ -135,19 +150,12 @@ def _write_calculation(sheet, groups) -> None:
         for quadrant in quadrants:
             row += 1
             p1, p2, p3, p4 = (at[f'{quadrant}_{c}'] for c in '1234')
-
-            def lengths(x_column: str, y_column: str):
-                return (f'={x_column}{p4}-{x_column}{p1}', f'={x_column}{p3}-{x_column}{p2}',
-                        f'={y_column}{p1}-{y_column}{p2}', f'={y_column}{p4}-{y_column}{p3}')
-
-            dx1, dx2, dy1, dy2 = lengths('B', 'C')
-            mx1, mx2, my1, my2 = lengths('D', 'E')
             cells = (
                 quadrant,
-                dx1, dx2, f'=AVERAGE(B{row}:C{row})', mx1, mx2, f'=AVERAGE(E{row}:F{row})',
-                f'=(G{row}-D{row})*1000', f'=(G{row}/D{row}-1)*1000000',
-                dy1, dy2, f'=AVERAGE(J{row}:K{row})', my1, my2, f'=AVERAGE(M{row}:N{row})',
-                f'=(O{row}-L{row})*1000', f'=(O{row}/L{row}-1)*1000000',
+                f'={design_x}', f'=B{p4}-B{p1}', f'=B{p3}-B{p2}', f'=AVERAGE(C{row}:D{row})',
+                f'=(E{row}-B{row})*1000', f'=(E{row}/B{row}-1)*1000000',
+                f'={design_y}', f'=C{p1}-C{p2}', f'=C{p4}-C{p3}', f'=AVERAGE(I{row}:J{row})',
+                f'=(K{row}-H{row})*1000', f'=(K{row}/H{row}-1)*1000000',
             )
             for column, value in enumerate(cells, start=1):
                 sheet.cell(row=row, column=column, value=value)
@@ -160,11 +168,11 @@ def _write_calculation(sheet, groups) -> None:
                              'X - Y (ppm)', 'Quadrant range X (ppm)', 'Quadrant range Y (ppm)'))
         row += 1
         formulas = ('From the formulas',
-                    f'=AVERAGE(H{first}:H{last})', f'=AVERAGE(I{first}:I{last})',
-                    f'=AVERAGE(P{first}:P{last})', f'=AVERAGE(Q{first}:Q{last})',
+                    f'=AVERAGE(F{first}:F{last})', f'=AVERAGE(G{first}:G{last})',
+                    f'=AVERAGE(L{first}:L{last})', f'=AVERAGE(M{first}:M{last})',
                     f'=C{row}-E{row}',
-                    f'=MAX(I{first}:I{last})-MIN(I{first}:I{last})',
-                    f'=MAX(Q{first}:Q{last})-MIN(Q{first}:Q{last})')
+                    f'=MAX(G{first}:G{last})-MIN(G{first}:G{last})',
+                    f'=MAX(M{first}:M{last})-MIN(M{first}:M{last})')
         for column, value in enumerate(formulas, start=1):
             sheet.cell(row=row, column=column, value=value).fill = _RESULT
         row += 1
@@ -181,7 +189,7 @@ def _write_calculation(sheet, groups) -> None:
     if not written:
         sheet.cell(row=row, column=1, value='No shrinkage result in scope, so there is nothing to calculate.')
     for column in range(2, len(_STEP_HEADERS) + 1):
-        sheet.column_dimensions[get_column_letter(column)].width = 18
+        sheet.column_dimensions[get_column_letter(column)].width = 20
         for cells in sheet.iter_rows(min_row=len(_EXPLAIN) + 2, min_col=column, max_col=column):
             cells[0].number_format = '0.000'
     sheet.column_dimensions['A'].width = 22
@@ -244,8 +252,8 @@ def write_shrinkage_excel(writer: pd.ExcelWriter, df: pd.DataFrame, settings: di
     for group in groups:
         lines.append('')
         lines.append(f'{group.process} | {group.label} | {group.point} centres')
-        if group.design_note:
-            lines.append(group.design_note)
+        if group.lengths:
+            lines.append(f'Design quadrant size: {group.lengths[0]:g} x {group.lengths[1]:g} mm')
         lines.extend(group.result.warnings)
     for index, line in enumerate(lines, start=1):
         notes.cell(row=index, column=1, value=_safe_text(line))

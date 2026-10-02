@@ -32,11 +32,12 @@ def test_every_key_the_code_reads_is_defined_in_settings(settings):
     source += (ROOT / 'src' / 'excel_export' / 'qvm.py').read_text()
     read = set(re.findall(r'(?:cfg|shrinkage_config\(settings\))\.get\(\s*["\'](\w+)["\']', source))
     assert read == {
-        'DESIGNS', 'active_design', 'measured_point',
-        'outlier_ppm', 'usl_ppm', 'fallback_to_equivalent_design', 'max_plausible_ppm',
+        'design_quadrant_mm', 'map_gap_mm', 'measured_point',
+        'outlier_ppm', 'usl_ppm', 'max_plausible_ppm',
     }
     assert read <= set(section), f'read but not defined: {sorted(read - set(section))}'
-    assert section['active_design'] in section['DESIGNS']
+    assert set(section['design_quadrant_mm']) == {'x', 'y'}
+    assert 'DESIGNS' not in section  # the 16 design positions are gone: two lengths suffice
 
 
 def test_registration_shrinkage_never_uses_the_core_design():

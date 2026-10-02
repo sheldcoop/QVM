@@ -6,6 +6,11 @@
 > `6a43e7f`; the figures below were produced and tested with that code). This
 > document is kept as the record of why the company number can be trusted and
 > where it cannot see.
+>
+> Since then the 16 design positions per Build Up were also removed from
+> `settings.yaml`: the company method only needs the design size of one
+> quadrant (X and Y), now entered in the sidebar. Where this document speaks
+> of `REGISTRATION_SHRINKAGE.DESIGNS`, read that as history.
 
 This explains the three methods on the **Shrinkage** tab of the Pad-to-Via and
 Via-to-Pad views: what each one does, where the company method falls short, and
