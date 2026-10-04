@@ -78,6 +78,24 @@ def apply_dark_layout(fig: go.Figure, *, height: int = None, **overrides) -> go.
     return fig
 
 
+def apply_light_layout(fig: go.Figure, *, height: int = None, **overrides) -> go.Figure:
+    """Apply the shared light/print layout (white bg, dark text), then overrides.
+
+    Sibling of :func:`apply_dark_layout` for charts that mainly end up in
+    PowerPoint and print — see ``theme.LIGHT``.
+    """
+    layout = dict(
+        plot_bgcolor=theme.LIGHT['plot_bg'],
+        paper_bgcolor=theme.LIGHT['paper_bg'],
+        font=dict(color=theme.LIGHT['text'], size=11),
+    )
+    if height is not None:
+        layout['height'] = height
+    layout.update(overrides)
+    fig.update_layout(**layout)
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # Shared annotation cards (dark theme)
 # ---------------------------------------------------------------------------

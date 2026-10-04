@@ -196,8 +196,11 @@ def _render_group_details(group: GroupShrinkage, settings: dict, outlier_ppm: fl
                           key: str) -> None:
     result = group.result
     height = settings.get('CHART_HEIGHTS', {}).get('quiver', 600)
+    arrow_scale = st.slider('Arrow magnification', 1.0, 5.0, 1.0, 0.5,
+                            key=f'{key}_arrowmag',
+                            help='Displacements are tiny vs the panel; magnify to see the pattern.')
     _chart(plot_shrinkage_panel(result, group.design, f'Shrinkage Map  ·  {group.label}',
-                                height=height), f'{key}_map')
+                                height=height, arrow_scale=arrow_scale), f'{key}_map')
 
     st.markdown('**Quadrants**')
     _show(result.quadrant, _QUADRANT_COLUMNS)

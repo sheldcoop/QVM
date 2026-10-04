@@ -42,6 +42,34 @@ CARD_BD    = 'rgba(205,214,244,0.22)'         # annotation card border
 CROSSHAIR  = 'rgba(205,214,244,0.25)'         # axis crosshairs
 
 # ---------------------------------------------------------------------------
+# Light / print theme (white background)
+# ---------------------------------------------------------------------------
+# Used by the shrinkage charts, which are read on screen but mainly end up in
+# PowerPoint and print, where the dark theme reproduces poorly. Accent values
+# are darkened vs. the pastel PALETTE so they stay legible on white (the dark
+# theme's red #f38ba8 / sky #89dceb wash out on a light background).
+LIGHT: Dict[str, str] = {
+    'plot_bg':    '#ffffff',
+    'paper_bg':   '#ffffff',
+    'text':       '#1e2230',               # dark slate body text
+    'text_muted': '#6b7280',               # axis hints / captions
+    'separator':  'rgba(30,34,48,0.12)',
+    'card_bg':    'rgba(30,34,48,0.04)',   # quadrant-rect / annotation fill
+    'card_bd':    'rgba(30,34,48,0.18)',
+    'crosshair':  'rgba(30,34,48,0.28)',
+    'dot':        '#3b6fb6',               # design-point markers (darkened blue)
+    'grew':       '#c0392b',               # expansion / "grew" (strong red on white)
+    'shrank':     '#2e86c1',               # contraction / "shrank" (steel blue)
+    'bar_x':      '#b9591f',               # copper X bar (darkened for white)
+    'bar_y':      '#2e86c1',               # steel Y bar
+    # Copper quadrant blocks on the panel map (the physical panel) — shade tunable.
+    'block':      '#d9a273',               # copper quadrant block fill
+    'block_edge': '#8a5230',               # darker copper border
+    'on_copper':  '#f3e9dd',               # warm cream text on copper blocks
+    'card_copper': 'rgba(94,52,21,0.85)',  # value-card fill on a block (numbers always read)
+}
+
+# ---------------------------------------------------------------------------
 # Semantic colour maps (built from PALETTE — change the palette, not these)
 # ---------------------------------------------------------------------------
 # Five tolerance zones, best → worst (bullseye rings, SC bars, box dots).

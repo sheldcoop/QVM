@@ -30,13 +30,13 @@ def test_shrinkage_panel_map_and_bars(settings):
 
     panel = plot_shrinkage_panel(result, design, 'map')
     assert isinstance(panel, go.Figure)
-    assert panel.layout.plot_bgcolor == theme.PLOT_BG and panel.layout.height == 600
+    assert panel.layout.plot_bgcolor == theme.LIGHT['plot_bg'] and panel.layout.height == 600
     assert len(panel.data) == 1 and len(panel.data[0].x) == 16  # the 16 sites, to scale
     assert len([shape for shape in panel.layout.shapes if shape.type == 'rect']) == 4
     arrows = [a for a in panel.layout.annotations if a.showarrow]
     assert len(arrows) == 16  # per quadrant: X at both ends, Y at both ends
     colours = {a.arrowcolor for a in arrows}
-    assert colours == {theme.ARROW['expansion'], theme.ARROW['contraction']}  # UR grew in X
+    assert colours == {theme.LIGHT['grew'], theme.LIGHT['shrank']}  # UR grew in X
     texts = ' '.join(a.text for a in panel.layout.annotations if a.text)
     assert 'Panel X' in texts and '<b>UR</b>' in texts and 'Grew' in texts and 'Shrank' in texts
     assert '(-100 ppm)' in texts and '(+200 ppm)' in texts
@@ -44,11 +44,11 @@ def test_shrinkage_panel_map_and_bars(settings):
     bars = plot_quadrant_bars(result, 'bars')
     assert [type(t).__name__ for t in bars.data] == ['Bar', 'Scatter', 'Bar', 'Scatter']
     assert list(bars.data[0].x) == ['UL', 'LL', 'LR', 'UR']
-    assert bars.data[0].marker.color == '#E0965A'  # copper for X
-    # Every text colour is set, so a light app theme cannot turn it black.
-    assert bars.layout.xaxis.tickfont.color == theme.TEXT
-    assert bars.layout.yaxis.tickfont.color == theme.TEXT
-    assert bars.layout.legend.font.color == theme.TEXT
+    assert bars.data[0].marker.color == theme.LIGHT['bar_x']  # copper for X
+    # Every text colour is set explicitly to the light-theme slate.
+    assert bars.layout.xaxis.tickfont.color == theme.LIGHT['text']
+    assert bars.layout.yaxis.tickfont.color == theme.LIGHT['text']
+    assert bars.layout.legend.font.color == theme.LIGHT['text']
     assert bars.data[1].name.startswith('Panel X: ')
 
     empty = compute_distance_shrinkage(pd.DataFrame(rows), None)
