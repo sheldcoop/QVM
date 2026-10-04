@@ -4,7 +4,56 @@ A Streamlit dashboard for analyzing PCB Quality Vision Machine (QVM) text logs:
 it parses registration measurements, flags alignment errors, tool wear and
 lamination distortion, and exports Excel workbooks with embedded charts.
 
-> Built by Prince Khurana — process/quality engineering tooling in Python.
+> Built by Prince Khurana
+
+## The problem with the raw data
+
+The machine spits out plain `.txt` logs — blocks like this, 16 per file
+(one per fiducial site):
+
+```text
+Circle: Pad_LL_2(ID:1, From 180 Pts.)
+     Coord. X =        63.857203
+     Coord. Y =       104.634501
+     Diameter =         0.308911
+Distance: PtV_LL_2(ID:3) between Via_LL_2(ID:2) and Pad_LL_2(ID:1)
+           SC =         0.003728
+           DX =         0.000592
+           DY =         0.003681
+```
+
+In theory, every file looks like that. In practice, none of it can be trusted
+at face value:
+
+- **The exporter varies.** Headers go missing (`Circle: Pad` / `Distance:`
+  labels absent), naming flips (`Via_LL_2` vs `LL2_Via`), blocks arrive in any
+  order. A parser written for one file shape dies on the next.
+- **Coordinates are optional.** Some files carry values only; others are
+  exported in per-site *local* coordinates (all positions within 1 mm), so
+  geometry alone cannot tell the 16 sites apart.
+- **The filename lies sometimes.** Panel and side come from the filename,
+  which operators mistype. The name is only ever treated as a hint.
+- **The optics are noisy.** Each circle is fitted from a handful of edge
+  points (`Pts.`) — fewer points, less trustworthy center and diameter — while
+  real misalignment and shrinkage hide inside the same numbers.
+
+## What this dashboard does about it
+
+- **One format-agnostic parser** reads values and coordinates from whatever
+  labels exist, then resolves site identity geometrically instead of trusting
+  names or block order.
+- **Graceful, loud fallbacks:** corner names first, then documented measurement
+  order — always with a warning, never silent.
+- **Content decides, filename hints:** Pad-to-Via vs Via-to-Pad is detected
+  from the file; disagreements with the filename raise a warning. Per-file
+  sidebar overrides beat the filename; the filename beats `Unknown`.
+- **One shared table builder** feeds the on-screen table and the Excel export,
+  so the two can never disagree about columns, units, or sorting.
+- Tolerance zones, outlier flags, and one-click Excel workbooks with embedded
+  charts turn the raw log into something a process engineer can act on.
+
+Full format details: [qvm_dashboard/README.md](qvm_dashboard/README.md).
+Method rationale: [SHRINKAGE_METHODS.md](qvm_dashboard/SHRINKAGE_METHODS.md). — process/quality engineering tooling in Python.
 
 ## Screenshots
 
