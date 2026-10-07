@@ -303,8 +303,8 @@ def compute_scale_factor(df: pd.DataFrame) -> pd.DataFrame:
             'Quadrant':           r['Quadrant'],
             'X Scale':            round(float(x_scale), 6),
             'Y Scale':            round(float(y_scale), 6),
-            'X Shrinkage (ppm)':  round((float(x_scale) - 1.0) * 1e6, 1),
-            'Y Shrinkage (ppm)':  round((float(y_scale) - 1.0) * 1e6, 1),
+            'X Shrinkage (ppm)':  round(_to_ppm(x_scale), 1),
+            'Y Shrinkage (ppm)':  round(_to_ppm(y_scale), 1),
         })
 
     result = pd.DataFrame(rows)

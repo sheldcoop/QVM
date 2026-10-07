@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from src.core_shrinkage_math import _to_ppm
+from src.core_shrinkage_math import UM_PER_MM, _to_ppm
 from src.utils import resolve_columns
 
 METHOD_LABEL = "Company (distance)"
@@ -323,11 +323,11 @@ def compute_distance_shrinkage(
             "Quadrant": quadrant,
             "X Design (mm)": design_len["x"],
             "X Measured (mm)": measured_len["x"],
-            "Delta X (um)": (measured_len["x"] - design_len["x"]) * 1000.0,
+            "Delta X (um)": (measured_len["x"] - design_len["x"]) * UM_PER_MM,
             "Shrinkage X (ppm)": _to_ppm(measured_len["x"] / design_len["x"]),
             "Y Design (mm)": design_len["y"],
             "Y Measured (mm)": measured_len["y"],
-            "Delta Y (um)": (measured_len["y"] - design_len["y"]) * 1000.0,
+            "Delta Y (um)": (measured_len["y"] - design_len["y"]) * UM_PER_MM,
             "Shrinkage Y (ppm)": _to_ppm(measured_len["y"] / design_len["y"]),
         })
     if not rows:

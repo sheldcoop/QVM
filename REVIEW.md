@@ -38,3 +38,9 @@ approved before fixing).
   pre-commit; pytest moved out of runtime reqs; CI + README install both).
   +12 parser characterization tests (value extractors, non-finite handling,
   filename router incl. Unknown fallbacks). Tests 239/239.
+- M3: +10 math property tests (affine/rigid identity + known-transform
+  recovery, ppm linearity, classify priority, vector directions, outlier
+  isolation) — `core_shrinkage_math.py` 98%→100%. Unit cleanup:
+  `UM_PER_MM` constant (math + registration deltas) and the parser's
+  inline ppm formula now calls `_to_ppm`; zero new import coupling.
+  Tests 249/249.

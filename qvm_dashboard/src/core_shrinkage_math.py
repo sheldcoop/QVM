@@ -9,6 +9,9 @@ file parsing, frame building, and settings glue.
 import numpy as np
 import pandas as pd
 
+# All linear kernel units are mm; display/export units convert through these.
+UM_PER_MM = 1000.0
+
 
 def _matched_arrays(df: pd.DataFrame, nominal_coords: dict):
     """Pair measured dots with their nominal coords by label.
@@ -83,7 +86,7 @@ def _detect_outliers(nom_arr: np.ndarray, meas_arr: np.ndarray, outlier_um: floa
     while int(inlier.sum()) > 4:
         fit = _affine_fit(nom_arr[inlier], meas_arr[inlier])
         pred = (fit['M'] @ nom_arr.T).T + fit['t']
-        resid_um = np.linalg.norm(meas_arr - pred, axis=1) * 1000.0
+        resid_um = np.linalg.norm(meas_arr - pred, axis=1) * UM_PER_MM
         resid_um[~inlier] = -1.0                 # ignore already-removed dots
         worst = int(np.argmax(resid_um))
         if resid_um[worst] > outlier_um:
