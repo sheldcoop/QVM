@@ -119,6 +119,7 @@ def parse_core_shrinkage_content(content: str, layer: str) -> pd.DataFrame:
         try:
             val = float(line.split('=', 1)[1].strip())
         except ValueError:
+            logger.debug('Skipping non-numeric measurement line: %r', line)
             continue
 
         if state == 'X' and 'Coord. X' in line:
@@ -267,6 +268,7 @@ def compute_qp_shrinkage(df: pd.DataFrame) -> pd.DataFrame:
                 val_b = loc_map[loc_b][col]
                 row[label] = round(sign * (val_a - val_b) - nominal, 6)
             except KeyError:
+                logger.debug('Missing location data for %s; emitting NaN', label)
                 row[label] = float('nan')
         rows.append(row)
 

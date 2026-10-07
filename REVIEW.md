@@ -65,6 +65,11 @@ approved before fixing).
   .xlsx bytes; comparison accounts for Excel int coercion). Kaleido-loss
   degradation re-verified live: Chrome is broken in this sandbox and every
   chart fell back to placeholders without aborting. Tests 262/262.
+- M9: profile — parse ~0.3ms/file, analysis ~1ms/layer; no hotspot
+  justifies a fix (top share is pandas overhead on 17-row frames).
+  Fallback audit: all export/UI fallbacks already warn; 2 genuinely
+  silent skips (malformed line, missing location cell) now logger.debug
+  (suppressed under INFO, zero behavior change). Tests 262/262.
 - M6: entry/caching audit — both parse caches key on all inputs (bytes +
   overrides + settings) with bounded entries/TTL; session holds only
   parse_warnings + nav keys; app.py (384 lines) is bootstrap + dispatch +
