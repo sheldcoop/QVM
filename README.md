@@ -53,7 +53,7 @@ at face value:
   charts turn the raw log into something a process engineer can act on.
 
 Full format details: [qvm_dashboard/README.md](qvm_dashboard/README.md).
-Method rationale: [SHRINKAGE_METHODS.md](qvm_dashboard/SHRINKAGE_METHODS.md). — process/quality engineering tooling in Python.
+Method rationale: [SHRINKAGE_METHODS.md](qvm_dashboard/SHRINKAGE_METHODS.md).
 
 ## Screenshots
 
