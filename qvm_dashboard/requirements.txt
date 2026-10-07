@@ -8,5 +8,3 @@ pyyaml>=6.0
 plotly>=6.1.1
 kaleido>=1.0.0
 openpyxl>=3.1
-# dev-only: test runner (not needed to run the dashboard itself)
-pytest>=8

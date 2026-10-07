@@ -34,3 +34,7 @@ approved before fixing).
 ## Milestone reports
 
 - M1: branch created from `e574c69`; this file. Tests 227/227, coverage 80%.
+- M2: tooling bootstrap (`requirements-dev.txt` floors: pytest/cov/ruff/mypy/
+  pre-commit; pytest moved out of runtime reqs; CI + README install both).
+  +12 parser characterization tests (value extractors, non-finite handling,
+  filename router incl. Unknown fallbacks). Tests 239/239.

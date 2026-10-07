@@ -122,6 +122,7 @@ Full documentation: [qvm_dashboard/README.md](qvm_dashboard/README.md) |
 ## Tests
 
 ```bash
+pip install -r qvm_dashboard/requirements.txt -r qvm_dashboard/requirements-dev.txt
 .venv/bin/pytest -q
 ```
 
