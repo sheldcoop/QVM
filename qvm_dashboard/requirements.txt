@@ -1,10 +1,10 @@
-# Pinned floors verified against the project venv (pandas 3.0.2, numpy 2.4.4,
-# streamlit 1.56.0, plotly 6.7.0, openpyxl 3.1.5). Upper bounds are deliberately
+# Pinned floors verified against the project venv (pandas 3.0.6, numpy 2.4.6,
+# streamlit 1.65.0, plotly 7.1.0, openpyxl 3.1.5). Upper bounds are deliberately
 # absent except where a known break exists; bump floors only after running pytest.
-pandas>=2.2,<4
-numpy>=1.26
-streamlit>=1.50
-pyyaml>=6.0
-plotly>=6.1.1
-kaleido>=1.0.0
-openpyxl>=3.1
+pandas>=3.0.6,<4
+numpy>=2.4.6
+streamlit>=1.65
+pyyaml>=6.0.3
+plotly>=7.1.0
+kaleido>=1.5.0
+openpyxl>=3.1.5
