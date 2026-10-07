@@ -56,3 +56,9 @@ approved before fixing).
   call passes `outlier_um` explicitly). Vectorization no-op: all 9
   row loops are small-N (16 sites, 4 quadrants, corner points, hover
   strings). No code change. Tests 253/253.
+- M6: entry/caching audit — both parse caches key on all inputs (bytes +
+  overrides + settings) with bounded entries/TTL; session holds only
+  parse_warnings + nav keys; app.py (384 lines) is bootstrap + dispatch +
+  per-file isolation, nothing to slim. FOUND (M10 fix): `_parse_cs_upload`
+  declares `-> pd.DataFrame` but returns a tuple. No code change here.
+  Tests 253/253.
