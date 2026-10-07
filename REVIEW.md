@@ -50,3 +50,9 @@ approved before fixing).
   VERIFIED intentionally different (Optional-vs-str, bare-number and
   zero-pad semantics) and pinned by +4 tests so nobody merges them.
   Tests 253/253.
+- M5: analytics single-source VERIFIED (all ppm/classify call sites route
+  through `_to_ppm`/`_classify`; `_CS_DEFAULTS` + `_cs_cfg` merge is the
+  single threshold home and every `affine_residuals_um`/`flag_outliers`
+  call passes `outlier_um` explicitly). Vectorization no-op: all 9
+  row loops are small-N (16 sites, 4 quadrants, corner points, hover
+  strings). No code change. Tests 253/253.
