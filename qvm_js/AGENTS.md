@@ -10,13 +10,13 @@ Decisions: `DECISIONS.md`. Parked items: `OPEN_QUESTIONS.md`.
 - **Small steps.** Build one milestone step at a time; commit each step on the migration branch; Prince reviews.
 - **Answers:** short, plain words, a few lines. Always recommend one option and say why.
 - **Honesty:** say what was not checked. Never invent data, paths, or values.
-- **No browser runs by Claude** (Prince tests in the browser; it saves tokens). Claude runs only
+- **No browser runs by the agent** (Prince tests in the browser; it saves tokens). The agent runs only
   code-level checks: `node --check` syntax checks on every JS file and the Node test harness
   from M2 (`tests/run-tests.js`, same tests as `tests/test.html`).
 
 ## Git rules
 - Branch: `qvm-js-migration`. Never commit to main.
-- **Author:** Prince Khurana. Never mention Claude or AI in commit messages, branch names or files.
+- **Author:** Prince Khurana. Never mention AI assistance in commit messages, branch names or files.
 - **Commit messages:** short and plain, the way a person writes them.
 
 ## Philosophy (inherited from the tracker)
