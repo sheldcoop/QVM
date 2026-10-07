@@ -23,70 +23,72 @@ Distance: PtV_LL_2(ID:3) between Via_LL_2(ID:2) and Pad_LL_2(ID:1)
 
 def test_ingest_uploaded_file_applies_overrides(settings):
     uploaded = SimpleNamespace(
-        name='VTP_Panel_20_F.txt',
-        getvalue=lambda: VALID_CONTENT.encode('utf-8'),
+        name="VTP_Panel_20_F.txt",
+        getvalue=lambda: VALID_CONTENT.encode("utf-8"),
     )
     df, parse_warnings, ui_warnings, resolved, filename_info = ingest_uploaded_file(
         uploaded,
         settings,
         file_override={
-            'process_override': 'Via to Pad',
-            'panel_override': '77',
-            'side_override': 'B',
-            'build_up_override': 'BU-02',
+            "process_override": "Via to Pad",
+            "panel_override": "77",
+            "side_override": "B",
+            "build_up_override": "BU-02",
         },
-        default_build_up='BU-01',
+        default_build_up="BU-01",
     )
 
     assert isinstance(parse_warnings, list)
-    assert df['Process'].iloc[0] == 'Via to Pad'
-    assert df['Panel'].iloc[0] == '77'
-    assert df['Side'].iloc[0] == 'B'
-    assert df['Build Up'].iloc[0] == 'BU-02'
-    assert resolved.final_panel == '77'
-    assert resolved.final_side == 'B'
-    assert filename_info['Panel Number'] == '20'
-    assert any('user override sets type' in msg for msg in ui_warnings)
+    assert df["Process"].iloc[0] == "Via to Pad"
+    assert df["Panel"].iloc[0] == "77"
+    assert df["Side"].iloc[0] == "B"
+    assert df["Build Up"].iloc[0] == "BU-02"
+    assert resolved.final_panel == "77"
+    assert resolved.final_side == "B"
+    assert filename_info["Panel Number"] == "20"
+    assert any("user override sets type" in msg for msg in ui_warnings)
 
 
 def test_ingest_uploaded_file_keeps_filename_defaults_when_no_override(settings):
     uploaded = SimpleNamespace(
-        name='PTV_Panel_20_F.txt',
-        getvalue=lambda: VALID_CONTENT.encode('utf-8'),
+        name="PTV_Panel_20_F.txt",
+        getvalue=lambda: VALID_CONTENT.encode("utf-8"),
     )
     df, parse_warnings, ui_warnings, resolved, _ = ingest_uploaded_file(
-        uploaded, settings, default_build_up='BU-01')
+        uploaded, settings, default_build_up="BU-01"
+    )
 
     assert isinstance(parse_warnings, list)
-    assert df['Panel'].iloc[0] == '20'
-    assert df['Side'].iloc[0] == 'F'
-    assert df['Build Up'].iloc[0] == 'BU-01'
-    assert resolved.final_process == 'Pad to Via'
+    assert df["Panel"].iloc[0] == "20"
+    assert df["Side"].iloc[0] == "F"
+    assert df["Build Up"].iloc[0] == "BU-01"
+    assert resolved.final_process == "Pad to Via"
     assert not ui_warnings
 
 
 def test_ingest_uploaded_file_prefers_filename_build_up_over_sidebar_default(settings):
     uploaded = SimpleNamespace(
-        name='PTV_Panel_20_F_BU-03.txt',
-        getvalue=lambda: VALID_CONTENT.encode('utf-8'),
+        name="PTV_Panel_20_F_BU-03.txt",
+        getvalue=lambda: VALID_CONTENT.encode("utf-8"),
     )
     df, _, _, _, filename_info = ingest_uploaded_file(
-        uploaded, settings, default_build_up='BU-01')
+        uploaded, settings, default_build_up="BU-01"
+    )
 
-    assert filename_info['Build Up'] == 'BU-03'
-    assert df['Build Up'].iloc[0] == 'BU-03'
+    assert filename_info["Build Up"] == "BU-03"
+    assert df["Build Up"].iloc[0] == "BU-03"
 
 
 def test_ingest_uploaded_file_normalizes_numeric_build_up_override(settings):
     uploaded = SimpleNamespace(
-        name='PTV_Panel_20_F.txt',
-        getvalue=lambda: VALID_CONTENT.encode('utf-8'),
+        name="PTV_Panel_20_F.txt",
+        getvalue=lambda: VALID_CONTENT.encode("utf-8"),
     )
     df, _, _, _, _ = ingest_uploaded_file(
         uploaded,
         settings,
-        file_override={'build_up_override': '2'},
-        default_build_up='BU-01',
+        file_override={"build_up_override": "2"},
+        default_build_up="BU-01",
     )
 
-    assert df['Build Up'].iloc[0] == 'BU-02'
+    assert df["Build Up"].iloc[0] == "BU-02"

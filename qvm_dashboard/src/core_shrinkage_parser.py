@@ -16,7 +16,7 @@ Both follow the same coordinate block structure:
 import os
 import re
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -40,14 +40,15 @@ from src.core_shrinkage_math import (
 
 logger = logging.getLogger(__name__)
 
-_CIRCLE_RE = re.compile(r'Circle:\s*(?:Pad_)?([A-Z]{2})_(\d+)', re.IGNORECASE)
+_CIRCLE_RE = re.compile(r"Circle:\s*(?:Pad_)?([A-Z]{2})_(\d+)", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
 # Filename detection
 # ---------------------------------------------------------------------------
 
-def parse_cs_filename(filename: str) -> Dict[str, Optional[str]]:
+
+def parse_cs_filename(filename: str) -> Dict[str, Any]:
     """Detect a Core Shrinkage file and return panel / layer metadata.
 
     Returns:
@@ -57,27 +58,28 @@ def parse_cs_filename(filename: str) -> Dict[str, Optional[str]]:
             'layer': 'Front' | 'Back' | 'Unknown',
         }
     """
-    stem  = os.path.splitext(os.path.basename(filename))[0]
+    stem = os.path.splitext(os.path.basename(filename))[0]
     lower = stem.lower()
 
-    is_cs = 'core_shrinkage' in lower or 'core shrinkage' in lower
+    is_cs = "core_shrinkage" in lower or "core shrinkage" in lower
 
     panel_m = _PANEL_RE.search(stem)
-    panel   = panel_m.group(1) if panel_m else 'Unknown'
+    panel = panel_m.group(1) if panel_m else "Unknown"
 
-    if 'front' in lower:
-        layer = 'Front'
-    elif 'back' in lower:
-        layer = 'Back'
+    if "front" in lower:
+        layer = "Front"
+    elif "back" in lower:
+        layer = "Back"
     else:
-        layer = 'Unknown'
+        layer = "Unknown"
 
-    return {'is_core_shrinkage': is_cs, 'Panel Number': panel, 'layer': layer}
+    return {"is_core_shrinkage": is_cs, "Panel Number": panel, "layer": layer}
 
 
 # ---------------------------------------------------------------------------
 # Content parser
 # ---------------------------------------------------------------------------
+
 
 def parse_core_shrinkage_content(content: str, layer: str) -> pd.DataFrame:
     """Parse a Core Shrinkage circle-coordinate file into a DataFrame.
@@ -91,7 +93,7 @@ def parse_core_shrinkage_content(content: str, layer: str) -> pd.DataFrame:
         diameter, pts_count, layer, Process.
     """
     rows = []
-    state = 'IDLE'   # IDLE → X → Y → DIAM
+    state = "IDLE"  # IDLE → X → Y → DIAM
     current_loc = current_quad = current_num = current_pts = None
     coord_x = coord_y = None
 
@@ -100,50 +102,54 @@ def parse_core_shrinkage_content(content: str, layer: str) -> pd.DataFrame:
         if not line:
             continue
 
-        if 'Circle:' in line:
+        if "Circle:" in line:
             m = _CIRCLE_RE.search(line)
             if m:
                 current_quad = m.group(1).upper()
-                current_num  = int(m.group(2))
-                current_loc  = f'{current_quad}_{current_num}'
-                pts_m        = _PTS_RE.search(line)
-                current_pts  = int(pts_m.group(1)) if pts_m else None
-                state        = 'X'
+                current_num = int(m.group(2))
+                current_loc = f"{current_quad}_{current_num}"
+                pts_m = _PTS_RE.search(line)
+                current_pts = int(pts_m.group(1)) if pts_m else None
+                state = "X"
             else:
-                state = 'IDLE'
+                state = "IDLE"
             continue
 
-        if state == 'IDLE' or '=' not in line:
+        if state == "IDLE" or "=" not in line:
             continue
 
         try:
-            val = float(line.split('=', 1)[1].strip())
+            val = float(line.split("=", 1)[1].strip())
         except ValueError:
-            logger.debug('Skipping non-numeric measurement line: %r', line)
+            logger.debug("Skipping non-numeric measurement line: %r", line)
             continue
 
-        if state == 'X' and 'Coord. X' in line:
+        if state == "X" and "Coord. X" in line:
             coord_x = val
-            state   = 'Y'
-        elif state == 'Y' and 'Coord. Y' in line:
+            state = "Y"
+        elif state == "Y" and "Coord. Y" in line:
             coord_y = val
-            state   = 'DIAM'
-        elif state == 'DIAM' and 'Diameter' in line:
-            rows.append({
-                'location':  current_loc,
-                'quadrant':  current_quad,
-                'point_num': current_num,
-                'coord_x':   coord_x,
-                'coord_y':   coord_y,
-                'diameter':  val,
-                'pts_count': current_pts,
-                'layer':     layer,
-                'Process':   'Core Shrinkage',
-            })
-            state = 'IDLE'
+            state = "DIAM"
+        elif state == "DIAM" and "Diameter" in line:
+            rows.append(
+                {
+                    "location": current_loc,
+                    "quadrant": current_quad,
+                    "point_num": current_num,
+                    "coord_x": coord_x,
+                    "coord_y": coord_y,
+                    "diameter": val,
+                    "pts_count": current_pts,
+                    "layer": layer,
+                    "Process": "Core Shrinkage",
+                }
+            )
+            state = "IDLE"
 
     if not rows:
-        logger.warning('parse_core_shrinkage_content: no circles parsed from %s layer', layer)
+        logger.warning(
+            "parse_core_shrinkage_content: no circles parsed from %s layer", layer
+        )
 
     return pd.DataFrame(rows)
 
@@ -154,24 +160,33 @@ def parse_core_shrinkage_content(content: str, layer: str) -> pd.DataFrame:
 # definition). Pure pandas — no streamlit/openpyxl, so neither import cycles.
 # ---------------------------------------------------------------------------
 
+
 def sort_by_grid(df: pd.DataFrame) -> pd.DataFrame:
     """Sort by grid_id ascending (11,12,…,44 → anticlockwise UL→LL→LR→UR).
 
     No-op when grid_id is absent, so rows keep their incoming (file) order as a
     fallback. Rows with an unmapped (NaN) grid_id sort last but are retained.
     """
-    if df.empty or 'grid_id' not in df.columns:
+    if df.empty or "grid_id" not in df.columns:
         return df
-    return df.sort_values('grid_id', na_position='last').reset_index(drop=True)
+    return df.sort_values("grid_id", na_position="last").reset_index(drop=True)
 
 
 def layer_frame(df: pd.DataFrame) -> pd.DataFrame:
     """Single-layer display frame: Quarter | Grid | X | Y."""
-    out  = sort_by_grid(df)
-    cols = [c for c in ['quadrant', 'grid_id', 'coord_x', 'coord_y'] if c in out.columns]
-    disp = out[cols].rename(columns={
-        'quadrant': 'Quarter', 'grid_id': 'Grid', 'coord_x': 'X', 'coord_y': 'Y'})
-    for c in ('X', 'Y'):
+    out = sort_by_grid(df)
+    cols = [
+        c for c in ["quadrant", "grid_id", "coord_x", "coord_y"] if c in out.columns
+    ]
+    disp = out[cols].rename(
+        columns={
+            "quadrant": "Quarter",
+            "grid_id": "Grid",
+            "coord_x": "X",
+            "coord_y": "Y",
+        }
+    )
+    for c in ("X", "Y"):
         if c in disp.columns:
             disp[c] = disp[c].round(6)
     return disp
@@ -184,24 +199,34 @@ def both_frame(front: pd.DataFrame, back: pd.DataFrame) -> pd.DataFrame:
     a fiducial with an unmapped/NaN grid_id is still aligned and retained. Grid
     and Quarter are carried from the Front side; grid is used only for sorting.
     """
-    merge_keys = ['location']
-    keep_front = merge_keys + [c for c in ['quadrant', 'grid_id', 'coord_x', 'coord_y'] if c in front.columns]
-    keep_back  = merge_keys + [c for c in ['coord_x', 'coord_y'] if c in back.columns]
+    merge_keys = ["location"]
+    keep_front = merge_keys + [
+        c for c in ["quadrant", "grid_id", "coord_x", "coord_y"] if c in front.columns
+    ]
+    keep_back = merge_keys + [c for c in ["coord_x", "coord_y"] if c in back.columns]
 
-    merged = pd.merge(front[keep_front], back[keep_back], on=merge_keys, suffixes=('_front', '_back'))
+    merged = pd.merge(
+        front[keep_front], back[keep_back], on=merge_keys, suffixes=("_front", "_back")
+    )
     merged = sort_by_grid(merged)
 
-    disp = merged.rename(columns={
-        'quadrant':      'Quarter',
-        'grid_id':       'Grid',
-        'coord_x_front': 'Front X',
-        'coord_y_front': 'Front Y',
-        'coord_x_back':  'Back X',
-        'coord_y_back':  'Back Y',
-    })
-    cols = [c for c in ['Quarter', 'Grid', 'Front X', 'Front Y', 'Back X', 'Back Y'] if c in disp.columns]
+    disp = merged.rename(
+        columns={
+            "quadrant": "Quarter",
+            "grid_id": "Grid",
+            "coord_x_front": "Front X",
+            "coord_y_front": "Front Y",
+            "coord_x_back": "Back X",
+            "coord_y_back": "Back Y",
+        }
+    )
+    cols = [
+        c
+        for c in ["Quarter", "Grid", "Front X", "Front Y", "Back X", "Back Y"]
+        if c in disp.columns
+    ]
     disp = disp[cols].copy()
-    for c in ('Front X', 'Front Y', 'Back X', 'Back Y'):
+    for c in ("Front X", "Front Y", "Back X", "Back Y"):
         if c in disp.columns:
             disp[c] = disp[c].round(6)
     return disp
@@ -214,33 +239,33 @@ def both_frame(front: pd.DataFrame, back: pd.DataFrame) -> pd.DataFrame:
 # QP Shrinkage = sign*(measured[pt_a] − measured[pt_b]) − nominal_pitch
 # ---------------------------------------------------------------------------
 
-_QP_NOMINAL_X: float = 200.65   # nominal X pitch within any quadrant (mm)
-_QP_NOMINAL_Y: float = 235.75   # nominal Y pitch within any quadrant (mm)
+_QP_NOMINAL_X: float = 200.65  # nominal X pitch within any quadrant (mm)
+_QP_NOMINAL_Y: float = 235.75  # nominal Y pitch within any quadrant (mm)
 
 _QP_FORMULAS: Dict = {
-    'UL': [
-        ('X1', -1, 1, 4, 'coord_x', _QP_NOMINAL_X),
-        ('X2', -1, 2, 3, 'coord_x', _QP_NOMINAL_X),
-        ('Y1', +1, 1, 2, 'coord_y', _QP_NOMINAL_Y),
-        ('Y2', +1, 4, 3, 'coord_y', _QP_NOMINAL_Y),
+    "UL": [
+        ("X1", -1, 1, 4, "coord_x", _QP_NOMINAL_X),
+        ("X2", -1, 2, 3, "coord_x", _QP_NOMINAL_X),
+        ("Y1", +1, 1, 2, "coord_y", _QP_NOMINAL_Y),
+        ("Y2", +1, 4, 3, "coord_y", _QP_NOMINAL_Y),
     ],
-    'LL': [
-        ('X1', -1, 1, 4, 'coord_x', _QP_NOMINAL_X),
-        ('X2', -1, 2, 3, 'coord_x', _QP_NOMINAL_X),
-        ('Y1', -1, 2, 1, 'coord_y', _QP_NOMINAL_Y),
-        ('Y2', -1, 3, 4, 'coord_y', _QP_NOMINAL_Y),
+    "LL": [
+        ("X1", -1, 1, 4, "coord_x", _QP_NOMINAL_X),
+        ("X2", -1, 2, 3, "coord_x", _QP_NOMINAL_X),
+        ("Y1", -1, 2, 1, "coord_y", _QP_NOMINAL_Y),
+        ("Y2", -1, 3, 4, "coord_y", _QP_NOMINAL_Y),
     ],
-    'LR': [
-        ('X1', +1, 4, 1, 'coord_x', _QP_NOMINAL_X),
-        ('X2', +1, 3, 2, 'coord_x', _QP_NOMINAL_X),
-        ('Y1', -1, 2, 1, 'coord_y', _QP_NOMINAL_Y),
-        ('Y2', -1, 3, 4, 'coord_y', _QP_NOMINAL_Y),
+    "LR": [
+        ("X1", +1, 4, 1, "coord_x", _QP_NOMINAL_X),
+        ("X2", +1, 3, 2, "coord_x", _QP_NOMINAL_X),
+        ("Y1", -1, 2, 1, "coord_y", _QP_NOMINAL_Y),
+        ("Y2", -1, 3, 4, "coord_y", _QP_NOMINAL_Y),
     ],
-    'UR': [
-        ('X1', +1, 4, 1, 'coord_x', _QP_NOMINAL_X),
-        ('X2', +1, 3, 2, 'coord_x', _QP_NOMINAL_X),
-        ('Y1', +1, 1, 2, 'coord_y', _QP_NOMINAL_Y),
-        ('Y2', +1, 4, 3, 'coord_y', _QP_NOMINAL_Y),
+    "UR": [
+        ("X1", +1, 4, 1, "coord_x", _QP_NOMINAL_X),
+        ("X2", +1, 3, 2, "coord_x", _QP_NOMINAL_X),
+        ("Y1", +1, 1, 2, "coord_y", _QP_NOMINAL_Y),
+        ("Y2", +1, 4, 3, "coord_y", _QP_NOMINAL_Y),
     ],
 }
 
@@ -255,21 +280,21 @@ def compute_qp_shrinkage(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
-    loc_map = df.set_index('location')[['coord_x', 'coord_y']].to_dict('index')
+    loc_map = df.set_index("location")[["coord_x", "coord_y"]].to_dict("index")
 
     rows = []
     for quad, formulas in _QP_FORMULAS.items():
-        row: Dict = {'Quadrant': quad}
+        row: Dict = {"Quadrant": quad}
         for label, sign, pt_a, pt_b, col, nominal in formulas:
-            loc_a = f'{quad}_{pt_a}'
-            loc_b = f'{quad}_{pt_b}'
+            loc_a = f"{quad}_{pt_a}"
+            loc_b = f"{quad}_{pt_b}"
             try:
                 val_a = loc_map[loc_a][col]
                 val_b = loc_map[loc_b][col]
                 row[label] = round(sign * (val_a - val_b) - nominal, 6)
             except KeyError:
-                logger.debug('Missing location data for %s; emitting NaN', label)
-                row[label] = float('nan')
+                logger.debug("Missing location data for %s; emitting NaN", label)
+                row[label] = float("nan")
         rows.append(row)
 
     return pd.DataFrame(rows)
@@ -293,30 +318,56 @@ def compute_scale_factor(df: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     for _, r in qp.iterrows():
-        x1_s = (r['X1'] + _QP_NOMINAL_X) / _QP_NOMINAL_X if pd.notna(r['X1']) else float('nan')
-        x2_s = (r['X2'] + _QP_NOMINAL_X) / _QP_NOMINAL_X if pd.notna(r['X2']) else float('nan')
-        y1_s = (r['Y1'] + _QP_NOMINAL_Y) / _QP_NOMINAL_Y if pd.notna(r['Y1']) else float('nan')
-        y2_s = (r['Y2'] + _QP_NOMINAL_Y) / _QP_NOMINAL_Y if pd.notna(r['Y2']) else float('nan')
+        x1_s = (
+            (r["X1"] + _QP_NOMINAL_X) / _QP_NOMINAL_X
+            if pd.notna(r["X1"])
+            else float("nan")
+        )
+        x2_s = (
+            (r["X2"] + _QP_NOMINAL_X) / _QP_NOMINAL_X
+            if pd.notna(r["X2"])
+            else float("nan")
+        )
+        y1_s = (
+            (r["Y1"] + _QP_NOMINAL_Y) / _QP_NOMINAL_Y
+            if pd.notna(r["Y1"])
+            else float("nan")
+        )
+        y2_s = (
+            (r["Y2"] + _QP_NOMINAL_Y) / _QP_NOMINAL_Y
+            if pd.notna(r["Y2"])
+            else float("nan")
+        )
 
         x_scale = pd.Series([x1_s, x2_s]).mean()
         y_scale = pd.Series([y1_s, y2_s]).mean()
 
-        rows.append({
-            'Quadrant':           r['Quadrant'],
-            'X Scale':            round(float(x_scale), 6),
-            'Y Scale':            round(float(y_scale), 6),
-            'X Shrinkage (ppm)':  round(_to_ppm(x_scale), 1),
-            'Y Shrinkage (ppm)':  round(_to_ppm(y_scale), 1),
-        })
+        rows.append(
+            {
+                "Quadrant": r["Quadrant"],
+                "X Scale": round(float(x_scale), 6),
+                "Y Scale": round(float(y_scale), 6),
+                "X Shrinkage (ppm)": round(_to_ppm(x_scale), 1),
+                "Y Shrinkage (ppm)": round(_to_ppm(y_scale), 1),
+            }
+        )
 
     result = pd.DataFrame(rows)
-    overall = pd.DataFrame([{
-        'Quadrant':           'Overall',
-        'X Scale':            round(float(result['X Scale'].mean()), 6),
-        'Y Scale':            round(float(result['Y Scale'].mean()), 6),
-        'X Shrinkage (ppm)':  round(float(result['X Shrinkage (ppm)'].mean()), 1),
-        'Y Shrinkage (ppm)':  round(float(result['Y Shrinkage (ppm)'].mean()), 1),
-    }])
+    overall = pd.DataFrame(
+        [
+            {
+                "Quadrant": "Overall",
+                "X Scale": round(float(result["X Scale"].mean()), 6),
+                "Y Scale": round(float(result["Y Scale"].mean()), 6),
+                "X Shrinkage (ppm)": round(
+                    float(result["X Shrinkage (ppm)"].mean()), 1
+                ),
+                "Y Shrinkage (ppm)": round(
+                    float(result["Y Shrinkage (ppm)"].mean()), 1
+                ),
+            }
+        ]
+    )
     return pd.concat([result, overall], ignore_index=True)
 
 
@@ -332,10 +383,10 @@ def compute_scale_factor(df: pd.DataFrame) -> pd.DataFrame:
 
 # Classifier / spec defaults — overridden by settings['CORE_SHRINKAGE'].
 _CS_DEFAULTS = {
-    'outlier_um':        50.0,   # per-dot residual above this = outlier / remeasure
-    'rotation_warn_deg': 0.30,   # rotation above this is flagged (fixturing)
-    'aniso_ppm':         100.0,  # |Sx_ppm − Sy_ppm| above this = anisotropic
-    'shrink_ppm':        50.0,   # |scale| above this counts as real shrinkage
+    "outlier_um": 50.0,  # per-dot residual above this = outlier / remeasure
+    "rotation_warn_deg": 0.30,  # rotation above this is flagged (fixturing)
+    "aniso_ppm": 100.0,  # |Sx_ppm − Sy_ppm| above this = anisotropic
+    "shrink_ppm": 50.0,  # |scale| above this counts as real shrinkage
 }
 
 
@@ -343,13 +394,18 @@ def _cs_cfg(settings: Optional[dict]) -> dict:
     """Merge CORE_SHRINKAGE settings over the built-in classifier defaults."""
     cfg = dict(_CS_DEFAULTS)
     if settings:
-        cfg.update({k: settings.get('CORE_SHRINKAGE', {}).get(k, v)
-                    for k, v in _CS_DEFAULTS.items()})
+        cfg.update(
+            {
+                k: settings.get("CORE_SHRINKAGE", {}).get(k, v)
+                for k, v in _CS_DEFAULTS.items()
+            }
+        )
     return cfg
 
 
-def analyze_layer(df: pd.DataFrame, nominal_coords: dict,
-                  settings: Optional[dict] = None) -> dict:
+def analyze_layer(
+    df: pd.DataFrame, nominal_coords: dict, settings: Optional[dict] = None
+) -> dict:
     """Single-pass geometry analysis for one layer — the one place the matching,
     affine fit, outlier detection, and rigid fit run. Every Core-Shrinkage product
     (summary, residuals, deviation field, coordinate table) derives from this, so
@@ -376,40 +432,60 @@ def analyze_layer(df: pd.DataFrame, nominal_coords: dict,
         return {}
     cfg = _cs_cfg(settings)
     fit = _affine_fit(nom_arr, meas_arr)
-    removed, inlier, fit_robust = _detect_outliers(nom_arr, meas_arr, cfg['outlier_um'])
+    removed, inlier, fit_robust = _detect_outliers(nom_arr, meas_arr, cfg["outlier_um"])
     for _fit in (fit, fit_robust):
-        sx, sy = _fit['Sx'], _fit['Sy']
+        sx, sy = _fit["Sx"], _fit["Sy"]
         if not (np.isfinite(sx) and np.isfinite(sy) and sx >= 0.01 and sy >= 0.01):
             logger.warning(
-                'analyze_layer: collapsed fit (Sx=%r, Sy=%r, n=%d); '
-                'refusing to report shrinkage.', sx, sy, n)
+                "analyze_layer: collapsed fit (Sx=%r, Sy=%r, n=%d); "
+                "refusing to report shrinkage.",
+                sx,
+                sy,
+                n,
+            )
             return {}
     R, t = _rigid_fit(nom_arr, meas_arr)
-    grid_map = (df.set_index('location')['grid_id'].to_dict()
-                if 'grid_id' in df.columns else {})
+    grid_map = (
+        df.set_index("location")["grid_id"].to_dict() if "grid_id" in df.columns else {}
+    )
     return {
-        'nom_arr': nom_arr, 'meas_arr': meas_arr,
-        'locations': locations, 'quadrants': quadrants, 'cfg': cfg,
-        'fit': fit, 'fit_robust': fit_robust,
-        'removed': removed, 'inlier': inlier,
-        'outliers': [locations[i] for i in removed],
-        'rigid_R': R, 'rigid_t': t, 'center': nom_arr.mean(axis=0),
-        'grid_map': grid_map, 'n_points': n,
+        "nom_arr": nom_arr,
+        "meas_arr": meas_arr,
+        "locations": locations,
+        "quadrants": quadrants,
+        "cfg": cfg,
+        "fit": fit,
+        "fit_robust": fit_robust,
+        "removed": removed,
+        "inlier": inlier,
+        "outliers": [locations[i] for i in removed],
+        "rigid_R": R,
+        "rigid_t": t,
+        "center": nom_arr.mean(axis=0),
+        "grid_map": grid_map,
+        "n_points": n,
     }
 
 
 def _sort_by_grid_map(df: pd.DataFrame, grid_map: dict) -> pd.DataFrame:
     """Sort a per-dot frame by grid_id (via grid_map on its `location` column)."""
-    if not grid_map or 'location' not in df.columns:
+    if not grid_map or "location" not in df.columns:
         return df
     out = df.copy()
-    out['_g'] = out['location'].map(grid_map)
-    return out.sort_values('_g', na_position='last').drop(columns='_g').reset_index(drop=True)
+    out["_g"] = out["location"].map(grid_map)
+    return (
+        out.sort_values("_g", na_position="last")
+        .drop(columns="_g")
+        .reset_index(drop=True)
+    )
 
 
-def compute_affine_analysis(df: pd.DataFrame, nominal_coords: dict,
-                            settings: Optional[dict] = None,
-                            analysis: Optional[dict] = None) -> dict:
+def compute_affine_analysis(
+    df: pd.DataFrame,
+    nominal_coords: dict,
+    settings: Optional[dict] = None,
+    analysis: Optional[dict] = None,
+) -> dict:
     """Fit a best-fit affine transform from nominal → measured fiducial positions.
 
     Decomposes the transform into: Translation X/Y, Rotation (°), X/Y Scale,
@@ -441,43 +517,51 @@ def compute_affine_analysis(df: pd.DataFrame, nominal_coords: dict,
     if not a:
         return {}
 
-    fit       = a['fit']
-    locations = a['locations']
-    quadrants = a['quadrants']
-    res_xy    = fit['res_xy']
-    res_dist  = fit['res_dist']
-    Sx_ppm    = _to_ppm(fit['Sx'])
-    Sy_ppm    = _to_ppm(fit['Sy'])
+    fit = a["fit"]
+    locations = a["locations"]
+    quadrants = a["quadrants"]
+    res_xy = fit["res_xy"]
+    res_dist = fit["res_dist"]
+    Sx_ppm = _to_ppm(fit["Sx"])
+    Sy_ppm = _to_ppm(fit["Sy"])
     max_res_um = float(np.max(res_dist)) * 1000.0
 
-    params_df = pd.DataFrame([
-        {'Parameter': 'Translation X',  'Value': round(fit['tx'], 6),        'Unit': 'mm'},
-        {'Parameter': 'Translation Y',  'Value': round(fit['ty'], 6),        'Unit': 'mm'},
-        {'Parameter': 'Rotation',        'Value': round(fit['theta_deg'], 6), 'Unit': '°'},
-        {'Parameter': 'X Scale',         'Value': round(fit['Sx'], 6),        'Unit': '×'},
-        {'Parameter': 'Y Scale',         'Value': round(fit['Sy'], 6),        'Unit': '×'},
-        {'Parameter': 'X Shrinkage',     'Value': round(Sx_ppm, 2),           'Unit': 'ppm'},
-        {'Parameter': 'Y Shrinkage',     'Value': round(Sy_ppm, 2),           'Unit': 'ppm'},
-        {'Parameter': 'Shear',           'Value': round(fit['shear_deg'], 6), 'Unit': '°'},
-        {'Parameter': 'Residual RMS',    'Value': round(fit['res_rms'], 6),   'Unit': 'mm'},
-    ])
+    params_df = pd.DataFrame(
+        [
+            {"Parameter": "Translation X", "Value": round(fit["tx"], 6), "Unit": "mm"},
+            {"Parameter": "Translation Y", "Value": round(fit["ty"], 6), "Unit": "mm"},
+            {"Parameter": "Rotation", "Value": round(fit["theta_deg"], 6), "Unit": "°"},
+            {"Parameter": "X Scale", "Value": round(fit["Sx"], 6), "Unit": "×"},
+            {"Parameter": "Y Scale", "Value": round(fit["Sy"], 6), "Unit": "×"},
+            {"Parameter": "X Shrinkage", "Value": round(Sx_ppm, 2), "Unit": "ppm"},
+            {"Parameter": "Y Shrinkage", "Value": round(Sy_ppm, 2), "Unit": "ppm"},
+            {"Parameter": "Shear", "Value": round(fit["shear_deg"], 6), "Unit": "°"},
+            {
+                "Parameter": "Residual RMS",
+                "Value": round(fit["res_rms"], 6),
+                "Unit": "mm",
+            },
+        ]
+    )
 
-    res_df = pd.DataFrame({
-        'location':           locations,
-        'Quadrant':           quadrants,
-        'Res X (mm)':        [round(float(v), 6) for v in res_xy[:, 0]],
-        'Res Y (mm)':        [round(float(v), 6) for v in res_xy[:, 1]],
-        'Res Distance (mm)': [round(float(v), 6) for v in res_dist],
-    })
-    res_df = _sort_by_grid_map(res_df, a['grid_map'])
+    res_df = pd.DataFrame(
+        {
+            "location": locations,
+            "Quadrant": quadrants,
+            "Res X (mm)": [round(float(v), 6) for v in res_xy[:, 0]],
+            "Res Y (mm)": [round(float(v), 6) for v in res_xy[:, 1]],
+            "Res Distance (mm)": [round(float(v), 6) for v in res_dist],
+        }
+    )
+    res_df = _sort_by_grid_map(res_df, a["grid_map"])
 
     return {
-        'params':    params_df,
-        'residuals': res_df,
-        'pattern':   _classify(Sx_ppm, Sy_ppm, max_res_um, a['cfg']),
-        'n_points':  a['n_points'],
-        'theta_deg': fit['theta_deg'],
-        'outliers':  a['outliers'],
+        "params": params_df,
+        "residuals": res_df,
+        "pattern": _classify(Sx_ppm, Sy_ppm, max_res_um, a["cfg"]),
+        "n_points": a["n_points"],
+        "theta_deg": fit["theta_deg"],
+        "outliers": a["outliers"],
     }
 
 
@@ -485,6 +569,7 @@ def compute_affine_analysis(df: pd.DataFrame, nominal_coords: dict,
 # Outlier flagging + headline summary + Front↔Back registration + µm display
 # helpers. One source each, reused by the view and the Excel export.
 # ---------------------------------------------------------------------------
+
 
 def flag_outliers(analysis: dict, outlier_um: float = 50.0) -> pd.DataFrame:
     """Add an `Outlier` bool to the affine residuals frame, using the iterative
@@ -496,14 +581,17 @@ def flag_outliers(analysis: dict, outlier_um: float = 50.0) -> pd.DataFrame:
     """
     if not analysis:
         return pd.DataFrame()
-    res = analysis['residuals'].copy()
-    res['Outlier'] = res['location'].isin(analysis.get('outliers', []))
+    res = analysis["residuals"].copy()
+    res["Outlier"] = res["location"].isin(analysis.get("outliers", []))
     return res
 
 
-def compute_shrinkage_summary(df: pd.DataFrame, nominal_coords: dict,
-                              settings: Optional[dict] = None,
-                              analysis: Optional[dict] = None) -> dict:
+def compute_shrinkage_summary(
+    df: pd.DataFrame,
+    nominal_coords: dict,
+    settings: Optional[dict] = None,
+    analysis: Optional[dict] = None,
+) -> dict:
     """Headline (global) shrinkage numbers for one layer — the single source
     feeding the Quality-Control cards and the Excel summary sheet.
 
@@ -515,28 +603,31 @@ def compute_shrinkage_summary(df: pd.DataFrame, nominal_coords: dict,
     a = analysis or analyze_layer(df, nominal_coords, settings)
     if not a:
         return {}
-    fit, fit_r = a['fit'], a['fit_robust']
-    res_um = fit['res_dist'] * 1000.0
+    fit, fit_r = a["fit"], a["fit_robust"]
+    res_um = fit["res_dist"] * 1000.0
 
     return {
-        'Sx_ppm':          round(_to_ppm(fit['Sx']), 1),
-        'Sy_ppm':          round(_to_ppm(fit['Sy']), 1),
-        'Sx_ppm_robust':   round(_to_ppm(fit_r['Sx']), 1),
-        'Sy_ppm_robust':   round(_to_ppm(fit_r['Sy']), 1),
-        'rotation_deg':    round(fit['theta_deg'], 4),
-        'shear_deg':       round(fit['shear_deg'], 4),
-        'residual_rms_um': round(fit['res_rms'] * 1000.0, 1),
-        'max_residual_um': round(float(res_um.max()), 1),
-        'n_outliers':      len(a['outliers']),
-        'outliers':        a['outliers'],
-        'n_points':        a['n_points'],
+        "Sx_ppm": round(_to_ppm(fit["Sx"]), 1),
+        "Sy_ppm": round(_to_ppm(fit["Sy"]), 1),
+        "Sx_ppm_robust": round(_to_ppm(fit_r["Sx"]), 1),
+        "Sy_ppm_robust": round(_to_ppm(fit_r["Sy"]), 1),
+        "rotation_deg": round(fit["theta_deg"], 4),
+        "shear_deg": round(fit["shear_deg"], 4),
+        "residual_rms_um": round(fit["res_rms"] * 1000.0, 1),
+        "max_residual_um": round(float(res_um.max()), 1),
+        "n_outliers": len(a["outliers"]),
+        "outliers": a["outliers"],
+        "n_points": a["n_points"],
     }
 
 
-def compute_deviation_field(df: pd.DataFrame, nominal_coords: dict,
-                            settings: Optional[dict] = None,
-                            field: str = 'total',
-                            analysis: Optional[dict] = None) -> pd.DataFrame:
+def compute_deviation_field(
+    df: pd.DataFrame,
+    nominal_coords: dict,
+    settings: Optional[dict] = None,
+    field: str = "total",
+    analysis: Optional[dict] = None,
+) -> pd.DataFrame:
     """Per-dot displacement field for the Distortion Map (and 3D warp). One source
     feeding both views.
 
@@ -552,40 +643,47 @@ def compute_deviation_field(df: pd.DataFrame, nominal_coords: dict,
     a = analysis or analyze_layer(df, nominal_coords, settings)
     if not a:
         return pd.DataFrame()
-    nom_arr, meas_arr = a['nom_arr'], a['meas_arr']
-    locations, quadrants = a['locations'], a['quadrants']
+    nom_arr, meas_arr = a["nom_arr"], a["meas_arr"]
+    locations, quadrants = a["locations"], a["quadrants"]
 
-    if field == 'residual':
-        dev = a['fit']['res_xy']
+    if field == "residual":
+        dev = a["fit"]["res_xy"]
     else:  # 'total'
-        dev = meas_arr - ((a['rigid_R'] @ nom_arr.T).T + a['rigid_t'])
+        dev = meas_arr - ((a["rigid_R"] @ nom_arr.T).T + a["rigid_t"])
 
-    outlier_locs = set(a['outliers'])
-    center = a['center']
+    outlier_locs = set(a["outliers"])
+    center = a["center"]
 
     dev_um = dev * 1000.0
     rows = []
     for i, loc in enumerate(locations):
         dxu, dyu = float(dev_um[i, 0]), float(dev_um[i, 1])
-        rows.append({
-            'location':  loc,
-            'Quadrant':  quadrants[i],
-            'nom_x':     float(nom_arr[i, 0]),
-            'nom_y':     float(nom_arr[i, 1]),
-            'dev_x_um':  round(dxu, 1),
-            'dev_y_um':  round(dyu, 1),
-            'mag_um':    round(float(np.hypot(dxu, dyu)), 1),
-            'klass':     _classify_vector(dxu, dyu, nom_arr[i, 0], nom_arr[i, 1], center),
-            'outlier':   loc in outlier_locs,
-        })
+        rows.append(
+            {
+                "location": loc,
+                "Quadrant": quadrants[i],
+                "nom_x": float(nom_arr[i, 0]),
+                "nom_y": float(nom_arr[i, 1]),
+                "dev_x_um": round(dxu, 1),
+                "dev_y_um": round(dyu, 1),
+                "mag_um": round(float(np.hypot(dxu, dyu)), 1),
+                "klass": _classify_vector(
+                    dxu, dyu, nom_arr[i, 0], nom_arr[i, 1], center
+                ),
+                "outlier": loc in outlier_locs,
+            }
+        )
     out = pd.DataFrame(rows)
-    out.loc[out['outlier'], 'klass'] = 'outlier'
+    out.loc[out["outlier"], "klass"] = "outlier"
     return out
 
 
-def compute_centered_deviation_table(df: pd.DataFrame, nominal_coords: dict,
-                                     settings: Optional[dict] = None,
-                                     analysis: Optional[dict] = None) -> pd.DataFrame:
+def compute_centered_deviation_table(
+    df: pd.DataFrame,
+    nominal_coords: dict,
+    settings: Optional[dict] = None,
+    analysis: Optional[dict] = None,
+) -> pd.DataFrame:
     """Per-dot coordinate table matching the Excel mental model: CAM nominal vs
     raw physical vs physical re-expressed in the CAM datum (inverse rigid
     transform), with ΔX/ΔY/Δdist in µm and a SUMMARY (RMS) row.
@@ -599,38 +697,41 @@ def compute_centered_deviation_table(df: pd.DataFrame, nominal_coords: dict,
     if not a:
         return pd.DataFrame()
 
-    nom_arr, meas_arr = a['nom_arr'], a['meas_arr']
-    R, t = a['rigid_R'], a['rigid_t']
-    centered = (R.T @ (meas_arr - t).T).T        # physical → CAM datum: Rᵀ·(meas − t)
-    dev_um  = (centered - nom_arr) * 1000.0
+    nom_arr, meas_arr = a["nom_arr"], a["meas_arr"]
+    R, t = a["rigid_R"], a["rigid_t"]
+    centered = (R.T @ (meas_arr - t).T).T  # physical → CAM datum: Rᵀ·(meas − t)
+    dev_um = (centered - nom_arr) * 1000.0
     dist_um = np.hypot(dev_um[:, 0], dev_um[:, 1])
 
-    out = pd.DataFrame({
-        'location':       a['locations'],
-        'Quadrant':       a['quadrants'],
-        'CAM Nominal X':  nom_arr[:, 0].round(6),
-        'CAM Nominal Y':  nom_arr[:, 1].round(6),
-        'Physical X':     meas_arr[:, 0].round(6),
-        'Physical Y':     meas_arr[:, 1].round(6),
-        'Centered X':     centered[:, 0].round(6),
-        'Centered Y':     centered[:, 1].round(6),
-        'ΔX (µm)':        dev_um[:, 0].round(1),
-        'ΔY (µm)':        dev_um[:, 1].round(1),
-        'Δ Dist (µm)':    dist_um.round(1),
-    })
-    out = _sort_by_grid_map(out, a['grid_map'])
-    if a['grid_map']:
-        out.insert(2, 'Grid', out['location'].map(a['grid_map']))
+    out = pd.DataFrame(
+        {
+            "location": a["locations"],
+            "Quadrant": a["quadrants"],
+            "CAM Nominal X": nom_arr[:, 0].round(6),
+            "CAM Nominal Y": nom_arr[:, 1].round(6),
+            "Physical X": meas_arr[:, 0].round(6),
+            "Physical Y": meas_arr[:, 1].round(6),
+            "Centered X": centered[:, 0].round(6),
+            "Centered Y": centered[:, 1].round(6),
+            "ΔX (µm)": dev_um[:, 0].round(1),
+            "ΔY (µm)": dev_um[:, 1].round(1),
+            "Δ Dist (µm)": dist_um.round(1),
+        }
+    )
+    out = _sort_by_grid_map(out, a["grid_map"])
+    if a["grid_map"]:
+        out.insert(2, "Grid", out["location"].map(a["grid_map"]))
 
     # SUMMARY (RMS) row, assembled in one pass (no all-NA concat → no FutureWarning)
-    summary = {c: '' for c in out.columns}
-    summary['location']    = 'SUMMARY (RMS)'
-    summary['Δ Dist (µm)'] = round(float(np.sqrt(np.mean(dist_um ** 2))), 1)
+    summary: dict = {c: "" for c in out.columns}
+    summary["location"] = "SUMMARY (RMS)"
+    summary["Δ Dist (µm)"] = round(float(np.sqrt(np.mean(dist_um**2))), 1)
     return pd.concat([out, pd.DataFrame([summary])], ignore_index=True)
 
 
-def compute_front_back_registration(front_df: pd.DataFrame,
-                                    back_df: pd.DataFrame) -> pd.DataFrame:
+def compute_front_back_registration(
+    front_df: pd.DataFrame, back_df: pd.DataFrame
+) -> pd.DataFrame:
     """Per-dot Front-pad vs Back-land overlay, in µm.
 
     Each layer is referenced to the same CAM, so the nominal cancels and this is
@@ -640,21 +741,28 @@ def compute_front_back_registration(front_df: pd.DataFrame,
     if front_df.empty or back_df.empty:
         return pd.DataFrame()
 
-    keep_f = ['location', 'quadrant', 'coord_x', 'coord_y'] + (
-        ['grid_id'] if 'grid_id' in front_df.columns else [])
-    merged = pd.merge(front_df[keep_f], back_df[['location', 'coord_x', 'coord_y']],
-                      on='location', suffixes=('_f', '_b'))
+    keep_f = ["location", "quadrant", "coord_x", "coord_y"] + (
+        ["grid_id"] if "grid_id" in front_df.columns else []
+    )
+    merged = pd.merge(
+        front_df[keep_f],
+        back_df[["location", "coord_x", "coord_y"]],
+        on="location",
+        suffixes=("_f", "_b"),
+    )
     merged = sort_by_grid(merged)
 
-    dx_um = (merged['coord_x_f'] - merged['coord_x_b']) * 1000.0
-    dy_um = (merged['coord_y_f'] - merged['coord_y_b']) * 1000.0
-    out = pd.DataFrame({
-        'Quarter':       merged['quadrant'],
-        'Grid':          merged.get('grid_id'),
-        'ΔX (µm)':       dx_um.round(1),
-        'ΔY (µm)':       dy_um.round(1),
-        'Δ Dist (µm)':   np.hypot(dx_um, dy_um).round(1),
-    })
+    dx_um = (merged["coord_x_f"] - merged["coord_x_b"]) * 1000.0
+    dy_um = (merged["coord_y_f"] - merged["coord_y_b"]) * 1000.0
+    out = pd.DataFrame(
+        {
+            "Quarter": merged["quadrant"],
+            "Grid": merged.get("grid_id"),
+            "ΔX (µm)": dx_um.round(1),
+            "ΔY (µm)": dy_um.round(1),
+            "Δ Dist (µm)": np.hypot(dx_um, dy_um).round(1),
+        }
+    )
     return out
 
 
@@ -665,9 +773,9 @@ def qp_shrinkage_um(df: pd.DataFrame) -> pd.DataFrame:
     if qp.empty:
         return qp
     out = qp.copy()
-    for c in ('X1', 'X2', 'Y1', 'Y2'):
+    for c in ("X1", "X2", "Y1", "Y2"):
         out[c] = (out[c] * 1000.0).round(1)
-    return out.rename(columns={c: f'{c} (µm)' for c in ('X1', 'X2', 'Y1', 'Y2')})
+    return out.rename(columns={c: f"{c} (µm)" for c in ("X1", "X2", "Y1", "Y2")})
 
 
 def affine_residuals_um(analysis: dict, outlier_um: float = 50.0) -> pd.DataFrame:
@@ -675,14 +783,16 @@ def affine_residuals_um(analysis: dict, outlier_um: float = 50.0) -> pd.DataFram
     res = flag_outliers(analysis, outlier_um)
     if res.empty:
         return res
-    out = pd.DataFrame({
-        'location':       res['location'],
-        'Quadrant':       res['Quadrant'],
-        'Res X (µm)':     (res['Res X (mm)'] * 1000.0).round(1),
-        'Res Y (µm)':     (res['Res Y (mm)'] * 1000.0).round(1),
-        'Res Dist (µm)':  (res['Res Distance (mm)'] * 1000.0).round(1),
-        'Outlier':        res['Outlier'],
-    })
+    out = pd.DataFrame(
+        {
+            "location": res["location"],
+            "Quadrant": res["Quadrant"],
+            "Res X (µm)": (res["Res X (mm)"] * 1000.0).round(1),
+            "Res Y (µm)": (res["Res Y (mm)"] * 1000.0).round(1),
+            "Res Dist (µm)": (res["Res Distance (mm)"] * 1000.0).round(1),
+            "Outlier": res["Outlier"],
+        }
+    )
     return out
 
 
@@ -692,16 +802,16 @@ def summary_frame(summary: dict) -> pd.DataFrame:
     if not summary:
         return pd.DataFrame()
     rows = [
-        ('X Shrinkage (ppm)',        summary['Sx_ppm']),
-        ('Y Shrinkage (ppm)',        summary['Sy_ppm']),
-        ('X Shrinkage robust (ppm)', summary['Sx_ppm_robust']),
-        ('Y Shrinkage robust (ppm)', summary['Sy_ppm_robust']),
-        ('Rotation (°)',             summary['rotation_deg']),
-        ('Shear (°)',                summary['shear_deg']),
-        ('Residual RMS (µm)',        summary['residual_rms_um']),
-        ('Max deviation (µm)',       summary['max_residual_um']),
-        ('Outliers',                 summary['n_outliers']),
-        ('Outlier dots',             ', '.join(summary['outliers']) or '—'),
-        ('Fiducials used',           summary['n_points']),
+        ("X Shrinkage (ppm)", summary["Sx_ppm"]),
+        ("Y Shrinkage (ppm)", summary["Sy_ppm"]),
+        ("X Shrinkage robust (ppm)", summary["Sx_ppm_robust"]),
+        ("Y Shrinkage robust (ppm)", summary["Sy_ppm_robust"]),
+        ("Rotation (°)", summary["rotation_deg"]),
+        ("Shear (°)", summary["shear_deg"]),
+        ("Residual RMS (µm)", summary["residual_rms_um"]),
+        ("Max deviation (µm)", summary["max_residual_um"]),
+        ("Outliers", summary["n_outliers"]),
+        ("Outlier dots", ", ".join(summary["outliers"]) or "—"),
+        ("Fiducials used", summary["n_points"]),
     ]
-    return pd.DataFrame(rows, columns=['Metric', 'Value'])
+    return pd.DataFrame(rows, columns=["Metric", "Value"])

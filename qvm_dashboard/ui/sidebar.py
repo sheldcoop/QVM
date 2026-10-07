@@ -5,7 +5,7 @@ Centralizes all sidebar logic for cleaner app.py.
 """
 
 import streamlit as st
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 from src.parser import parse_filename
 from src.registration_shrinkage import design_lengths
 
@@ -26,9 +26,7 @@ _SIDE_CHOICES: Dict[str, Optional[str]] = {
 def _render_uploader() -> List:
     """File uploader plus its naming hint. Returns the uploaded file objects."""
     uploaded_files = st.file_uploader(
-        "Upload QVM Text Files",
-        type=['txt'],
-        accept_multiple_files=True
+        "Upload QVM Text Files", type=["txt"], accept_multiple_files=True
     )
     st.caption(
         "Recommended filename: `PTV_P20_F_BU-01.txt` or `VTP_P20_B_BU-02.txt` "
@@ -66,23 +64,33 @@ def _render_file_overrides(uploaded_files: List) -> List[Dict]:
 
             key = f"{idx}_{uploaded_file.name}"
             selected_process = st.selectbox(
-                "Type", list(_PROCESS_CHOICES), key=f"override_process_{key}")
+                "Type", list(_PROCESS_CHOICES), key=f"override_process_{key}"
+            )
             selected_side = st.selectbox(
-                "Side", list(_SIDE_CHOICES), key=f"override_side_{key}")
+                "Side", list(_SIDE_CHOICES), key=f"override_side_{key}"
+            )
             panel_text = st.text_input(
-                "Panel Number", value="", placeholder="Auto (from filename)",
-                key=f"override_panel_{key}").strip()
+                "Panel Number",
+                value="",
+                placeholder="Auto (from filename)",
+                key=f"override_panel_{key}",
+            ).strip()
             build_up_text = st.text_input(
-                "Build Up (BU)", value="", placeholder="Optional, e.g. 2 (auto -> BU-02)",
-                key=f"override_build_up_{key}").strip()
+                "Build Up (BU)",
+                value="",
+                placeholder="Optional, e.g. 2 (auto -> BU-02)",
+                key=f"override_build_up_{key}",
+            ).strip()
 
-            file_overrides.append({
-                'file_name': uploaded_file.name,
-                'process_override': _PROCESS_CHOICES[selected_process],
-                'side_override': _SIDE_CHOICES[selected_side],
-                'panel_override': panel_text or None,
-                'build_up_override': build_up_text or None,
-            })
+            file_overrides.append(
+                {
+                    "file_name": uploaded_file.name,
+                    "process_override": _PROCESS_CHOICES[selected_process],
+                    "side_override": _SIDE_CHOICES[selected_side],
+                    "panel_override": panel_text or None,
+                    "build_up_override": build_up_text or None,
+                }
+            )
 
             st.markdown("---")
 
@@ -97,10 +105,10 @@ def _render_job_info() -> Dict[str, str]:
     """
     with st.expander("📋 Job Information", expanded=False):
         return {
-            'project_name': st.text_input("Project Name", ""),
-            'part_number':  st.text_input("Part Number", ""),
-            'lot_number':   st.text_input("Lot Number", ""),
-            'lot_name':     st.text_input("Lot Name", ""),
+            "project_name": st.text_input("Project Name", ""),
+            "part_number": st.text_input("Part Number", ""),
+            "lot_number": st.text_input("Lot Number", ""),
+            "lot_name": st.text_input("Lot Name", ""),
         }
 
 
@@ -115,14 +123,25 @@ def _render_shrinkage_design(settings: Optional[dict]) -> Dict[str, float]:
         st.caption(
             "Design size of one quadrant: the distance between its corner points. "
             "Used by the Shrinkage tab of Pad to Via and Via to Pad. Enter the design "
-            "value, not a measured one.")
+            "value, not a measured one."
+        )
         return {
-            'design_x_mm': st.number_input(
-                "Quadrant length X (mm)", min_value=1.0, value=float(default_x),
-                step=0.001, format="%.3f", key="shrinkage_design_x"),
-            'design_y_mm': st.number_input(
-                "Quadrant length Y (mm)", min_value=1.0, value=float(default_y),
-                step=0.001, format="%.3f", key="shrinkage_design_y"),
+            "design_x_mm": st.number_input(
+                "Quadrant length X (mm)",
+                min_value=1.0,
+                value=float(default_x),
+                step=0.001,
+                format="%.3f",
+                key="shrinkage_design_x",
+            ),
+            "design_y_mm": st.number_input(
+                "Quadrant length Y (mm)",
+                min_value=1.0,
+                value=float(default_y),
+                step=0.001,
+                format="%.3f",
+                key="shrinkage_design_y",
+            ),
         }
 
 
@@ -142,8 +161,8 @@ def render_sidebar(settings: Optional[dict] = None) -> Dict:
         st.markdown("---")
 
         return {
-            'uploaded_files': uploaded_files,
-            'file_overrides': file_overrides,
+            "uploaded_files": uploaded_files,
+            "file_overrides": file_overrides,
             **_render_job_info(),
             **_render_shrinkage_design(settings),
         }
@@ -152,8 +171,12 @@ def render_sidebar(settings: Optional[dict] = None) -> Dict:
 def render_nav_buttons(
     options: List[str],
     state_key: str,
-    default: str = None,
-    cols_gap: str = "small"
+    default: str | None = None,
+    cols_gap: Literal[
+        "xxsmall", "xsmall", "small", "medium", "large", "xlarge", "xxlarge"
+    ]
+    | int
+    | None = "small",
 ) -> str:
     """
     Render navigation buttons.
@@ -178,7 +201,7 @@ def render_nav_buttons(
             type="primary" if is_active else "secondary",
             width="stretch",
             key=f"{state_key}_{label}",
-            on_click=lambda l=label: st.session_state.update({state_key: l}),
+            on_click=lambda val=label: st.session_state.update({state_key: val}),
         )
 
     return st.session_state[state_key]

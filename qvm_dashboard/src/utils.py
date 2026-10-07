@@ -6,8 +6,12 @@ import pandas as pd
 from typing import Dict, Iterable, List
 
 _REQUIRED_SETTINGS_KEYS = [
-    'COLUMN_NAMES', 'POSITIONAL_MAPPING', 'GRID_MAPPING',
-    'VTP_REGISTRATION', 'EXCEL_EXPORT', 'DIAGNOSTICS',
+    "COLUMN_NAMES",
+    "POSITIONAL_MAPPING",
+    "GRID_MAPPING",
+    "VTP_REGISTRATION",
+    "EXCEL_EXPORT",
+    "DIAGNOSTICS",
 ]
 
 
@@ -25,13 +29,13 @@ def load_settings() -> dict:
     """
     config_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        'config',
-        'settings.yaml',
+        "config",
+        "settings.yaml",
     )
     if not os.path.isfile(config_path):
         raise ValueError(f"settings.yaml not found at {config_path}")
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             settings = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise ValueError(f"Invalid YAML in settings.yaml: {e}") from e
@@ -47,9 +51,9 @@ def is_via_to_pad(df: pd.DataFrame) -> pd.Series:
     must agree on how it is read. Rows with no usable Process value are
     treated as Pad-to-Via, matching the dashboard's default tab.
     """
-    if 'Process' not in df.columns:
+    if "Process" not in df.columns:
         return pd.Series(False, index=df.index)
-    return df['Process'].astype(str).str.contains('Via to Pad', case=False, na=False)
+    return df["Process"].astype(str).str.contains("Via to Pad", case=False, na=False)
 
 
 def convert_to_microns(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
@@ -74,12 +78,12 @@ def calculate_annular_ring(df: pd.DataFrame, settings: Dict) -> pd.DataFrame:
     """
     cols = resolve_columns(
         settings,
-        ('outer_diameter', 'inner_diameter', 'ptv_distance', 'annular_ring'),
+        ("outer_diameter", "inner_diameter", "ptv_distance", "annular_ring"),
     )
-    outer_col = cols['outer_diameter']
-    inner_col = cols['inner_diameter']
-    ptv_col = cols['ptv_distance']
-    annular_col = cols['annular_ring']
+    outer_col = cols["outer_diameter"]
+    inner_col = cols["inner_diameter"]
+    ptv_col = cols["ptv_distance"]
+    annular_col = cols["annular_ring"]
 
     out = df.copy()
     out[annular_col] = (out[outer_col] / 2) - (out[inner_col] / 2) - out[ptv_col]
@@ -100,15 +104,16 @@ def decode_upload_bytes(data: bytes) -> tuple:
     the label so a workbook can show how each file was read.
     """
     import codecs
+
     if data.startswith(codecs.BOM_UTF8):
-        return data.decode('utf-8-sig'), 'utf-8-sig'
+        return data.decode("utf-8-sig"), "utf-8-sig"
     try:
-        return data.decode('utf-8'), 'utf-8'
+        return data.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:
         pass
     if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
-        return data.decode('utf-16'), 'utf-16'
-    return data.decode('latin-1'), 'latin-1'
+        return data.decode("utf-16"), "utf-16"
+    return data.decode("latin-1"), "latin-1"
 
 
 def resolve_columns(settings: dict, keys: Iterable[str]) -> dict:
@@ -117,27 +122,27 @@ def resolve_columns(settings: dict, keys: Iterable[str]) -> dict:
     Returns a {key: column_name} dict, falling back to a sensible default
     when a key is missing from settings (e.g. partial settings in tests).
     """
-    col_names = settings.get('COLUMN_NAMES', {})
+    col_names = settings.get("COLUMN_NAMES", {})
     return {k: col_names.get(k, _COLUMN_DEFAULTS.get(k, k)) for k in keys}
 
 
 # Code-level safety net for column names absent from a (possibly partial)
 # settings dict. config/settings.yaml remains the canonical source at runtime.
 _COLUMN_DEFAULTS = {
-    'location': 'Location',
-    'grid_id': 'Grid ID',
-    'outer_diameter': 'Pad Diameter',
-    'inner_diameter': 'Via Parameter',
-    'coord_x': 'Coord. X',
-    'coord_y': 'Coord. Y',
-    'pad_coord_x': 'Pad Coord. X',
-    'pad_coord_y': 'Pad Coord. Y',
-    'ptv_distance': 'PtV Distance',
-    'total_shift': 'VtP Distance (SC)',
-    'x_distance': 'Shift (DX)',
-    'y_distance': 'Shift (DY)',
-    'pad_pts': 'Pad Pts.',
-    'via_pts': 'Via Pts.',
-    'item_type': 'Type',
-    'annular_ring': 'Annular Ring',
+    "location": "Location",
+    "grid_id": "Grid ID",
+    "outer_diameter": "Pad Diameter",
+    "inner_diameter": "Via Parameter",
+    "coord_x": "Coord. X",
+    "coord_y": "Coord. Y",
+    "pad_coord_x": "Pad Coord. X",
+    "pad_coord_y": "Pad Coord. Y",
+    "ptv_distance": "PtV Distance",
+    "total_shift": "VtP Distance (SC)",
+    "x_distance": "Shift (DX)",
+    "y_distance": "Shift (DY)",
+    "pad_pts": "Pad Pts.",
+    "via_pts": "Via Pts.",
+    "item_type": "Type",
+    "annular_ring": "Annular Ring",
 }

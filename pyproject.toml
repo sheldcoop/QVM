@@ -11,3 +11,25 @@ requires-python = ">=3.10"
 # `qvm_dashboard.src.*` instead would load every module a second time.
 pythonpath = ["qvm_dashboard"]
 testpaths  = ["qvm_dashboard/tests"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+# Baseline rule set for the hardening review: classic pyflakes/pycodestyle
+# errors, zero ignores. The broader default set (UP/C408/I001 modernization)
+# is deliberate future work, not debt: 300+ mostly-stylistic findings.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+# Defaults (88 cols, double quotes).
+
+[tool.mypy]
+python_version = "3.10"
+show_error_codes = true
+
+# plotly and openpyxl ship no types and have no stub packages; their imports
+# are Any. Everything else (incl. pandas via pandas-stubs) is fully checked.
+[[tool.mypy.overrides]]
+module = ["plotly.*", "openpyxl.*"]
+ignore_missing_imports = true

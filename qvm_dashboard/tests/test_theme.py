@@ -7,19 +7,19 @@ from pathlib import Path
 
 from src import theme
 
-_HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def test_palette_values_are_valid_hex():
-    assert theme.PALETTE, 'palette must not be empty'
+    assert theme.PALETTE, "palette must not be empty"
     for name, value in theme.PALETTE.items():
-        assert _HEX.match(value), f'{name}={value!r} is not a 6-digit hex colour'
+        assert _HEX.match(value), f"{name}={value!r} is not a 6-digit hex colour"
 
 
 def test_semantic_maps_have_expected_sizes():
     assert len(theme.ZONE) == 5
     assert len(theme.ARROW) == 4
-    assert set(theme.QUARTER_COLORS) == {'UL', 'LL', 'LR', 'UR'}
+    assert set(theme.QUARTER_COLORS) == {"UL", "LL", "LR", "UR"}
 
 
 def test_semantic_colours_are_drawn_from_palette():
@@ -27,12 +27,12 @@ def test_semantic_colours_are_drawn_from_palette():
     palette_values = set(theme.PALETTE.values())
     for mapping in (theme.ZONE, theme.ARROW, theme.QUARTER_COLORS):
         for key, value in mapping.items():
-            assert value in palette_values, f'{key}={value!r} not in PALETTE'
+            assert value in palette_values, f"{key}={value!r} not in PALETTE"
 
 
 def test_grid_geometry_is_16_unique_cells():
     assert len(theme.GRID_PLOT_POSITIONS) == 16
-    assert len(set(theme.GRID_PLOT_POSITIONS.values())) == 16, 'cells must be unique'
+    assert len(set(theme.GRID_PLOT_POSITIONS.values())) == 16, "cells must be unique"
     # 1-indexed 4×4 grid
     for x, y in theme.GRID_PLOT_POSITIONS.values():
         assert 1 <= x <= 4 and 1 <= y <= 4
@@ -47,11 +47,11 @@ def test_plot_to_matrix_round_trips():
 
 
 def test_quarter_map_and_order_consistent():
-    assert theme.QUARTER_ORDER == ['UL', 'LL', 'LR', 'UR']
+    assert theme.QUARTER_ORDER == ["UL", "LL", "LR", "UR"]
     assert set(theme.QUARTER_MAP.values()) == set(theme.QUARTER_ORDER)
     # Grid ID first digit → quarter
-    assert theme.QUARTER_MAP['1'] == 'UL'
-    assert theme.QUARTER_MAP['4'] == 'UR'
+    assert theme.QUARTER_MAP["1"] == "UL"
+    assert theme.QUARTER_MAP["4"] == "UR"
 
 
 def test_theme_import_does_not_pull_the_parser():
@@ -59,11 +59,11 @@ def test_theme_import_does_not_pull_the_parser():
     init must not make them pay for pandas and the full parser."""
     package_root = Path(__file__).resolve().parent.parent
     probe = (
-        'from src import theme; import sys; '
+        "from src import theme; import sys; "
         'print("pandas" in sys.modules); print("src.parser" in sys.modules)'
     )
     completed = subprocess.run(
-        [sys.executable, '-c', probe],
+        [sys.executable, "-c", probe],
         cwd=package_root,
         capture_output=True,
         text=True,
@@ -71,5 +71,5 @@ def test_theme_import_does_not_pull_the_parser():
     )
     assert completed.returncode == 0, completed.stderr
     pandas_loaded, parser_loaded = completed.stdout.split()
-    assert pandas_loaded == 'False', 'importing theme loads pandas'
-    assert parser_loaded == 'False', 'importing theme loads src.parser'
+    assert pandas_loaded == "False", "importing theme loads pandas"
+    assert parser_loaded == "False", "importing theme loads src.parser"

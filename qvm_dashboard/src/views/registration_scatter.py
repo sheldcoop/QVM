@@ -33,14 +33,16 @@ class RegistrationScatterView(BaseView):
         ring_exceptional = rings.exceptional
         ring_acceptable = rings.acceptable
 
-        sc_col = self.cols('ptv_distance')['ptv_distance']
+        sc_col = self.cols("ptv_distance")["ptv_distance"]
 
         # Summary metrics above the charts
         if sc_col in filtered_df.columns:
             sc_um = filtered_df[sc_col].dropna() * 1000
             n_total = len(sc_um)
             n_pass = int((sc_um <= ring_exceptional).sum())
-            n_warn = int(((sc_um > ring_exceptional) & (sc_um <= ring_acceptable)).sum())
+            n_warn = int(
+                ((sc_um > ring_exceptional) & (sc_um <= ring_acceptable)).sum()
+            )
             n_fail = int((sc_um > ring_acceptable).sum())
 
             c1, c2, c3, c4 = st.columns(4)

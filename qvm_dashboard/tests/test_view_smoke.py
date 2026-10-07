@@ -28,7 +28,12 @@ def _qvm_screen(view_name):
     import numpy as np
 
     rng = np.random.default_rng(42)
-    grid = list(range(11, 15)) + list(range(21, 25)) + list(range(31, 35)) + list(range(41, 45))
+    grid = (
+        list(range(11, 15))
+        + list(range(21, 25))
+        + list(range(31, 35))
+        + list(range(41, 45))
+    )
     df = pd.DataFrame(
         {
             "Location": [f"site_{i}" for i in range(16)],

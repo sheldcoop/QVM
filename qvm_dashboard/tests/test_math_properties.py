@@ -47,9 +47,7 @@ def test_affine_identity_fit():
 
 def test_affine_recovers_known_transform():
     theta = np.radians(0.05)
-    R = np.array(
-        [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
-    )
+    R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
     M_true = R @ np.diag([1.0002, 0.9998])
     t_true = np.array([0.5, -0.3])
     meas = (M_true @ NOM.T).T + t_true
@@ -73,9 +71,7 @@ def test_rigid_identity_fit():
 
 def test_rigid_recovers_rotation_translation():
     theta = np.radians(2.0)
-    R_true = np.array(
-        [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
-    )
+    R_true = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
     t_true = np.array([1.5, -2.5])
     meas = (R_true @ NOM.T).T + t_true
     R, t = _rigid_fit(NOM, meas)
@@ -129,9 +125,7 @@ def test_matched_arrays_skips_unknown_locations():
             "quadrant": ["Q1", "Q2"],
         }
     )
-    nom_arr, meas_arr, locations, _ = _matched_arrays(
-        df, {"UL1": {"x": 0.0, "y": 0.0}}
-    )
+    nom_arr, meas_arr, locations, _ = _matched_arrays(df, {"UL1": {"x": 0.0, "y": 0.0}})
     assert locations == ["UL1"]
     assert len(nom_arr) == 1
     np.testing.assert_allclose(meas_arr, [[1.0, 3.0]])

@@ -15,31 +15,31 @@ from typing import Dict, Tuple
 # Raw Catppuccin Mocha palette — named swatches (https://catppuccin.com)
 # ---------------------------------------------------------------------------
 PALETTE: Dict[str, str] = {
-    'base':     '#1e1e2e',   # darkest background
-    'mantle':   '#181825',   # outer paper
-    'text':     '#cdd6f4',   # near-white body text
-    'overlay0': '#6c7086',   # muted text
-    'blue':     '#89b4fa',
-    'green':    '#a6e3a1',
-    'teal':     '#94e2d5',
-    'peach':    '#fab387',
-    'red':      '#f38ba8',
-    'sky':      '#89dceb',
-    'yellow':   '#f9e2af',
-    'mauve':    '#cba6f7',
+    "base": "#1e1e2e",  # darkest background
+    "mantle": "#181825",  # outer paper
+    "text": "#cdd6f4",  # near-white body text
+    "overlay0": "#6c7086",  # muted text
+    "blue": "#89b4fa",
+    "green": "#a6e3a1",
+    "teal": "#94e2d5",
+    "peach": "#fab387",
+    "red": "#f38ba8",
+    "sky": "#89dceb",
+    "yellow": "#f9e2af",
+    "mauve": "#cba6f7",
 }
 
 # ---------------------------------------------------------------------------
 # Semantic background / chrome tokens
 # ---------------------------------------------------------------------------
-PLOT_BG    = PALETTE['base']                  # inner plot area
-PAPER_BG   = PALETTE['mantle']                # outer paper
-TEXT       = PALETTE['text']                  # primary text
-TEXT_MUTED = PALETTE['overlay0']              # axis hints / captions
-SEPARATOR  = 'rgba(205,214,244,0.18)'         # thin divider lines
-CARD_BG    = 'rgba(205,214,244,0.06)'         # annotation card fill
-CARD_BD    = 'rgba(205,214,244,0.22)'         # annotation card border
-CROSSHAIR  = 'rgba(205,214,244,0.25)'         # axis crosshairs
+PLOT_BG = PALETTE["base"]  # inner plot area
+PAPER_BG = PALETTE["mantle"]  # outer paper
+TEXT = PALETTE["text"]  # primary text
+TEXT_MUTED = PALETTE["overlay0"]  # axis hints / captions
+SEPARATOR = "rgba(205,214,244,0.18)"  # thin divider lines
+CARD_BG = "rgba(205,214,244,0.06)"  # annotation card fill
+CARD_BD = "rgba(205,214,244,0.22)"  # annotation card border
+CROSSHAIR = "rgba(205,214,244,0.25)"  # axis crosshairs
 
 # ---------------------------------------------------------------------------
 # Light / print theme (white background)
@@ -49,24 +49,24 @@ CROSSHAIR  = 'rgba(205,214,244,0.25)'         # axis crosshairs
 # are darkened vs. the pastel PALETTE so they stay legible on white (the dark
 # theme's red #f38ba8 / sky #89dceb wash out on a light background).
 LIGHT: Dict[str, str] = {
-    'plot_bg':    '#ffffff',
-    'paper_bg':   '#ffffff',
-    'text':       '#1e2230',               # dark slate body text
-    'text_muted': '#6b7280',               # axis hints / captions
-    'separator':  'rgba(30,34,48,0.12)',
-    'card_bg':    'rgba(30,34,48,0.04)',   # quadrant-rect / annotation fill
-    'card_bd':    'rgba(30,34,48,0.18)',
-    'crosshair':  'rgba(30,34,48,0.28)',
-    'dot':        '#3b6fb6',               # design-point markers (darkened blue)
-    'grew':       '#c0392b',               # expansion / "grew" (strong red on white)
-    'shrank':     '#2e86c1',               # contraction / "shrank" (steel blue)
-    'bar_x':      '#b9591f',               # copper X bar (darkened for white)
-    'bar_y':      '#2e86c1',               # steel Y bar
+    "plot_bg": "#ffffff",
+    "paper_bg": "#ffffff",
+    "text": "#1e2230",  # dark slate body text
+    "text_muted": "#6b7280",  # axis hints / captions
+    "separator": "rgba(30,34,48,0.12)",
+    "card_bg": "rgba(30,34,48,0.04)",  # quadrant-rect / annotation fill
+    "card_bd": "rgba(30,34,48,0.18)",
+    "crosshair": "rgba(30,34,48,0.28)",
+    "dot": "#3b6fb6",  # design-point markers (darkened blue)
+    "grew": "#c0392b",  # expansion / "grew" (strong red on white)
+    "shrank": "#2e86c1",  # contraction / "shrank" (steel blue)
+    "bar_x": "#b9591f",  # copper X bar (darkened for white)
+    "bar_y": "#2e86c1",  # steel Y bar
     # Copper quadrant blocks on the panel map (the physical panel) — shade tunable.
-    'block':      '#d9a273',               # copper quadrant block fill
-    'block_edge': '#8a5230',               # darker copper border
-    'on_copper':  '#f3e9dd',               # warm cream text on copper blocks
-    'card_copper': 'rgba(94,52,21,0.85)',  # value-card fill on a block (numbers always read)
+    "block": "#d9a273",  # copper quadrant block fill
+    "block_edge": "#8a5230",  # darker copper border
+    "on_copper": "#f3e9dd",  # warm cream text on copper blocks
+    "card_copper": "rgba(94,52,21,0.85)",  # value-card fill on a block (numbers always read)
 }
 
 # ---------------------------------------------------------------------------
@@ -74,27 +74,27 @@ LIGHT: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Five tolerance zones, best → worst (bullseye rings, SC bars, box dots).
 ZONE: Dict[str, str] = {
-    'exceptional': PALETTE['blue'],
-    'excellent':   PALETTE['green'],
-    'good':        PALETTE['teal'],
-    'acceptable':  PALETTE['peach'],
-    'fail':        PALETTE['red'],
+    "exceptional": PALETTE["blue"],
+    "excellent": PALETTE["green"],
+    "good": PALETTE["teal"],
+    "acceptable": PALETTE["peach"],
+    "fail": PALETTE["red"],
 }
 
 # Quiver arrow patterns (ABF distortion map).
 ARROW: Dict[str, str] = {
-    'expansion':   PALETTE['red'],     # moving outward
-    'contraction': PALETTE['sky'],     # moving inward
-    'twist':       PALETTE['yellow'],  # tangential
-    'offset':      PALETTE['blue'],    # uniform / unaligned
+    "expansion": PALETTE["red"],  # moving outward
+    "contraction": PALETTE["sky"],  # moving inward
+    "twist": PALETTE["yellow"],  # tangential
+    "offset": PALETTE["blue"],  # uniform / unaligned
 }
 
 # Panel-quarter accent colours (box plot per-quarter boxes).
 QUARTER_COLORS: Dict[str, str] = {
-    'UL': PALETTE['sky'],
-    'LL': PALETTE['yellow'],
-    'LR': PALETTE['green'],
-    'UR': PALETTE['mauve'],
+    "UL": PALETTE["sky"],
+    "LL": PALETTE["yellow"],
+    "LR": PALETTE["green"],
+    "UR": PALETTE["mauve"],
 }
 
 # ---------------------------------------------------------------------------
@@ -103,10 +103,22 @@ QUARTER_COLORS: Dict[str, str] = {
 
 # Grid ID → (plot_x, plot_y) on the 4×4 grid (1-indexed, origin bottom-left).
 GRID_PLOT_POSITIONS: Dict[str, Tuple[int, int]] = {
-    '11': (1, 4), '12': (1, 3), '13': (2, 3), '14': (2, 4),
-    '21': (1, 2), '22': (1, 1), '23': (2, 1), '24': (2, 2),
-    '31': (3, 2), '32': (3, 1), '33': (4, 1), '34': (4, 2),
-    '41': (3, 4), '42': (3, 3), '43': (4, 3), '44': (4, 4),
+    "11": (1, 4),
+    "12": (1, 3),
+    "13": (2, 3),
+    "14": (2, 4),
+    "21": (1, 2),
+    "22": (1, 1),
+    "23": (2, 1),
+    "24": (2, 2),
+    "31": (3, 2),
+    "32": (3, 1),
+    "33": (4, 1),
+    "34": (4, 2),
+    "41": (3, 4),
+    "42": (3, 3),
+    "43": (4, 3),
+    "44": (4, 4),
 }
 
 
@@ -121,5 +133,5 @@ GRID_MATRIX_POSITIONS: Dict[str, Tuple[int, int]] = {
 }
 
 # Quarter prefix (first Grid ID digit) → quarter label, and canonical order.
-QUARTER_MAP: Dict[str, str] = {'1': 'UL', '2': 'LL', '3': 'LR', '4': 'UR'}
-QUARTER_ORDER = ['UL', 'LL', 'LR', 'UR']
+QUARTER_MAP: Dict[str, str] = {"1": "UL", "2": "LL", "3": "LR", "4": "UR"}
+QUARTER_ORDER = ["UL", "LL", "LR", "UR"]

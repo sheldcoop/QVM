@@ -3,26 +3,33 @@
 import pandas as pd
 
 from src.core_shrinkage_parser import (
-    affine_residuals_um, both_frame, compute_affine_analysis,
-    compute_centered_deviation_table, compute_scale_factor,
-    compute_shrinkage_summary, layer_frame, qp_shrinkage_um, summary_frame,
+    affine_residuals_um,
+    both_frame,
+    compute_affine_analysis,
+    compute_centered_deviation_table,
+    compute_scale_factor,
+    compute_shrinkage_summary,
+    layer_frame,
+    qp_shrinkage_um,
+    summary_frame,
 )
 from ._shared import (
     _files_sheet,
-    _safe_sheet_name,
     _safe_text,
     _sanitize_frame,
     _warnings_sheet,
 )
 
 
-def write_core_shrinkage_excel(writer: pd.ExcelWriter,
-                               front_df: pd.DataFrame,
-                               back_df: pd.DataFrame,
-                               meta: dict,
-                               warnings: list = None,
-                               nominal_coords: dict = None,
-                               settings: dict = None) -> None:
+def write_core_shrinkage_excel(
+    writer: pd.ExcelWriter,
+    front_df: pd.DataFrame,
+    back_df: pd.DataFrame,
+    meta: dict,
+    warnings: list | None = None,
+    nominal_coords: dict | None = None,
+    settings: dict | None = None,
+) -> None:
     """Write Core Shrinkage data into the given ExcelWriter.
 
     Sheets written:
@@ -53,14 +60,18 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
     back_df = _sanitize_frame(back_df)
 
     if not front_df.empty:
-        layer_frame(front_df).to_excel(writer, sheet_name='Core Shrinkage - Front', index=False)
+        layer_frame(front_df).to_excel(
+            writer, sheet_name="Core Shrinkage - Front", index=False
+        )
     if not back_df.empty:
-        layer_frame(back_df).to_excel(writer, sheet_name='Core Shrinkage - Back', index=False)
+        layer_frame(back_df).to_excel(
+            writer, sheet_name="Core Shrinkage - Back", index=False
+        )
 
     # Main table: side-by-side when both layers, else the single available layer
     if not front_df.empty and not back_df.empty:
         main = both_frame(front_df, back_df)
-        main.to_excel(writer, sheet_name='Core Shrinkage', index=False)
+        main.to_excel(writer, sheet_name="Core Shrinkage", index=False)
     elif not front_df.empty:
         main = layer_frame(front_df)
     elif not back_df.empty:
@@ -70,64 +81,72 @@ def write_core_shrinkage_excel(writer: pd.ExcelWriter,
 
     # 3-level analysis sheets (only when nominal coords are available)
     if nominal_coords:
-        outlier_um = float((settings or {}).get('CORE_SHRINKAGE', {}).get('outlier_um', 50.0))
+        outlier_um = float(
+            (settings or {}).get("CORE_SHRINKAGE", {}).get("outlier_um", 50.0)
+        )
 
         # CS Summary — headline numbers per layer, Metric | Front | Back
         summary_cols = {}
-        for lbl, ldf in [('Front', front_df), ('Back', back_df)]:
+        for lbl, ldf in [("Front", front_df), ("Back", back_df)]:
             if ldf.empty:
                 continue
             s = summary_frame(compute_shrinkage_summary(ldf, nominal_coords, settings))
             if not s.empty:
-                summary_cols[lbl] = s.set_index('Metric')['Value']
+                summary_cols[lbl] = s.set_index("Metric")["Value"]
         if summary_cols:
             cs_summary = pd.DataFrame(summary_cols)
-            cs_summary.index.name = 'Metric'
-            cs_summary.reset_index().to_excel(writer, sheet_name='CS Summary', index=False)
+            cs_summary.index.name = "Metric"
+            cs_summary.reset_index().to_excel(
+                writer, sheet_name="CS Summary", index=False
+            )
 
-        for lbl, ldf in [('Front', front_df), ('Back', back_df)]:
+        for lbl, ldf in [("Front", front_df), ("Back", back_df)]:
             if ldf.empty:
                 continue
-            qp = qp_shrinkage_um(ldf)                       # µm pitch error
+            qp = qp_shrinkage_um(ldf)  # µm pitch error
             sf = compute_scale_factor(ldf)
             if not qp.empty:
-                qp.to_excel(writer, sheet_name=f'QP Shrinkage - {lbl}', index=False)
+                qp.to_excel(writer, sheet_name=f"QP Shrinkage - {lbl}", index=False)
             if not sf.empty:
                 # ppm only — drop the bare scale-factor columns
-                sf_ppm = sf[['Quadrant', 'X Shrinkage (ppm)', 'Y Shrinkage (ppm)']]
-                sf_ppm.to_excel(writer, sheet_name=f'Scale Factor - {lbl}', index=False)
+                sf_ppm = sf[["Quadrant", "X Shrinkage (ppm)", "Y Shrinkage (ppm)"]]
+                sf_ppm.to_excel(writer, sheet_name=f"Scale Factor - {lbl}", index=False)
             analysis = compute_affine_analysis(ldf, nominal_coords, settings)
             if analysis:
-                analysis['params'].to_excel(
-                    writer, sheet_name=f'Affine - {lbl}', index=False)
+                analysis["params"].to_excel(
+                    writer, sheet_name=f"Affine - {lbl}", index=False
+                )
                 affine_residuals_um(analysis, outlier_um).to_excel(
-                    writer, sheet_name=f'Residuals - {lbl}', index=False)
+                    writer, sheet_name=f"Residuals - {lbl}", index=False
+                )
                 coords = compute_centered_deviation_table(ldf, nominal_coords, settings)
                 if not coords.empty:
-                    coords.to_excel(writer, sheet_name=f'Coordinates - {lbl}', index=False)
+                    coords.to_excel(
+                        writer, sheet_name=f"Coordinates - {lbl}", index=False
+                    )
 
     # Report sheet — job metadata prepended to the main table. Sidebar text
     # is neutralised against formula injection at insertion.
     report = main.copy()
     for meta_key, col_name in [
-        ('project_name', 'Project_Name'),
-        ('part_number',  'Part_Number'),
-        ('lot_number',   'Lot_Number'),
-        ('lot_name',     'Lot_Name'),
-        ('build_up',     'Buildup'),
-        ('process',      'Process'),
-        ('panel',        'Job_Panel'),
+        ("project_name", "Project_Name"),
+        ("part_number", "Part_Number"),
+        ("lot_number", "Lot_Number"),
+        ("lot_name", "Lot_Name"),
+        ("build_up", "Buildup"),
+        ("process", "Process"),
+        ("panel", "Job_Panel"),
     ]:
-        report.insert(0, col_name, _safe_text(meta.get(meta_key, '')))
-    report.to_excel(writer, sheet_name='Report', index=False)
+        report.insert(0, col_name, _safe_text(meta.get(meta_key, "")))
+    report.to_excel(writer, sheet_name="Report", index=False)
 
     # Warnings sheet
-    ws_warn = writer.book.create_sheet('Warnings')
+    ws_warn = writer.book.create_sheet("Warnings")
     _warnings_sheet(ws_warn, warnings or [])
 
     # Files manifest (input-to-output traceability) — only when the caller
     # supplies records, so existing callers see no layout change.
-    file_records = (meta or {}).get('file_records')
+    file_records = (meta or {}).get("file_records")
     if file_records is not None:
-        ws_files = writer.book.create_sheet('Files')
+        ws_files = writer.book.create_sheet("Files")
         _files_sheet(ws_files, file_records)

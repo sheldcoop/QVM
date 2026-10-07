@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Dict
+from typing import Any, Dict
 
 from src import theme
 from src.chart_helpers import apply_dark_layout
@@ -21,44 +21,52 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     """
     cols = resolve_columns(
         settings,
-        ('x_distance', 'y_distance', 'coord_x', 'coord_y', 'grid_id', 'location'),
+        ("x_distance", "y_distance", "coord_x", "coord_y", "grid_id", "location"),
     )
-    x_col       = cols['x_distance']
-    y_col       = cols['y_distance']
-    coord_x_col = cols['coord_x']
-    coord_y_col = cols['coord_y']
-    grid_col    = cols['grid_id']
-    loc_col     = cols['location']
+    x_col = cols["x_distance"]
+    y_col = cols["y_distance"]
+    coord_x_col = cols["coord_x"]
+    coord_y_col = cols["coord_y"]
+    grid_col = cols["grid_id"]
+    loc_col = cols["location"]
 
-    diag_cfg = settings.get('DIAGNOSTICS', {})
-    panel_center_x = float(diag_cfg.get('panel_center_x', 255.0))
-    panel_center_y = float(diag_cfg.get('panel_center_y', 257.5))
-    min_arrow      = float(diag_cfg.get('quiver_min_arrow_length', 0.05))
-    expansion_thr  = float(diag_cfg.get('quiver_expansion_dot_threshold', 0.5))
-    twist_dot_thr  = float(diag_cfg.get('quiver_twist_dot_threshold', 0.2))
-    twist_mag_thr  = float(diag_cfg.get('quiver_twist_magnitude_um', 10.0))
+    diag_cfg = settings.get("DIAGNOSTICS", {})
+    panel_center_x = float(diag_cfg.get("panel_center_x", 255.0))
+    panel_center_y = float(diag_cfg.get("panel_center_y", 257.5))
+    min_arrow = float(diag_cfg.get("quiver_min_arrow_length", 0.05))
+    expansion_thr = float(diag_cfg.get("quiver_expansion_dot_threshold", 0.5))
+    twist_dot_thr = float(diag_cfg.get("quiver_twist_dot_threshold", 0.2))
+    twist_mag_thr = float(diag_cfg.get("quiver_twist_magnitude_um", 10.0))
 
-    height = settings.get('CHART_HEIGHTS', {}).get('quiver', 600)
+    height = settings.get("CHART_HEIGHTS", {}).get("quiver", 600)
 
     df_plot = df.dropna(subset=[grid_col]).copy()
     df_plot[grid_col] = df_plot[grid_col].astype(int).astype(str)
-    df_plot['plot_x'] = df_plot[grid_col].map(
-        lambda gid: theme.GRID_PLOT_POSITIONS.get(gid, (np.nan, np.nan))[0])
-    df_plot['plot_y'] = df_plot[grid_col].map(
-        lambda gid: theme.GRID_PLOT_POSITIONS.get(gid, (np.nan, np.nan))[1])
-    df_plot = df_plot.dropna(subset=['plot_x', 'plot_y']).copy()
-    df_plot['magnitude'] = np.sqrt(df_plot[x_col]**2 + df_plot[y_col]**2) * 1000
+    df_plot["plot_x"] = df_plot[grid_col].map(
+        lambda gid: theme.GRID_PLOT_POSITIONS.get(gid, (np.nan, np.nan))[0]
+    )
+    df_plot["plot_y"] = df_plot[grid_col].map(
+        lambda gid: theme.GRID_PLOT_POSITIONS.get(gid, (np.nan, np.nan))[1]
+    )
+    df_plot = df_plot.dropna(subset=["plot_x", "plot_y"]).copy()
+    df_plot["magnitude"] = np.sqrt(df_plot[x_col] ** 2 + df_plot[y_col] ** 2) * 1000
 
     fig = go.Figure()
     expansion_count = twist_count = offset_count = 0
-    scatter_x, scatter_y, scatter_text, scatter_hover, scatter_color = [], [], [], [], []
+    scatter_x, scatter_y, scatter_text, scatter_hover, scatter_color = (
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
 
     for _, row in df_plot.iterrows():
-        x, y = row['plot_x'], row['plot_y']
+        x, y = row["plot_x"], row["plot_y"]
         dx_um = row[x_col] * 1000
         dy_um = row[y_col] * 1000
-        dx_s  = dx_um * multiplier * 0.001
-        dy_s  = dy_um * multiplier * 0.001
+        dx_s = dx_um * multiplier * 0.001
+        dy_s = dy_um * multiplier * 0.001
 
         arrow_len = np.sqrt(dx_s**2 + dy_s**2)
         if arrow_len > 0 and arrow_len < min_arrow:
@@ -66,11 +74,10 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             dx_s *= scale_up
             dy_s *= scale_up
 
-        mag = row['magnitude']
-        raw_x = row.get(coord_x_col) if coord_x_col in row.index else None
-        raw_y = row.get(coord_y_col) if coord_y_col in row.index else None
-        has_coords = (raw_x is not None and not (isinstance(raw_x, float) and np.isnan(raw_x)))
-        if has_coords:
+        mag = row["magnitude"]
+        raw_x: Any = row.get(coord_x_col) if coord_x_col in row.index else None
+        raw_y: Any = row.get(coord_y_col) if coord_y_col in row.index else None
+        if raw_x is not None and not (isinstance(raw_x, float) and np.isnan(raw_x)):
             pos_x = raw_x - panel_center_x
             pos_y = raw_y - panel_center_y
         else:
@@ -88,27 +95,37 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
 
         if abs(dot) > expansion_thr:
             if dot > 0:
-                arrow_color = theme.ARROW['expansion']
-                pattern = 'Expansion'
+                arrow_color = theme.ARROW["expansion"]
+                pattern = "Expansion"
             else:
-                arrow_color = theme.ARROW['contraction']
-                pattern = 'Contraction'
+                arrow_color = theme.ARROW["contraction"]
+                pattern = "Contraction"
             expansion_count += 1
         elif abs(dot) < twist_dot_thr and mag > twist_mag_thr:
-            arrow_color = theme.ARROW['twist']
-            pattern = 'Twist'
+            arrow_color = theme.ARROW["twist"]
+            pattern = "Twist"
             twist_count += 1
         else:
-            arrow_color = theme.ARROW['offset']
-            pattern = 'Offset'
+            arrow_color = theme.ARROW["offset"]
+            pattern = "Offset"
             offset_count += 1
 
         fig.add_annotation(
-            x=x + dx_s, y=y + dy_s, ax=x, ay=y,
-            xref='x', yref='y', axref='x', ayref='y',
-            text='', showarrow=True,
-            arrowhead=2, arrowsize=1.4, arrowwidth=2.4,
-            arrowcolor=arrow_color, opacity=0.95,
+            x=x + dx_s,
+            y=y + dy_s,
+            ax=x,
+            ay=y,
+            xref="x",
+            yref="y",
+            axref="x",
+            ayref="y",
+            text="",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1.4,
+            arrowwidth=2.4,
+            arrowcolor=arrow_color,
+            opacity=0.95,
         )
         scatter_x.append(x)
         scatter_y.append(y)
@@ -126,16 +143,20 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
     fig.add_vline(x=2.5, line=crosshair)
 
     # Site dots — bullseye-style: small, zone-coloured, label above
-    fig.add_trace(go.Scatter(
-        x=scatter_x, y=scatter_y, mode='markers+text',
-        marker=dict(size=14, color=scatter_color, line=dict(width=0)),
-        text=scatter_text,
-        textposition='top center',
-        textfont=dict(size=10, color=theme.TEXT),
-        customdata=scatter_hover,
-        hovertemplate='%{customdata}<extra></extra>',
-        showlegend=False,
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=scatter_x,
+            y=scatter_y,
+            mode="markers+text",
+            marker=dict(size=14, color=scatter_color, line=dict(width=0)),
+            text=scatter_text,
+            textposition="top center",
+            textfont=dict(size=10, color=theme.TEXT),
+            customdata=scatter_hover,
+            hovertemplate="%{customdata}<extra></extra>",
+            showlegend=False,
+        )
+    )
 
     total = expansion_count + twist_count + offset_count
     # Summary card — top-left, matches bullseye stats card
@@ -146,11 +167,19 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             f"<b>Twist</b> {twist_count}  •  "
             f"<b>Offset</b> {offset_count}"
         ),
-        xref='paper', yref='paper', x=0.02, y=0.98,
-        xanchor='left', yanchor='top', showarrow=False, align='left',
+        xref="paper",
+        yref="paper",
+        x=0.02,
+        y=0.98,
+        xanchor="left",
+        yanchor="top",
+        showarrow=False,
+        align="left",
         font=dict(size=11, color=theme.TEXT),
-        bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
-        borderwidth=1, borderpad=5,
+        bgcolor=theme.CARD_BG,
+        bordercolor=theme.CARD_BD,
+        borderwidth=1,
+        borderpad=5,
     )
 
     # Pattern legend — bottom-centre, matches bullseye zone legend
@@ -162,32 +191,48 @@ def plot_quiver(df: pd.DataFrame, settings: Dict, multiplier: float) -> go.Figur
             f"<span style='color:{_a['twist']}'>⬤</span> Twist  "
             f"<span style='color:{_a['offset']}'>⬤</span> Offset"
         ),
-        xref='paper', yref='paper', x=0.5, y=-0.20,
-        xanchor='center', yanchor='top', showarrow=False,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=-0.20,
+        xanchor="center",
+        yanchor="top",
+        showarrow=False,
         font=dict(size=10, color=theme.TEXT),
-        bgcolor=theme.CARD_BG, bordercolor=theme.CARD_BD,
-        borderwidth=1, borderpad=5,
+        bgcolor=theme.CARD_BG,
+        bordercolor=theme.CARD_BD,
+        borderwidth=1,
+        borderpad=5,
     )
 
     fig.update_xaxes(
-        range=[0.5, 4.5], dtick=1,
-        showgrid=False, zeroline=False, showticklabels=False,
-        title=dict(text='Panel X (Grid Column)', font=dict(color=theme.TEXT)),
+        range=[0.5, 4.5],
+        dtick=1,
+        showgrid=False,
+        zeroline=False,
+        showticklabels=False,
+        title=dict(text="Panel X (Grid Column)", font=dict(color=theme.TEXT)),
     )
     fig.update_yaxes(
-        range=[0.5, 4.5], dtick=1,
-        showgrid=False, zeroline=False, showticklabels=False,
-        scaleanchor='x', scaleratio=1,
-        title=dict(text='Panel Y (Grid Row)', font=dict(color=theme.TEXT)),
+        range=[0.5, 4.5],
+        dtick=1,
+        showgrid=False,
+        zeroline=False,
+        showticklabels=False,
+        scaleanchor="x",
+        scaleratio=1,
+        title=dict(text="Panel Y (Grid Row)", font=dict(color=theme.TEXT)),
     )
     apply_dark_layout(
-        fig, height=height,
+        fig,
+        height=height,
         title=dict(
-            text=f'ABF Distortion Map  ·  {multiplier}× Sensitivity',
+            text=f"ABF Distortion Map  ·  {multiplier}× Sensitivity",
             font=dict(size=14, color=theme.TEXT),
-            x=0.5, xanchor='center',
+            x=0.5,
+            xanchor="center",
         ),
-        hovermode='closest',
+        hovermode="closest",
         # extra bottom room so the pattern legend sits clear of the Panel X axis title
         margin=dict(t=55, b=105, l=60, r=60),
     )

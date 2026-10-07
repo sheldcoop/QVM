@@ -1,0 +1,8 @@
+# Fast, hermetic checks on every commit. The full gate (pytest + mypy) is
+# too slow for a commit hook — run it manually (see README "Development").
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+      - id: ruff-format

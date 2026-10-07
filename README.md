@@ -126,6 +126,16 @@ pip install -r qvm_dashboard/requirements.txt -r qvm_dashboard/requirements-dev.
 .venv/bin/pytest -q
 ```
 
+## Development
+
+```bash
+.venv/bin/pytest -q        # 262 tests: parser, math, views, exports
+.venv/bin/ruff check .     # lint (E4/E7/E9/F, zero ignores)
+.venv/bin/ruff format --check .
+.venv/bin/mypy qvm_dashboard/src qvm_dashboard/ui qvm_dashboard/app.py
+.venv/bin/pre-commit install  # ruff check + format on every commit
+```
+
 ## Limitations / roadmap
 
 - Chart PNG export needs a local Chrome via kaleido; without it, workbooks

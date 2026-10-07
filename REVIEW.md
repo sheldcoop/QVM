@@ -70,6 +70,19 @@ approved before fixing).
   Fallback audit: all export/UI fallbacks already warn; 2 genuinely
   silent skips (malformed line, missing location cell) now logger.debug
   (suppressed under INFO, zero behavior change). Tests 262/262.
+- M10: mypy clean on all 33 files (default mode; --strict measured at 232
+  stub-fights and deliberately not pursued — unlike faster-aoi, which went
+  strict on core). Real finds fixed: `row` dict/counter reuse in qvm.py
+  (43 errors, renamed to `excel_row`), wrong `_parse_cs_upload` return
+  annotation, `height: int = None` x2, `parse_cs_filename` return widened
+  to match its bool entry, WarnFn widened for `st.sidebar.warning`,
+  view/base `render` signature unified, None-guards made checker-visible
+  at 3 design/lengths sites (proven behavior-identical). Ruff baseline
+  (E4/E7/E9/F) zero-ignores clean; UP/C408/I001 modernization deferred as
+  future work. `ruff format` over 57 files (mechanical, suite-green).
+  pandas-stubs + types-PyYAML pinned in dev reqs; pre-commit runs ruff
+  check + format (verified). README Development section. Final: 262/262,
+  ruff/format/mypy clean. Zero behavior change.
 - M6: entry/caching audit — both parse caches key on all inputs (bytes +
   overrides + settings) with bounded entries/TTL; session holds only
   parse_warnings + nav keys; app.py (384 lines) is bootstrap + dispatch +

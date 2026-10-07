@@ -5,6 +5,8 @@ the Shrinkage tab, with the design quadrant size currently set in the sidebar,
 so the page cannot drift away from what the app does.
 """
 
+from typing import cast
+
 import pandas as pd
 import streamlit as st
 
@@ -16,32 +18,53 @@ from src.registration_shrinkage import (
 )
 from src.views.base import full_width
 from src.views.registration_shrinkage import _show
-from src.visuals.shrinkage import plot_quadrant_bars, plot_quadrant_diagram, plot_shrinkage_panel
+from src.visuals.shrinkage import (
+    plot_quadrant_bars,
+    plot_quadrant_diagram,
+    plot_shrinkage_panel,
+)
 
 # Change of each quadrant in the example, in ppm (X, Y). Made up, to show
 # quadrants that differ a little from each other.
-_EXAMPLE_PPM = {'UL': (-90.0, -40.0), 'LL': (-110.0, -50.0), 'LR': (-120.0, -60.0), 'UR': (-80.0, -50.0)}
+_EXAMPLE_PPM = {
+    "UL": (-90.0, -40.0),
+    "LL": (-110.0, -50.0),
+    "LR": (-120.0, -60.0),
+    "UR": (-80.0, -50.0),
+}
 _MACHINE_ORIGIN = (301.4, 323.7)  # the machine's own zero; it must not matter
 
 
 def _example(settings: dict):
     """(design points, measured frame, result) of the made-up example panel."""
-    design = design_for(settings)
+    # The docs example needs a design size; settings always carry the default
+    # (sidebar inputs cannot clear it), so a missing design cannot happen here.
+    design = cast(dict, design_for(settings))
     rows = []
     for name, xy in design.items():
         quadrant = name[:2]
-        corners = [design[f'{quadrant}_{c}'] for c in '1234']
-        cx = sum(c['x'] for c in corners) / 4
-        cy = sum(c['y'] for c in corners) / 4
+        corners = [design[f"{quadrant}_{c}"] for c in "1234"]
+        cx = sum(c["x"] for c in corners) / 4
+        cy = sum(c["y"] for c in corners) / 4
         ppm_x, ppm_y = _EXAMPLE_PPM[quadrant]
-        rows.append({
-            'Location': name,
-            'Coord. X': cx + (xy['x'] - cx) * (1 + ppm_x / 1e6) + _MACHINE_ORIGIN[0],
-            'Coord. Y': cy + (xy['y'] - cy) * (1 + ppm_y / 1e6) + _MACHINE_ORIGIN[1],
-        })
+        rows.append(
+            {
+                "Location": name,
+                "Coord. X": cx
+                + (xy["x"] - cx) * (1 + ppm_x / 1e6)
+                + _MACHINE_ORIGIN[0],
+                "Coord. Y": cy
+                + (xy["y"] - cy) * (1 + ppm_y / 1e6)
+                + _MACHINE_ORIGIN[1],
+            }
+        )
     measured = pd.DataFrame(rows)
-    outlier_ppm = float(shrinkage_config(settings).get('outlier_ppm', 50.0))
-    return design, measured, compute_distance_shrinkage(measured, design, outlier_ppm=outlier_ppm)
+    outlier_ppm = float(shrinkage_config(settings).get("outlier_ppm", 50.0))
+    return (
+        design,
+        measured,
+        compute_distance_shrinkage(measured, design, outlier_ppm=outlier_ppm),
+    )
 
 
 def _chart(figure, key: str) -> None:
@@ -50,16 +73,20 @@ def _chart(figure, key: str) -> None:
 
 def render_documentation(settings: dict) -> None:
     lengths = design_lengths(settings)
-    st.subheader('📖 Documentation: how shrinkage is calculated')
-    st.caption('For the Shrinkage sub-view of the Pad to Via and Via to Pad tabs. '
-               'Core Shrinkage is a separate calculation, described at the end.')
+    st.subheader("📖 Documentation: how shrinkage is calculated")
+    st.caption(
+        "For the Shrinkage sub-view of the Pad to Via and Via to Pad tabs. "
+        "Core Shrinkage is a separate calculation, described at the end."
+    )
     if lengths is None:
-        st.warning('No design quadrant size is set. Enter it in the sidebar under '
-                   '"Shrinkage design size" to see the worked example.')
+        st.warning(
+            "No design quadrant size is set. Enter it in the sidebar under "
+            '"Shrinkage design size" to see the worked example.'
+        )
         return
     x_mm, y_mm = lengths
-    outlier_ppm = float(shrinkage_config(settings).get('outlier_ppm', 50.0))
-    max_ppm = float(shrinkage_config(settings).get('max_plausible_ppm', 2000.0))
+    outlier_ppm = float(shrinkage_config(settings).get("outlier_ppm", 50.0))
+    max_ppm = float(shrinkage_config(settings).get("max_plausible_ppm", 2000.0))
 
     st.markdown(f"""
 ### 1. What shrinkage means here
@@ -90,7 +117,7 @@ matter, because only distances between points are used.
 The panel has four quadrants: **UL** (upper left), **LL** (lower left),
 **LR** (lower right), **UR** (upper right). Each has four measured points.
 """)
-    _chart(plot_quadrant_diagram(x_mm, y_mm), 'doc_diagram')
+    _chart(plot_quadrant_diagram(x_mm, y_mm), "doc_diagram")
     st.markdown(f"""
 In every quadrant the width is measured twice and the height twice:
 
@@ -130,39 +157,50 @@ A made-up panel, calculated by the app with the design size from the sidebar.
     table = result.quadrant
     first = table.iloc[0]
     st.markdown(f"**Quadrant {first['Quadrant']}, step by step**")
-    points = measured.set_index('Location')
-    quadrant = first['Quadrant']
-    x = {c: float(points.loc[f'{quadrant}_{c}', 'Coord. X']) for c in '1234'}
-    y = {c: float(points.loc[f'{quadrant}_{c}', 'Coord. Y']) for c in '1234'}
-    x1, x2 = x['4'] - x['1'], x['3'] - x['2']
+    points = measured.set_index("Location")
+    quadrant = first["Quadrant"]
+    x = {c: float(points.loc[f"{quadrant}_{c}", "Coord. X"]) for c in "1234"}
+    x1, x2 = x["4"] - x["1"], x["3"] - x["2"]
     st.markdown(f"""
 | Step | Calculation | Result |
 |---|---|---|
-| X1 (top edge) | {x['4']:.4f} − {x['1']:.4f} | {x1:.4f} mm |
-| X2 (bottom edge) | {x['3']:.4f} − {x['2']:.4f} | {x2:.4f} mm |
+| X1 (top edge) | {x["4"]:.4f} − {x["1"]:.4f} | {x1:.4f} mm |
+| X2 (bottom edge) | {x["3"]:.4f} − {x["2"]:.4f} | {x2:.4f} mm |
 | X length | ({x1:.4f} + {x2:.4f}) ÷ 2 | {(x1 + x2) / 2:.4f} mm |
-| Delta X | ({(x1 + x2) / 2:.4f} − {x_mm:g}) × 1000 | **{first['Delta X (um)']:+.1f} µm** |
-| Shrinkage X | {first['Delta X (um)']:+.1f} µm ÷ {x_mm:g} mm × 1000 | **{first['Shrinkage X (ppm)']:+.1f} ppm** |
+| Delta X | ({(x1 + x2) / 2:.4f} − {x_mm:g}) × 1000 | **{first["Delta X (um)"]:+.1f} µm** |
+| Shrinkage X | {first["Delta X (um)"]:+.1f} µm ÷ {x_mm:g} mm × 1000 | **{first["Shrinkage X (ppm)"]:+.1f} ppm** |
 
 Y is done the same way with Y1 and Y2 against {y_mm:g} mm:
-**{first['Delta Y (um)']:+.1f} µm**, **{first['Shrinkage Y (ppm)']:+.1f} ppm**.
+**{first["Delta Y (um)"]:+.1f} µm**, **{first["Shrinkage Y (ppm)"]:+.1f} ppm**.
 """)
-    st.markdown('**All four quadrants**')
-    _show(table, ['Quadrant', 'X Design (mm)', 'X Measured (mm)', 'Delta X (um)', 'Shrinkage X (ppm)',
-                  'Y Design (mm)', 'Y Measured (mm)', 'Delta Y (um)', 'Shrinkage Y (ppm)'])
+    st.markdown("**All four quadrants**")
+    _show(
+        table,
+        [
+            "Quadrant",
+            "X Design (mm)",
+            "X Measured (mm)",
+            "Delta X (um)",
+            "Shrinkage X (ppm)",
+            "Y Design (mm)",
+            "Y Measured (mm)",
+            "Delta Y (um)",
+            "Shrinkage Y (ppm)",
+        ],
+    )
 
     panel, uniformity = result.full_panel.iloc[0], result.uniformity.iloc[0]
-    ppm_x = ' + '.join(f'({v:.0f})' for v in table['Shrinkage X (ppm)'])
+    ppm_x = " + ".join(f"({v:.0f})" for v in table["Shrinkage X (ppm)"])
     st.markdown(f"""
 ### 6. The panel numbers
 
 | Number | How it is calculated | In the example |
 |---|---|---|
-| **Panel X** | average of the four quadrants' X | [{ppm_x}] ÷ 4 = **{panel['Shrinkage X (ppm)']:.1f} ppm** ({panel['Delta X (um)']:+.1f} µm) |
-| **Panel Y** | average of the four quadrants' Y | **{panel['Shrinkage Y (ppm)']:.1f} ppm** ({panel['Delta Y (um)']:+.1f} µm) |
-| **X − Y** | Panel X ppm minus Panel Y ppm | {panel['Shrinkage X (ppm)']:.1f} − ({panel['Shrinkage Y (ppm)']:.1f}) = **{panel['X-Y Offset (ppm)']:.1f} ppm** |
-| **Quadrant range X** | largest minus smallest quadrant X ppm | {table['Shrinkage X (ppm)'].max():.0f} − ({table['Shrinkage X (ppm)'].min():.0f}) = **{uniformity['QTQ Range X (ppm)']:.1f} ppm** |
-| **Quadrant range Y** | largest minus smallest quadrant Y ppm | **{uniformity['QTQ Range Y (ppm)']:.1f} ppm** |
+| **Panel X** | average of the four quadrants' X | [{ppm_x}] ÷ 4 = **{panel["Shrinkage X (ppm)"]:.1f} ppm** ({panel["Delta X (um)"]:+.1f} µm) |
+| **Panel Y** | average of the four quadrants' Y | **{panel["Shrinkage Y (ppm)"]:.1f} ppm** ({panel["Delta Y (um)"]:+.1f} µm) |
+| **X − Y** | Panel X ppm minus Panel Y ppm | {panel["Shrinkage X (ppm)"]:.1f} − ({panel["Shrinkage Y (ppm)"]:.1f}) = **{panel["X-Y Offset (ppm)"]:.1f} ppm** |
+| **Quadrant range X** | largest minus smallest quadrant X ppm | {table["Shrinkage X (ppm)"].max():.0f} − ({table["Shrinkage X (ppm)"].min():.0f}) = **{uniformity["QTQ Range X (ppm)"]:.1f} ppm** |
+| **Quadrant range Y** | largest minus smallest quadrant Y ppm | **{uniformity["QTQ Range Y (ppm)"]:.1f} ppm** |
 | **Alerts** | quadrants more than {outlier_ppm:.0f} ppm from the panel value | **{len(result.outliers)}** |
 
 What they tell you:
@@ -178,7 +216,7 @@ Y for the panel.
 
 ### 7. Reading the charts
 """)
-    _chart(plot_shrinkage_panel(result, design, 'Shrinkage Map  ·  example'), 'doc_map')
+    _chart(plot_shrinkage_panel(result, design, "Shrinkage Map  ·  example"), "doc_map")
     st.markdown("""
 **Shrinkage Map.** The panel with its four quadrants. Each quadrant carries a
 horizontal arrow pair (X) and a vertical one (Y). Arrows pointing **inward and
@@ -186,7 +224,7 @@ blue** mean the quadrant shrank; **outward and red** mean it grew. Longer arrows
 mean a larger change; the exact values are written in the middle of each
 quadrant. The gap between the quadrants is only for the drawing.
 """)
-    _chart(plot_quadrant_bars(result, 'Shrinkage per quadrant  ·  example'), 'doc_bars')
+    _chart(plot_quadrant_bars(result, "Shrinkage per quadrant  ·  example"), "doc_bars")
     st.markdown(f"""
 **Shrinkage per quadrant.** Copper bars are X, blue bars are Y, one pair per
 quadrant, in ppm. The dashed lines are the panel values. Bars of equal height

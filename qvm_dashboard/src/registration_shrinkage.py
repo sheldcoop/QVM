@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 
@@ -49,7 +49,10 @@ _DEFAULT_MAX_PLAUSIBLE_PPM = 2000.0
 # panel positions at all (each site reported in its own local coordinates).
 _COLLAPSED_FRACTION = 0.01
 _OUTLIER_COLUMNS = [
-    "Quadrant", "X Deviation from FP (ppm)", "Y Deviation from FP (ppm)", "Alert",
+    "Quadrant",
+    "X Deviation from FP (ppm)",
+    "Y Deviation from FP (ppm)",
+    "Alert",
 ]
 
 PointMap = Dict[str, Dict[str, float]]
@@ -76,10 +79,17 @@ class ShrinkageResult:
         return METHOD_LABEL
 
 
-def _empty(warnings: List[str], lengths: Optional[pd.DataFrame] = None) -> ShrinkageResult:
+def _empty(
+    warnings: List[str], lengths: Optional[pd.DataFrame] = None
+) -> ShrinkageResult:
     return ShrinkageResult(
-        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), warnings,
-        lengths if lengths is not None else pd.DataFrame())
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        warnings,
+        lengths if lengths is not None else pd.DataFrame(),
+    )
 
 
 # --------------------------------------------------------------------- settings
@@ -106,7 +116,7 @@ def design_lengths(settings: dict) -> Optional[tuple]:
     """
     size = shrinkage_config(settings).get("design_quadrant_mm") or {}
     try:
-        x, y = float(size.get("x")), float(size.get("y"))
+        x, y = float(size.get("x")), float(size.get("y"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
     return (x, y) if x > 0.0 and y > 0.0 else None
@@ -116,12 +126,15 @@ def with_design_lengths(settings: dict, x_mm: object, y_mm: object) -> dict:
     """A copy of the settings with the design quadrant size replaced."""
     out = dict(settings)
     out["REGISTRATION_SHRINKAGE"] = {
-        **shrinkage_config(settings), "design_quadrant_mm": {"x": x_mm, "y": y_mm}}
+        **shrinkage_config(settings),
+        "design_quadrant_mm": {"x": x_mm, "y": y_mm},
+    }
     return out
 
 
-def layout_from_lengths(x_mm: float, y_mm: float, gap_x: float = 10.0,
-                        gap_y: float = 10.0) -> PointMap:
+def layout_from_lengths(
+    x_mm: float, y_mm: float, gap_x: float = 10.0, gap_y: float = 10.0
+) -> PointMap:
     """The 16 design points of a panel whose four quadrants are x_mm by y_mm.
 
     The calculation only uses the lengths inside a quadrant, so where the
@@ -131,14 +144,20 @@ def layout_from_lengths(x_mm: float, y_mm: float, gap_x: float = 10.0,
     for quadrant in _QUADRANTS:
         left = -(gap_x / 2.0 + x_mm) if quadrant[1] == "L" else gap_x / 2.0
         bottom = gap_y / 2.0 if quadrant[0] == "U" else -(gap_y / 2.0 + y_mm)
-        corners = {_TL: (left, bottom + y_mm), _BL: (left, bottom),
-                   _BR: (left + x_mm, bottom), _TR: (left + x_mm, bottom + y_mm)}
+        corners = {
+            _TL: (left, bottom + y_mm),
+            _BL: (left, bottom),
+            _BR: (left + x_mm, bottom),
+            _TR: (left + x_mm, bottom + y_mm),
+        }
         for corner, (x, y) in corners.items():
             points[f"{quadrant}_{corner}"] = {"x": x, "y": y}
     return points
 
 
-def design_for(settings: dict, build_up: object = None, process: object = None) -> Optional[PointMap]:
+def design_for(
+    settings: dict, build_up: object = None, process: object = None
+) -> Optional[PointMap]:
     """Design points built from the design quadrant size, or None when it is not set.
 
     One size applies to every Build Up and file type (``build_up`` and
@@ -148,22 +167,27 @@ def design_for(settings: dict, build_up: object = None, process: object = None) 
     if lengths is None:
         return None
     gap = shrinkage_config(settings).get("map_gap_mm") or {}
-    return layout_from_lengths(lengths[0], lengths[1],
-                               float(gap.get("x", 10.0)), float(gap.get("y", 10.0)))
+    return layout_from_lengths(
+        lengths[0], lengths[1], float(gap.get("x", 10.0)), float(gap.get("y", 10.0))
+    )
 
 
 def measured_point(settings: dict, process: object) -> str:
     """'via' or 'pad': which measured centre the calculation uses for this file type."""
     choice = (shrinkage_config(settings).get("measured_point") or {}).get(
-        normalize_process(process), "via")
+        normalize_process(process), "via"
+    )
     return "pad" if str(choice).strip().lower() == "pad" else "via"
 
 
 def measured_columns(settings: dict, process: object) -> tuple:
     """(location, x, y) column names for the configured measured point."""
     point = measured_point(settings, process)
-    keys = ("location", "pad_coord_x", "pad_coord_y") if point == "pad" else (
-        "location", "coord_x", "coord_y")
+    keys = (
+        ("location", "pad_coord_x", "pad_coord_y")
+        if point == "pad"
+        else ("location", "coord_x", "coord_y")
+    )
     cols = resolve_columns(settings, keys)
     return cols[keys[0]], cols[keys[1]], cols[keys[2]]
 
@@ -217,8 +241,9 @@ def _span(points: PointMap, names: List[str]) -> tuple:
     return max(xs) - min(xs), max(ys) - min(ys)
 
 
-def _plausibility(design: PointMap, measured: PointMap,
-                  max_plausible_ppm: Optional[float]) -> tuple:
+def _plausibility(
+    design: PointMap, measured: PointMap, max_plausible_ppm: Optional[float]
+) -> tuple:
     """(reason to withhold the result or None, measured-vs-design quadrant sizes).
 
     Two situations make every shrinkage number meaningless, and both occur in
@@ -232,35 +257,50 @@ def _plausibility(design: PointMap, measured: PointMap,
     common = [name for name in design if name in measured]
     if len(common) >= 2:
         design_span, measured_span = _span(design, common), _span(measured, common)
-        if all(m <= d * _COLLAPSED_FRACTION for m, d in zip(measured_span, design_span) if d > 0):
+        if all(
+            m <= d * _COLLAPSED_FRACTION
+            for m, d in zip(measured_span, design_span)
+            if d > 0
+        ):
             return (
                 f"The measured positions of all points lie within "
                 f"{max(measured_span) * 1000:.0f} um of each other, while the design spans "
                 f"{design_span[0]:.1f} x {design_span[1]:.1f} mm. This file holds positions "
                 f"relative to each site, not positions on the panel, so shrinkage cannot be "
                 f"calculated from it. Export the measurement in panel coordinates.",
-                pd.DataFrame())
+                pd.DataFrame(),
+            )
 
     rows = []
     for quadrant in _QUADRANTS:
-        design_corners, measured_corners = _corners(design, quadrant), _corners(measured, quadrant)
+        design_corners, measured_corners = (
+            _corners(design, quadrant),
+            _corners(measured, quadrant),
+        )
         if design_corners is None or measured_corners is None:
             continue
         d, m = _company_lengths(design_corners), _company_lengths(measured_corners)
         if d["x"] <= 0.0 or d["y"] <= 0.0:
             continue
-        rows.append({
-            "Quadrant": quadrant,
-            "X Measured (mm)": m["x"], "X Design (mm)": d["x"],
-            "X Difference (ppm)": _to_ppm(m["x"] / d["x"]),
-            "Y Measured (mm)": m["y"], "Y Design (mm)": d["y"],
-            "Y Difference (ppm)": _to_ppm(m["y"] / d["y"]),
-        })
+        rows.append(
+            {
+                "Quadrant": quadrant,
+                "X Measured (mm)": m["x"],
+                "X Design (mm)": d["x"],
+                "X Difference (ppm)": _to_ppm(m["x"] / d["x"]),
+                "Y Measured (mm)": m["y"],
+                "Y Design (mm)": d["y"],
+                "Y Difference (ppm)": _to_ppm(m["y"] / d["y"]),
+            }
+        )
     lengths = pd.DataFrame(rows).round(3)
     if lengths.empty or max_plausible_ppm is None:
         return None, lengths
 
-    worst = max(lengths["X Difference (ppm)"].abs().max(), lengths["Y Difference (ppm)"].abs().max())
+    worst = max(
+        lengths["X Difference (ppm)"].abs().max(),
+        lengths["Y Difference (ppm)"].abs().max(),
+    )
     if worst <= float(max_plausible_ppm):
         return None, lengths
     return (
@@ -271,7 +311,8 @@ def _plausibility(design: PointMap, measured: PointMap,
         f"{float(max_plausible_ppm):.0f} ppm). The design size is probably not that of "
         f"this product (see Shrinkage design size in the sidebar), so shrinkage is not "
         f"reported. The measured sizes are listed below.",
-        lengths)
+        lengths,
+    )
 
 
 def compute_distance_shrinkage(
@@ -297,10 +338,13 @@ def compute_distance_shrinkage(
     measured = _point_map(measured_df, location_col, x_col, y_col)
 
     if not any(name in design for name in measured):
-        return _empty([
-            "The sites of this file could not be placed on the panel: its positions are "
-            "relative to each site, not positions on the panel, so shrinkage cannot be "
-            "calculated from it. Export the measurement in panel coordinates."])
+        return _empty(
+            [
+                "The sites of this file could not be placed on the panel: its positions are "
+                "relative to each site, not positions on the panel, so shrinkage cannot be "
+                "calculated from it. Export the measurement in panel coordinates."
+            ]
+        )
 
     refusal, lengths = _plausibility(design, measured, max_plausible_ppm)
     if refusal is not None:
@@ -312,24 +356,28 @@ def compute_distance_shrinkage(
         design_corners = _corners(design, quadrant)
         measured_corners = _corners(measured, quadrant)
         if design_corners is None or measured_corners is None:
-            warnings.append(f"Missing corner point(s) for quadrant {quadrant}; skipped.")
+            warnings.append(
+                f"Missing corner point(s) for quadrant {quadrant}; skipped."
+            )
             continue
         design_len = _company_lengths(design_corners)
         if design_len["x"] <= 0.0 or design_len["y"] <= 0.0:
             warnings.append(f"Quadrant {quadrant} has no design length; skipped.")
             continue
         measured_len = _company_lengths(measured_corners)
-        rows.append({
-            "Quadrant": quadrant,
-            "X Design (mm)": design_len["x"],
-            "X Measured (mm)": measured_len["x"],
-            "Delta X (um)": (measured_len["x"] - design_len["x"]) * UM_PER_MM,
-            "Shrinkage X (ppm)": _to_ppm(measured_len["x"] / design_len["x"]),
-            "Y Design (mm)": design_len["y"],
-            "Y Measured (mm)": measured_len["y"],
-            "Delta Y (um)": (measured_len["y"] - design_len["y"]) * UM_PER_MM,
-            "Shrinkage Y (ppm)": _to_ppm(measured_len["y"] / design_len["y"]),
-        })
+        rows.append(
+            {
+                "Quadrant": quadrant,
+                "X Design (mm)": design_len["x"],
+                "X Measured (mm)": measured_len["x"],
+                "Delta X (um)": (measured_len["x"] - design_len["x"]) * UM_PER_MM,
+                "Shrinkage X (ppm)": _to_ppm(measured_len["x"] / design_len["x"]),
+                "Y Design (mm)": design_len["y"],
+                "Y Measured (mm)": measured_len["y"],
+                "Delta Y (um)": (measured_len["y"] - design_len["y"]) * UM_PER_MM,
+                "Shrinkage Y (ppm)": _to_ppm(measured_len["y"] / design_len["y"]),
+            }
+        )
     if not rows:
         return _empty(warnings or ["No shrinkage could be computed."], lengths)
 
@@ -337,23 +385,35 @@ def compute_distance_shrinkage(
     # As in the company sheet: the panel value is the mean of the quadrants.
     fp_x = float(quadrants["Shrinkage X (ppm)"].mean())
     fp_y = float(quadrants["Shrinkage Y (ppm)"].mean())
-    full_panel = {
+    full_panel: Dict[str, Any] = {
         "Delta X (um)": float(quadrants["Delta X (um)"].mean()),
         "Delta Y (um)": float(quadrants["Delta Y (um)"].mean()),
         "Shrinkage X (ppm)": fp_x,
         "Shrinkage Y (ppm)": fp_y,
         "X-Y Offset (ppm)": fp_x - fp_y,
     }
-    uniformity = pd.DataFrame([{
-        "QTQ Range X (ppm)": float(quadrants["Shrinkage X (ppm)"].max()
-                                   - quadrants["Shrinkage X (ppm)"].min()),
-        "QTQ Range Y (ppm)": float(quadrants["Shrinkage Y (ppm)"].max()
-                                   - quadrants["Shrinkage Y (ppm)"].min()),
-    }])
+    uniformity = pd.DataFrame(
+        [
+            {
+                "QTQ Range X (ppm)": float(
+                    quadrants["Shrinkage X (ppm)"].max()
+                    - quadrants["Shrinkage X (ppm)"].min()
+                ),
+                "QTQ Range Y (ppm)": float(
+                    quadrants["Shrinkage Y (ppm)"].max()
+                    - quadrants["Shrinkage Y (ppm)"].min()
+                ),
+            }
+        ]
+    )
 
     deviations = quadrants[["Quadrant"]].copy()
-    deviations["X Deviation from FP (ppm)"] = (quadrants["Shrinkage X (ppm)"] - fp_x).abs()
-    deviations["Y Deviation from FP (ppm)"] = (quadrants["Shrinkage Y (ppm)"] - fp_y).abs()
+    deviations["X Deviation from FP (ppm)"] = (
+        quadrants["Shrinkage X (ppm)"] - fp_x
+    ).abs()
+    deviations["Y Deviation from FP (ppm)"] = (
+        quadrants["Shrinkage Y (ppm)"] - fp_y
+    ).abs()
     over = deviations[
         (deviations["X Deviation from FP (ppm)"] > outlier_ppm)
         | (deviations["Y Deviation from FP (ppm)"] > outlier_ppm)
@@ -367,13 +427,20 @@ def compute_distance_shrinkage(
     if usl_ppm is not None:
         quadrants["Status"] = [
             _status(x, y, usl_ppm)
-            for x, y in zip(quadrants["Shrinkage X (ppm)"], quadrants["Shrinkage Y (ppm)"])
+            for x, y in zip(
+                quadrants["Shrinkage X (ppm)"], quadrants["Shrinkage Y (ppm)"]
+            )
         ]
         full_panel["Status"] = _status(fp_x, fp_y, usl_ppm)
 
     return ShrinkageResult(
-        quadrants.round(3), pd.DataFrame([full_panel]).round(3), uniformity.round(3),
-        outliers.round(3), warnings, lengths)
+        quadrants.round(3),
+        pd.DataFrame([full_panel]).round(3),
+        uniformity.round(3),
+        outliers.round(3),
+        warnings,
+        lengths,
+    )
 
 
 # ----------------------------------------------------------------------- groups
@@ -395,7 +462,6 @@ class GroupShrinkage:
         return ", ".join(f"{k}: {v}" for k, v in self.group.items()) or "Current scope"
 
 
-
 def compute_shrinkage_by_group(
     measured_df: pd.DataFrame,
     settings: dict,
@@ -412,32 +478,58 @@ def compute_shrinkage_by_group(
 
     present = [c for c in group_cols if c in measured_df.columns]
     if present and not measured_df.empty:
-        groups = [(keys if isinstance(keys, tuple) else (keys,), frame)
-                  for keys, frame in measured_df.groupby(present, dropna=False)]
+        groups = [
+            (keys if isinstance(keys, tuple) else (keys,), frame)
+            for keys, frame in measured_df.groupby(present, dropna=False)
+        ]
     else:
         groups = [((), measured_df)]
 
     out: List[GroupShrinkage] = []
     for keys, frame in groups:
         labels = {
-            column: ("Unknown" if pd.isna(value) or str(value).strip() == "" else str(value))
+            column: (
+                "Unknown"
+                if pd.isna(cast(Any, value)) or str(value).strip() == ""
+                else str(value)
+            )
             for column, value in zip(present, keys)
         }
-        process_values = frame["Process"] if "Process" in frame.columns else pd.Series(dtype=str)
-        process = normalize_process(process_values.iloc[0]) if len(process_values) else PROCESS_PTV
+        process_values = (
+            frame["Process"] if "Process" in frame.columns else pd.Series(dtype=str)
+        )
+        process = (
+            normalize_process(process_values.iloc[0])
+            if len(process_values)
+            else PROCESS_PTV
+        )
         columns = measured_columns(settings, process)
         point = measured_point(settings, process)
 
         if design is None:
-            result = _empty([
-                "No design quadrant size is set, so shrinkage is not calculated. Enter it in "
-                "the sidebar (Shrinkage design size) or in REGISTRATION_SHRINKAGE."
-                "design_quadrant_mm in settings.yaml."])
+            result = _empty(
+                [
+                    "No design quadrant size is set, so shrinkage is not calculated. Enter it in "
+                    "the sidebar (Shrinkage design size) or in REGISTRATION_SHRINKAGE."
+                    "design_quadrant_mm in settings.yaml."
+                ]
+            )
         else:
             result = compute_distance_shrinkage(
-                frame, design, location_col=columns[0], x_col=columns[1], y_col=columns[2],
-                outlier_ppm=outlier_ppm, usl_ppm=usl_ppm, max_plausible_ppm=max_plausible_ppm)
-        out.append(GroupShrinkage(labels, process, point, design, result, frame, columns, lengths))
+                frame,
+                design,
+                location_col=columns[0],
+                x_col=columns[1],
+                y_col=columns[2],
+                outlier_ppm=outlier_ppm,
+                usl_ppm=usl_ppm,
+                max_plausible_ppm=max_plausible_ppm,
+            )
+        out.append(
+            GroupShrinkage(
+                labels, process, point, design, result, frame, columns, lengths
+            )
+        )
     return out
 
 
@@ -450,20 +542,24 @@ def summary_frame(groups: List[GroupShrinkage]) -> pd.DataFrame:
         result = group.result
         if result.full_panel.empty:
             reason = result.warnings[0] if result.warnings else "No result"
-            row.update({"Result": "No result", "Why": reason.split(". ")[0].rstrip(".") + "."})
+            row.update(
+                {"Result": "No result", "Why": reason.split(". ")[0].rstrip(".") + "."}
+            )
         else:
             panel, uniformity = result.full_panel.iloc[0], result.uniformity.iloc[0]
-            row.update({
-                "Result": str(panel["Status"]) if "Status" in panel else "Reported",
-                "Panel X (um)": panel["Delta X (um)"],
-                "Panel X (ppm)": panel["Shrinkage X (ppm)"],
-                "Panel Y (um)": panel["Delta Y (um)"],
-                "Panel Y (ppm)": panel["Shrinkage Y (ppm)"],
-                "Quadrant range X (ppm)": uniformity["QTQ Range X (ppm)"],
-                "Quadrant range Y (ppm)": uniformity["QTQ Range Y (ppm)"],
-                "Alerts": len(result.outliers),
-                "Why": "",
-            })
+            row.update(
+                {
+                    "Result": str(panel["Status"]) if "Status" in panel else "Reported",
+                    "Panel X (um)": panel["Delta X (um)"],
+                    "Panel X (ppm)": panel["Shrinkage X (ppm)"],
+                    "Panel Y (um)": panel["Delta Y (um)"],
+                    "Panel Y (ppm)": panel["Shrinkage Y (ppm)"],
+                    "Quadrant range X (ppm)": uniformity["QTQ Range X (ppm)"],
+                    "Quadrant range Y (ppm)": uniformity["QTQ Range Y (ppm)"],
+                    "Alerts": len(result.outliers),
+                    "Why": "",
+                }
+            )
         rows.append(row)
     frame = pd.DataFrame(rows)
     if "Why" in frame.columns:  # reasons last

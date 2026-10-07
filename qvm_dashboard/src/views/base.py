@@ -23,9 +23,9 @@ def full_width(element) -> dict:
     plotly charts. Asking the element itself keeps both working:
     ``st.plotly_chart(fig, **full_width(st.plotly_chart))``.
     """
-    if 'width' in inspect.signature(element).parameters:
-        return {'width': 'stretch'}
-    return {'use_container_width': True}
+    if "width" in inspect.signature(element).parameters:
+        return {"width": "stretch"}
+    return {"use_container_width": True}
 
 
 class BaseView(ABC):
@@ -34,8 +34,8 @@ class BaseView(ABC):
     def __init__(self, settings: Dict):
         """Initialize base view from application settings."""
         self.settings = settings
-        self.col_names = settings.get('COLUMN_NAMES', {})
-        self.tolerances = settings.get('TOLERANCES', {})
+        self.col_names = settings.get("COLUMN_NAMES", {})
+        self.tolerances = settings.get("TOLERANCES", {})
 
     def cols(self, *keys: str) -> Dict[str, str]:
         """Resolve column-name aliases via the single fallback table.
@@ -58,8 +58,8 @@ class BaseView(ABC):
     def format_to_3_decimals(self, val) -> str:
         """Format value to 3 decimals without trailing zeros."""
         if pd.isna(val):
-            return ''
+            return ""
         try:
-            return f'{float(val):.3f}'.rstrip('0').rstrip('.')
+            return f"{float(val):.3f}".rstrip("0").rstrip(".")
         except (ValueError, TypeError):
             return str(val)

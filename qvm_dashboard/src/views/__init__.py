@@ -6,8 +6,8 @@ from src.views.quality_control import QualityControlView
 from src.views.registration_scatter import RegistrationScatterView
 
 __all__ = [
-    'BaseView',
-    'CoreShrinkageView',
-    'QualityControlView',
-    'RegistrationScatterView',
+    "BaseView",
+    "CoreShrinkageView",
+    "QualityControlView",
+    "RegistrationScatterView",
 ]
