@@ -44,3 +44,9 @@ approved before fixing).
   `UM_PER_MM` constant (math + registration deltas) and the parser's
   inline ppm formula now calls `_to_ppm`; zero new import coupling.
   Tests 249/249.
+- M4: ingestion audit — no faster-aoi-style silent drops: parser warnings
+  thread through ingestion to session state + UI; `load_settings` /
+  `resolve_columns` already single-homed in `utils`. Dual BU normalizers
+  VERIFIED intentionally different (Optional-vs-str, bare-number and
+  zero-pad semantics) and pinned by +4 tests so nobody merges them.
+  Tests 253/253.
