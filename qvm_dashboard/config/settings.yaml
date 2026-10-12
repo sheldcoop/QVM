@@ -172,8 +172,8 @@ REGISTRATION_SHRINKAGE:
   # Shrinkage of Pad-to-Via / Via-to-Pad files (the Shrinkage tab). Units: mm.
   # Which measured centre the calculation uses, per file type: via | pad
   measured_point:
-    Pad to Via: via
-    Via to Pad: via
+    Pad to Via: pad
+    Via to Pad: pad
   outlier_ppm: 50          # a quadrant this far from the panel average raises an alert
   usl_ppm: null            # optional pass/fail limit on |shrinkage| in ppm; null = report only
   # A quadrant further than this from its design size is not shrinkage: the design is
