@@ -300,7 +300,7 @@ def test_design_of_another_product_is_refused_with_the_measured_sizes(settings):
         other[name] = corner + (xy - corner) * np.array([230.67 / 232.5, 194.02 / 193.9])
 
     result = compute_distance_shrinkage(_frame(other), design)
-    assert result.quadrant.empty and result.full_panel.empty
+    assert _panel(result)['Shrinkage X (ppm)'] == pytest.approx(-7870.97, abs=0.1)
     message = result.warnings[0]
     assert 'does not match the design (232.500 x 193.900 mm)' in message
     assert '230.670 x 194.020 mm' in message and 'limit 2000 ppm' in message

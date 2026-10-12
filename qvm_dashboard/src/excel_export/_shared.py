@@ -51,6 +51,10 @@ def _ensure_chrome_on_path() -> None:
         os.path.expanduser(r'~\AppData\Local\Google\Chrome SxS\Application\chrome.exe'),
         r'C:\Program Files\Chromium\Application\chrome.exe',
         r'C:\Program Files (x86)\Chromium\Application\chrome.exe',
+        # Linux (Streamlit Cloud installs `chromium` from packages.txt)
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
     ]
     for candidate in candidates:
         if os.path.isfile(candidate):

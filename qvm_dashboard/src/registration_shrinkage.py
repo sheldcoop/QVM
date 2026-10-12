@@ -269,8 +269,8 @@ def _plausibility(design: PointMap, measured: PointMap,
         f"({lengths['X Design (mm)'].mean():.3f} x {lengths['Y Design (mm)'].mean():.3f} mm): "
         f"up to {worst:.0f} ppm apart, more than shrinkage can explain (limit "
         f"{float(max_plausible_ppm):.0f} ppm). The design size is probably not that of "
-        f"this product (see Shrinkage design size in the sidebar), so shrinkage is not "
-        f"reported. The measured sizes are listed below.",
+        f"this product (see Shrinkage design size in the sidebar); check it before "
+        f"trusting the shrinkage below.",
         lengths)
 
 
@@ -303,10 +303,7 @@ def compute_distance_shrinkage(
             "calculated from it. Export the measurement in panel coordinates."])
 
     refusal, lengths = _plausibility(design, measured, max_plausible_ppm)
-    if refusal is not None:
-        return _empty([refusal], lengths)
-
-    warnings: List[str] = []
+    warnings: List[str] = [] if refusal is None else [refusal]
     rows: List[dict] = []
     for quadrant in _QUADRANTS:
         design_corners = _corners(design, quadrant)
