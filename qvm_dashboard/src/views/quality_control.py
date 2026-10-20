@@ -108,7 +108,7 @@ class QualityControlView(BaseView):
         # --- Excel Export ---
         col_left, col_right = st.columns([3, 1])
         with col_left:
-            st.write('One workbook export: separate Via-to-Pad and Pad-to-Via sheets for all Build Ups in the current Panel and Side scope.')
+            st.write('One workbook export: separate Via-to-Pad and Pad-to-Via sheets for current Build Up, Panel, and Side scope.')
         with col_right:
             self._render_export_button(filtered_df, export_df, is_via_to_pad, meta)
 

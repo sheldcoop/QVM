@@ -156,7 +156,7 @@ def _render_registration_analytics(filtered_df: pd.DataFrame, settings: dict) ->
 
 
 def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
-                        is_via_to_pad: bool, all_bu_df: pd.DataFrame | None = None) -> None:
+                        is_via_to_pad: bool) -> None:
     """Render one process tab: scope filters, sub-view nav, then the sub-view.
 
     Pad-to-Via and Via-to-Pad differ only in which rows they select, which
@@ -179,9 +179,7 @@ def _render_process_tab(scoped_df: pd.DataFrame, settings: dict, meta: dict, *,
 
     filtered_df, selected_panel, selected_side = _scope_filters(
         process_df, panel_key=f"{key_prefix}_panel", filter_key=f"{key_prefix}_side")
-    # The Excel export covers every Build Up, not only the one shown on screen.
-    export_scope_df = _apply_scope_filters(
-        all_bu_df if all_bu_df is not None else scoped_df, selected_panel, selected_side)
+    export_scope_df = _apply_scope_filters(scoped_df, selected_panel, selected_side)
 
     if filtered_df.empty:
         st.warning("No data matches the selected filters.")
@@ -370,8 +368,8 @@ def main() -> None:
     master_df = pd.concat(all_data, ignore_index=True)
     scoped_df, selected_build_up = _build_up_filter(master_df, state_key="build_up_scope")
 
-    # meta['build_up'] stays unset: the export holds every Build Up, and the
-    # file name is taken from the Build Ups in the exported rows.
+    if selected_build_up != "All":
+        meta['build_up'] = selected_build_up
 
     if scoped_df.empty:
         st.warning("No data matches the selected Build Up.")
@@ -379,8 +377,7 @@ def main() -> None:
 
     if main_view in ("Pad to Via", "Via to Pad"):
         _render_process_tab(scoped_df, settings, meta,
-                            is_via_to_pad=(main_view == "Via to Pad"),
-                            all_bu_df=master_df)
+                            is_via_to_pad=(main_view == "Via to Pad"))
 
 
 if __name__ == "__main__":
